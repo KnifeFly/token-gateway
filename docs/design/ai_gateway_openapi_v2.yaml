@@ -1,0 +1,1523 @@
+openapi: 3.0.3
+info:
+  title: Commercial AI Gateway OpenAPI
+  version: 0.2.0
+  description: |
+    商用 AI Gateway 对外 OpenAPI 草案 v0.2。
+
+    设计原则：
+    - 统一资源 URI：例如 /v1/images/generations、/v1/videos/generations。
+    - 通过 model 参数选择具体模型、供应商或模型族。
+    - 长耗时媒体生成统一返回异步 task。
+    - 原生兼容 OpenAI、Claude、Gemini 常用协议。
+    - 所有接口默认使用 Authorization: Bearer <API_KEY>。
+servers:
+  - url: https://api.example.com
+    description: Production
+  - url: http://localhost:9501
+    description: Local
+security:
+  - bearerAuth: []
+tags:
+  - name: Models
+  - name: Credits
+  - name: Files
+  - name: Tasks
+  - name: Unified Image
+  - name: Unified Video
+  - name: Unified Audio
+  - name: OpenAI Compatible
+  - name: Claude Compatible
+  - name: Gemini Compatible
+  - name: Moderation
+paths:
+  /v1/models:
+    get:
+      tags: [Models]
+      summary: List routeable models
+      operationId: listModels
+      responses:
+        '200':
+          description: Model list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/models/{model}/schema:
+    get:
+      tags: [Models]
+      summary: Get model parameter schema
+      description: 返回指定模型的参数 schema，用于前端动态表单、Apifox 示例和运行时校验。
+      operationId: getModelSchema
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Model schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSchemaResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/credits:
+    get:
+      tags: [Credits]
+      summary: Get credits and usage
+      operationId: getCredits
+      responses:
+        '200':
+          description: Credit balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/tasks/{task_id}:
+    get:
+      tags: [Tasks]
+      summary: Get async task detail
+      operationId: getTaskDetail
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/tasks/{task_id}/cancel:
+    post:
+      tags: [Tasks]
+      summary: Cancel async task
+      operationId: cancelTask
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Task cancelled or cancel request accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/files/upload/base64:
+    post:
+      tags: [Files]
+      summary: Upload file by Base64
+      operationId: uploadFileBase64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Base64FileUploadRequest'
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/files/upload/url:
+    post:
+      tags: [Files]
+      summary: Upload file from remote URL
+      operationId: uploadFileUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UrlFileUploadRequest'
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/files/upload/stream:
+    post:
+      tags: [Files]
+      summary: Upload file by multipart stream
+      operationId: uploadFileStream
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                upload_path:
+                  type: string
+                uploadPath:
+                  type: string
+                  description: camelCase alias of upload_path
+                file_name:
+                  type: string
+                fileName:
+                  type: string
+                  description: camelCase alias of file_name
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileUploadResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/files/quota:
+    get:
+      tags: [Files]
+      summary: Get file quota
+      operationId: getFileQuota
+      responses:
+        '200':
+          description: File quota
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileQuotaResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/images/generations:
+    post:
+      tags: [Unified Image]
+      summary: Create image generation task
+      description: |
+        统一生图接口。通过 model 参数选择具体模型，例如 gemini-3.1-flash-image-preview、nano-banana-2-beta、gpt-image-1、seedream-4.5 等。
+        支持文生图、图生图、图像编辑。长耗时模型默认返回异步 task。
+      operationId: createImageGeneration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageGenerationRequest'
+            examples:
+              textToImage:
+                summary: Text to image
+                value:
+                  model: gemini-3.1-flash-image-preview
+                  prompt: 一只猫在草地上玩耍，电影光影
+                  size: 1:1
+                  quality: 2K
+              imageEdit:
+                summary: Image edit
+                value:
+                  model: gpt-image-1
+                  prompt: 将图片中的天空改成晚霞
+                  image_urls:
+                    - https://example.com/input.png
+                  size: 16:9
+                  model_params:
+                    seed: 12345
+      responses:
+        '200':
+          description: Image task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/images/edits:
+    post:
+      tags: [Unified Image]
+      summary: Create image edit task
+      operationId: createImageEdit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageEditRequest'
+      responses:
+        '200':
+          description: Image edit task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/videos/generations:
+    post:
+      tags: [Unified Video]
+      summary: Create video generation task
+      description: |
+        统一生视频接口。通过 model 参数选择具体模型或模式。
+        支持文生视频、图生视频、首尾帧视频、多模态参考视频。
+      operationId: createVideoGeneration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VideoGenerationRequest'
+            examples:
+              textToVideo:
+                summary: Text to video
+                value:
+                  model: seedance-2.0-text-to-video
+                  prompt: 一只猫在钢琴上弹奏月光奏鸣曲，电影感光影，特写镜头
+                  duration: 8
+                  quality: 720p
+                  aspect_ratio: 16:9
+                  generate_audio: true
+              imageToVideo:
+                summary: Image to video
+                value:
+                  model: seedance-2.0-image-to-video
+                  prompt: 让图片中的人物缓慢转身，镜头向前推进
+                  image_urls:
+                    - https://example.com/first-frame.png
+                  duration: 5
+                  quality: 720p
+                  aspect_ratio: adaptive
+              referenceToVideo:
+                summary: Reference to video
+                value:
+                  model: seedance-2.0-reference-to-video
+                  prompt: 首帧使用图片1，全程参考视频1的运镜，音频1作为背景音乐
+                  image_urls:
+                    - https://example.com/character.png
+                  video_urls:
+                    - https://example.com/camera.mp4
+                  audio_urls:
+                    - https://example.com/bgm.mp3
+                  duration: 10
+                  quality: 1080p
+      responses:
+        '200':
+          description: Video task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/audio/speech:
+    post:
+      tags: [Unified Audio]
+      summary: Create speech audio
+      operationId: createSpeech
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeechRequest'
+      responses:
+        '200':
+          description: Speech response or task
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/TaskObject'
+                  - $ref: '#/components/schemas/AudioObject'
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/audio/transcriptions:
+    post:
+      tags: [Unified Audio]
+      summary: Transcribe audio
+      operationId: createTranscription
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [model, file]
+              properties:
+                model:
+                  type: string
+                  example: whisper-1
+                file:
+                  type: string
+                  format: binary
+                language:
+                  type: string
+                prompt:
+                  type: string
+                response_format:
+                  type: string
+                  enum: [json, text, srt, verbose_json, vtt]
+                  default: json
+                temperature:
+                  type: number
+                  minimum: 0
+                  maximum: 1
+      responses:
+        '200':
+          description: Transcription result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TranscriptionResponse'
+            text/plain:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/music/generations:
+    post:
+      tags: [Unified Audio]
+      summary: Create music generation task
+      operationId: createMusicGeneration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MusicGenerationRequest'
+      responses:
+        '200':
+          description: Music generation task created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/chat/completions:
+    post:
+      tags: [OpenAI Compatible]
+      summary: OpenAI-compatible chat completions
+      operationId: createChatCompletion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenAIChatCompletionRequest'
+      responses:
+        '200':
+          description: Chat completion response or SSE stream
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenAIChatCompletionResponse'
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/responses:
+    post:
+      tags: [OpenAI Compatible]
+      summary: OpenAI-compatible Responses API
+      operationId: createResponse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OpenAIResponseRequest'
+      responses:
+        '200':
+          description: Response object or SSE stream
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/embeddings:
+    post:
+      tags: [OpenAI Compatible]
+      summary: OpenAI-compatible embeddings
+      operationId: createEmbedding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmbeddingRequest'
+      responses:
+        '200':
+          description: Embedding response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmbeddingResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/messages:
+    post:
+      tags: [Claude Compatible]
+      summary: Claude-compatible Messages API
+      operationId: createClaudeMessage
+      parameters:
+        - name: anthropic-version
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Optional Claude API version compatibility header.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClaudeMessageRequest'
+      responses:
+        '200':
+          description: Claude message response or SSE stream
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClaudeMessageResponse'
+            text/event-stream:
+              schema:
+                type: string
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1beta/models/{model}:generateContent:
+    post:
+      tags: [Gemini Compatible]
+      summary: Gemini-compatible generateContent
+      operationId: geminiGenerateContent
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+          example: gemini-2.5-pro
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeminiGenerateContentRequest'
+      responses:
+        '200':
+          description: Gemini GenerateContent response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1beta/models/{model}:streamGenerateContent:
+    post:
+      tags: [Gemini Compatible]
+      summary: Gemini-compatible streamGenerateContent
+      operationId: geminiStreamGenerateContent
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+          example: gemini-2.5-pro
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeminiGenerateContentRequest'
+      responses:
+        '200':
+          description: Gemini streaming response
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/moderations:
+    post:
+      tags: [Moderation]
+      summary: Create moderation result
+      operationId: createModeration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModerationRequest'
+      responses:
+        '200':
+          description: Moderation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+
+  responses:
+    ErrorResponse:
+      description: Error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+
+    ErrorObject:
+      type: object
+      required: [code, message, type]
+      properties:
+        code:
+          type: string
+          enum:
+            - invalid_request
+            - invalid_parameters
+            - unauthorized
+            - forbidden
+            - insufficient_balance
+            - quota_exceeded
+            - rate_limited
+            - content_policy_violation
+            - provider_error
+            - service_error
+            - service_unavailable
+            - generation_timeout
+            - resource_not_found
+            - unknown_error
+        message:
+          type: string
+        type:
+          type: string
+          example: invalid_request_error
+        request_id:
+          type: string
+        retryable:
+          type: boolean
+        param:
+          type: string
+          nullable: true
+
+    ModelObject:
+      type: object
+      required: [id, object, type, capabilities]
+      properties:
+        id:
+          type: string
+          example: seedance-2.0-text-to-video
+        object:
+          type: string
+          example: model
+        type:
+          type: string
+          enum: [text, image, video, audio, embedding, moderation, multimodal]
+        display_name:
+          type: string
+        owner:
+          type: string
+          example: platform
+        capabilities:
+          type: array
+          items:
+            type: string
+          example: [video_generation, text_to_video]
+        input_modalities:
+          type: array
+          items:
+            type: string
+          example: [text, image]
+        output_modalities:
+          type: array
+          items:
+            type: string
+          example: [video]
+        async:
+          type: boolean
+        deprecated:
+          type: boolean
+          default: false
+
+    ModelListResponse:
+      type: object
+      required: [object, data]
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelObject'
+
+    ModelSchemaResponse:
+      type: object
+      required: [model, schema]
+      properties:
+        model:
+          type: string
+        version:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+
+    CreditsResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            token:
+              $ref: '#/components/schemas/CreditBucket'
+            user:
+              $ref: '#/components/schemas/CreditBucket'
+            account:
+              $ref: '#/components/schemas/CreditBucket'
+
+    CreditBucket:
+      type: object
+      properties:
+        remaining_credits:
+          type: number
+          format: double
+        used_credits:
+          type: number
+          format: double
+        unlimited_credits:
+          type: boolean
+          default: false
+        currency:
+          type: string
+          example: CNY
+
+    Base64FileUploadRequest:
+      type: object
+      required: [base64_data]
+      properties:
+        base64_data:
+          type: string
+          description: Base64 or data URL.
+        upload_path:
+          type: string
+        file_name:
+          type: string
+
+    UrlFileUploadRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+        upload_path:
+          type: string
+        file_name:
+          type: string
+
+    FileUploadResponse:
+      type: object
+      required: [success, code, msg, data]
+      properties:
+        success:
+          type: boolean
+        code:
+          type: integer
+          example: 200
+        msg:
+          type: string
+        data:
+          $ref: '#/components/schemas/FileObject'
+
+    FileObject:
+      type: object
+      properties:
+        file_id:
+          type: string
+        file_name:
+          type: string
+        original_name:
+          type: string
+        file_size:
+          type: integer
+          format: int64
+        mime_type:
+          type: string
+        upload_path:
+          type: string
+        file_url:
+          type: string
+          format: uri
+        download_url:
+          type: string
+          format: uri
+        upload_time:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    FileQuotaResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            max_files:
+              type: integer
+            used_files:
+              type: integer
+            remaining_files:
+              type: integer
+            max_bytes:
+              type: integer
+              format: int64
+            used_bytes:
+              type: integer
+              format: int64
+
+    TaskObject:
+      type: object
+      required: [id, object, status, type, created, progress]
+      properties:
+        id:
+          type: string
+          example: task-unified-1774857405-abc123
+        object:
+          type: string
+          enum:
+            - image.generation.task
+            - image.edit.task
+            - video.generation.task
+            - audio.generation.task
+            - music.generation.task
+        created:
+          type: integer
+          format: int64
+          description: Unix timestamp seconds.
+        model:
+          type: string
+        status:
+          type: string
+          enum: [pending, queued, processing, completed, failed, cancelled, expired]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        type:
+          type: string
+          enum: [text, image, audio, video]
+        results:
+          type: array
+          items:
+            type: string
+            format: uri
+        error:
+          $ref: '#/components/schemas/TaskError'
+        task_info:
+          type: object
+          additionalProperties: true
+          properties:
+            can_cancel:
+              type: boolean
+            estimated_time:
+              type: integer
+            video_duration:
+              type: integer
+        usage:
+          $ref: '#/components/schemas/UsageInfo'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    TaskError:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - content_policy_violation
+            - generation_failed_no_content
+            - invalid_parameters
+            - image_processing_error
+            - image_dimension_mismatch
+            - service_error
+            - generation_timeout
+            - quota_exceeded
+            - resource_exhausted
+            - resource_not_found
+            - request_cancelled
+            - service_unavailable
+            - unknown_error
+        message:
+          type: string
+        type:
+          type: string
+          example: task_error
+        retryable:
+          type: boolean
+
+    UsageInfo:
+      type: object
+      properties:
+        billing_rule:
+          type: string
+          enum: [per_token, per_call, per_second, per_image, per_audio_second, per_video_second, hybrid]
+        credits_reserved:
+          type: number
+        credits_used:
+          type: number
+        user_group:
+          type: string
+        currency:
+          type: string
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        duration_seconds:
+          type: number
+
+    ImageGenerationRequest:
+      type: object
+      required: [model, prompt]
+      properties:
+        model:
+          type: string
+          example: gemini-3.1-flash-image-preview
+        prompt:
+          type: string
+          maxLength: 8000
+        n:
+          type: integer
+          minimum: 1
+          maximum: 16
+          default: 1
+        size:
+          type: string
+          description: "Ratio or pixel size. Examples: auto, 1:1, 16:9, 1024x1024."
+          example: 1:1
+        quality:
+          type: string
+          example: 2K
+        output_format:
+          type: string
+          enum: [url, b64_json]
+          default: url
+        image_urls:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            format: uri
+        negative_prompt:
+          type: string
+        seed:
+          type: integer
+        callback_url:
+          type: string
+          format: uri
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        model_params:
+          type: object
+          additionalProperties: true
+
+    ImageEditRequest:
+      allOf:
+        - $ref: '#/components/schemas/ImageGenerationRequest'
+        - type: object
+          required: [image_urls]
+          properties:
+            mask_url:
+              type: string
+              format: uri
+
+    VideoGenerationRequest:
+      type: object
+      required: [model, prompt]
+      properties:
+        model:
+          type: string
+          example: seedance-2.0-text-to-video
+        prompt:
+          type: string
+          maxLength: 12000
+        image_urls:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            format: uri
+        video_urls:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            format: uri
+        audio_urls:
+          type: array
+          maxItems: 8
+          items:
+            type: string
+            format: uri
+        duration:
+          type: integer
+          minimum: 1
+          maximum: 120
+          example: 8
+        quality:
+          type: string
+          enum: [360p, 480p, 720p, 1080p, 2K, 4K]
+          default: 720p
+        aspect_ratio:
+          type: string
+          enum: [16:9, 9:16, 1:1, 4:3, 3:4, 21:9, adaptive]
+          default: 16:9
+        fps:
+          type: integer
+          minimum: 1
+          maximum: 120
+        generate_audio:
+          type: boolean
+          default: false
+        watermark:
+          type: boolean
+          default: false
+        callback_url:
+          type: string
+          format: uri
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        model_params:
+          type: object
+          additionalProperties: true
+
+    SpeechRequest:
+      type: object
+      required: [model, input, voice]
+      properties:
+        model:
+          type: string
+          example: tts-1
+        input:
+          type: string
+        voice:
+          type: string
+        response_format:
+          type: string
+          enum: [mp3, opus, aac, flac, wav, pcm, url]
+          default: mp3
+        speed:
+          type: number
+          minimum: 0.25
+          maximum: 4
+          default: 1
+        callback_url:
+          type: string
+          format: uri
+        model_params:
+          type: object
+          additionalProperties: true
+
+    AudioObject:
+      type: object
+      properties:
+        object:
+          type: string
+          example: audio
+        url:
+          type: string
+          format: uri
+        b64_json:
+          type: string
+        created:
+          type: integer
+          format: int64
+        usage:
+          $ref: '#/components/schemas/UsageInfo'
+
+    TranscriptionResponse:
+      type: object
+      properties:
+        text:
+          type: string
+        language:
+          type: string
+        duration:
+          type: number
+        segments:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    MusicGenerationRequest:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+          example: suno-music
+        prompt:
+          type: string
+        lyrics:
+          type: string
+        title:
+          type: string
+        style:
+          type: string
+        instrumental:
+          type: boolean
+        duration:
+          type: integer
+        callback_url:
+          type: string
+          format: uri
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        model_params:
+          type: object
+          additionalProperties: true
+
+    OpenAIChatCompletionRequest:
+      type: object
+      required: [model, messages]
+      properties:
+        model:
+          type: string
+        messages:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [system, developer, user, assistant, tool]
+              content:
+                oneOf:
+                  - type: string
+                  - type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+              name:
+                type: string
+              tool_call_id:
+                type: string
+        temperature:
+          type: number
+        top_p:
+          type: number
+        n:
+          type: integer
+        stream:
+          type: boolean
+        stop:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        max_tokens:
+          type: integer
+        max_completion_tokens:
+          type: integer
+        presence_penalty:
+          type: number
+        frequency_penalty:
+          type: number
+        logit_bias:
+          type: object
+          additionalProperties: true
+        user:
+          type: string
+        tools:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tool_choice:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        response_format:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    OpenAIChatCompletionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: chat.completion
+        created:
+          type: integer
+        model:
+          type: string
+        choices:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usage:
+          $ref: '#/components/schemas/TokenUsage'
+
+    OpenAIResponseRequest:
+      type: object
+      required: [model, input]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+        instructions:
+          type: string
+        stream:
+          type: boolean
+        store:
+          type: boolean
+        previous_response_id:
+          type: string
+        max_output_tokens:
+          type: integer
+        temperature:
+          type: number
+        top_p:
+          type: number
+        tools:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tool_choice:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    EmbeddingRequest:
+      type: object
+      required: [model, input]
+      properties:
+        model:
+          type: string
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                oneOf:
+                  - type: string
+                  - type: integer
+        dimensions:
+          type: integer
+        encoding_format:
+          type: string
+          enum: [float, base64]
+          default: float
+        user:
+          type: string
+
+    EmbeddingResponse:
+      type: object
+      properties:
+        object:
+          type: string
+          example: list
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              object:
+                type: string
+                example: embedding
+              embedding:
+                type: array
+                items:
+                  type: number
+              index:
+                type: integer
+        model:
+          type: string
+        usage:
+          $ref: '#/components/schemas/TokenUsage'
+
+    TokenUsage:
+      type: object
+      properties:
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        cached_input_tokens:
+          type: integer
+        reasoning_tokens:
+          type: integer
+
+    ClaudeMessageRequest:
+      type: object
+      required: [model, max_tokens, messages]
+      additionalProperties: true
+      properties:
+        model:
+          type: string
+          example: claude-sonnet-4-5-20250929
+        max_tokens:
+          type: integer
+          minimum: 1
+        messages:
+          type: array
+          items:
+            type: object
+            required: [role, content]
+            properties:
+              role:
+                type: string
+                enum: [user, assistant]
+              content:
+                oneOf:
+                  - type: string
+                  - type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+        system:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                additionalProperties: true
+        stream:
+          type: boolean
+        temperature:
+          type: number
+          minimum: 0
+          maximum: 1
+        top_p:
+          type: number
+        top_k:
+          type: integer
+        stop_sequences:
+          type: array
+          items:
+            type: string
+        tools:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tool_choice:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          additionalProperties: true
+        thinking:
+          type: object
+          additionalProperties: true
+
+    ClaudeMessageResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          example: message
+        role:
+          type: string
+          example: assistant
+        content:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        model:
+          type: string
+        stop_reason:
+          type: string
+          nullable: true
+        stop_sequence:
+          type: string
+          nullable: true
+        usage:
+          type: object
+          additionalProperties: true
+
+    GeminiGenerateContentRequest:
+      type: object
+      required: [contents]
+      additionalProperties: true
+      properties:
+        contents:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        tools:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        toolConfig:
+          type: object
+          additionalProperties: true
+        safetySettings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        systemInstruction:
+          type: object
+          additionalProperties: true
+        generationConfig:
+          type: object
+          additionalProperties: true
+        cachedContent:
+          type: string
+
+    ModerationRequest:
+      type: object
+      required: [model, input]
+      properties:
+        model:
+          type: string
+          example: moderation-latest
+        input:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
+    ModerationResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        model:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
