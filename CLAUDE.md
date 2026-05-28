@@ -1,7 +1,7 @@
 # token-gateway Agent Guide
 
 This file is the persistent project context for Claude Code and other coding agents.
-Keep it short, operational, and aligned with the design pack in `docs/design/`.
+Keep it short, operational, and aligned with `docs/plan/`, `docs/tasks.md`, and the design sources in `docs/design/`.
 
 ## Project Intent
 
@@ -14,18 +14,20 @@ It must support:
 
 The product target is: one stable customer-facing API surface, many upstream providers, auditable commercial accounting.
 
-## Design Pack
+## Documentation Map
 
-Before implementing architecture or domain behavior, read the design docs in this order:
+Before implementing architecture or domain behavior, use the docs in this order:
 
-1. `docs/design/ai_gateway_design_pack_v2_README.md` for the design-pack index and non-negotiable principles.
-2. `docs/design/ai_gateway_system_design_v2.md` for product scope, protocols, lifecycle, security, and acceptance criteria.
-3. `docs/design/ai_gateway_architecture_design_v2.md` for planes, layering, package ownership, runtime snapshot, routing, billing, and stream rules.
-4. `docs/design/ai_gateway_code_blueprint_v2.md` for package layout, interfaces, structs, and first implementation order.
-5. `docs/design/ai_gateway_implementation_plan_v2.md` and `docs/design/ai_gateway_task_list_v2.md` for milestone sequencing and Definition of Done.
-6. `docs/design/ai_gateway_openapi_v2.yaml` for API contract updates.
+1. `docs/plan/00-roadmap.md` for the M0-M8 roadmap, release rhythm, and phase-level execution order.
+2. The current phase doc in `docs/plan/01-m0-foundation.md` through `docs/plan/09-m8-commercial-ops.md` for executable scope, constraints, acceptance criteria, and risks.
+3. `docs/tasks.md` for the task board, current execution entry point, status, dependencies, and handoff notes.
+4. `docs/design/ai_gateway_design_pack_v2_README.md` for the design-pack index and non-negotiable principles.
+5. `docs/design/ai_gateway_system_design_v2.md` for product scope, protocols, lifecycle, security, and acceptance criteria.
+6. `docs/design/ai_gateway_architecture_design_v2.md` for planes, layering, package ownership, runtime snapshot, routing, billing, and stream rules.
+7. `docs/design/ai_gateway_code_blueprint_v2.md` for package layout, interfaces, structs, and code-level architecture references.
+8. `docs/design/ai_gateway_openapi_v2.yaml` for API contract updates.
 
-Do not copy long design text into code. Use these docs as the source of truth and keep implementation comments focused on local behavior.
+`docs/plan/` and `docs/tasks.md` are the execution entry points. `docs/design/` remains the source of truth for system, architecture, code blueprint, and OpenAPI design. Do not copy long design or plan text into code; keep implementation comments focused on local behavior.
 
 ## Architecture Rules
 
@@ -84,14 +86,17 @@ Follow [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments):
 
 ## Implementation Sequence
 
-Prefer the staged path from the design pack:
+Prefer the staged path from `docs/plan/00-roadmap.md`:
 
 1. M0: Go module, directories, config, error package, logger, HTTP server, healthz, readyz, metrics, OpenAPI, migrations, Makefile.
 2. M1: minimal Data Plane for `/v1/chat/completions`, API key auth, model parse, runtime snapshot, priority/weighted routing, OpenAI-compatible relay, provider error mapping, basic metrics/tracing.
 3. M2: billing closure with balance hold, usage attempt, settlement, ledger, failed settlement replay.
 4. M3: OpenAI Responses, Claude Messages, Gemini GenerateContent, embeddings, and stream support.
 5. M4: unified async media tasks, files, provider polling/webhook, callback.
-6. M5+: control plane, snapshot publish, plugins, security governance, production observability, reconciliation, and commercial operations.
+6. M5: control plane configuration, runtime snapshot build/validate/publish/watch, rollback, and hot reload.
+7. M6: plugin chain, security governance, PII redaction, PromptGuard, ResponseGuard, and audit.
+8. M7: production metrics, tracing, dashboards, alerts, load tests, and failure drills.
+9. M8: commercial operations, usage/cost/profit reports, reconciliation, billing export, and model marketplace support.
 
 When a task is broad, narrow it to the next milestone unless the user explicitly asks for a later capability.
 
@@ -167,7 +172,9 @@ For non-trivial changes, verify the relevant slice before finishing:
 - Integration or e2e coverage for request lifecycle, provider relay, stream close, billing, task, or snapshot behavior when affected.
 - Error codes mapped to the external protocol.
 - Metrics, trace spans, structured logs, audit events, and redaction updated when the request path changes.
-- OpenAPI and design docs updated when public API behavior changes.
+- `docs/design/ai_gateway_openapi_v2.yaml` updated when public API behavior changes.
+- `docs/plan/` or `docs/tasks.md` updated when phase scope, execution order, task status, or handoff state changes.
+- `docs/design/` updated when system, architecture, blueprint, or API design truth changes; otherwise explain intentional implementation differences.
 - `go test ./...`, `make test`, `make lint`, or the nearest available focused command run and reported.
 
 ## Review Checklist
@@ -186,6 +193,8 @@ Before accepting a change, ask:
 - Keep `CLAUDE.md` as the root source of agent guidance. `AGENTS.md` may remain a short pointer to this file.
 - Do not overwrite user changes. Inspect `git status --short` before broad edits.
 - Prefer focused diffs that follow the milestone currently being implemented.
+- Use `docs/tasks.md` as the live task board and handoff entry point.
+- Use `docs/plan/` for milestone execution changes and `docs/design/` for architecture/design truth.
 - When adding new architecture, update the design docs or explain why the implementation intentionally differs.
 
 ## Commit Rules
