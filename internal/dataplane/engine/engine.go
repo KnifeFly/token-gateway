@@ -22,6 +22,8 @@ type GatewayEngine struct {
 	limiter    LimitEnforcer
 	dispatcher ProviderDispatcher
 	stream     StreamFinalizer
+	tasks      TaskBridge
+	files      FileService
 	settlement SettlementService
 	observe    ObserveRecorder
 }
@@ -79,6 +81,16 @@ func WithStreamFinalizer(stream StreamFinalizer) Option {
 	return func(e *GatewayEngine) { e.stream = stream }
 }
 
+// WithTaskBridge configures async task handling.
+func WithTaskBridge(tasks TaskBridge) Option {
+	return func(e *GatewayEngine) { e.tasks = tasks }
+}
+
+// WithFileService configures file upload and quota handling.
+func WithFileService(files FileService) Option {
+	return func(e *GatewayEngine) { e.files = files }
+}
+
 // WithObserveRecorder configures metrics, traces, and logs.
 func WithObserveRecorder(observe ObserveRecorder) Option {
 	return func(e *GatewayEngine) { e.observe = observe }
@@ -101,6 +113,12 @@ func New(opts ...Option) (*GatewayEngine, error) {
 	}
 	if e.stream == nil {
 		e.stream = NoopStreamFinalizer{}
+	}
+	if e.tasks == nil {
+		e.tasks = NoopTaskBridge{}
+	}
+	if e.files == nil {
+		e.files = NoopFileService{}
 	}
 	if e.observe == nil {
 		e.observe = NoopObserveRecorder{}
@@ -141,6 +159,31 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
+	if state.IsTaskOperation() {
+		response, err = e.tasks.HandleTaskOperation(ctx, state)
+		if err != nil {
+			response = e.errorResponse(state, err)
+		}
+		return response, nil
+	}
+	if state.IsFileOperation() {
+		response, err = e.files.HandleFileOperation(ctx, state)
+		if err != nil {
+			response = e.errorResponse(state, err)
+		}
+		return response, nil
+	}
+	if state.Async {
+		var hit bool
+		response, hit, err = e.tasks.CheckIdempotency(ctx, state)
+		if err != nil {
+			response = e.errorResponse(state, err)
+			return response, nil
+		}
+		if hit {
+			return response, nil
+		}
+	}
 
 	// Step 3: resolve routing and reserve local limits before provider dispatch.
 	ctx, span := e.observe.StartSpan(ctx, "gateway.route",
@@ -168,6 +211,16 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	state.AddLimitRelease(release)
 	defer e.releaseLimits(ctx, state)
+
+	if state.Async {
+		response, err = e.tasks.CreateAndDispatch(ctx, state)
+		if err != nil {
+			_ = e.admission.Release(ctx, state, err)
+			response = e.errorResponse(state, err)
+			return response, nil
+		}
+		return response, nil
+	}
 
 	// Step 4: dispatch to the selected provider and finalize billing.
 	result, dispatchErr := e.dispatcher.Dispatch(ctx, state)

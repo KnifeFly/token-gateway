@@ -38,6 +38,18 @@ func NewHandler(readiness ReadinessFunc, registry *prometheus.Registry, logger *
 		mux.HandleFunc("POST /v1/embeddings", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1/messages", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1beta/models/", dataPlane(gateways[0]))
+		mux.HandleFunc("GET /v1/tasks/", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/tasks/", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/files/upload/base64", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/files/upload/url", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/files/upload/stream", dataPlane(gateways[0]))
+		mux.HandleFunc("GET /v1/files/quota", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/images/generations", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/images/edits", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/videos/generations", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/audio/speech", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/audio/transcriptions", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/music/generations", dataPlane(gateways[0]))
 	}
 	return RequestIDMiddleware(RecoveryMiddleware(AccessLogMiddleware(mux, logger)))
 }

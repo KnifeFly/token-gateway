@@ -29,6 +29,8 @@ type RequestState struct {
 	RequestedModel string
 	ResolvedModel  ModelView
 	Stream         bool
+	Async          bool
+	IdempotencyKey string
 
 	Snapshot    SnapshotView
 	SnapshotRef SnapshotRef
@@ -50,6 +52,16 @@ type RequestState struct {
 
 	Metadata map[string]string
 	Internal map[string]any
+}
+
+// IsTaskOperation reports whether this request is task query/control.
+func (s *RequestState) IsTaskOperation() bool {
+	return s != nil && s.Parsed.Task != nil
+}
+
+// IsFileOperation reports whether this request is file upload/quota.
+func (s *RequestState) IsFileOperation() bool {
+	return s != nil && s.Parsed.File != nil
 }
 
 func newState(req IncomingRequest) *RequestState {

@@ -32,6 +32,12 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 			{PublicModel: "text-embedding-3-small", Protocol: string(engine.ProtocolNativeOpenAI), Capability: "embeddings", Enabled: true},
 			{PublicModel: "claude-3-5-sonnet-latest", Protocol: string(engine.ProtocolNativeClaude), Capability: "messages", Enabled: true},
 			{PublicModel: "gemini-2.5-flash", Protocol: string(engine.ProtocolNativeGemini), Capability: "generate_content", Enabled: true},
+			{PublicModel: "gemini-3.1-flash-image-preview", Protocol: string(engine.ProtocolUnified), Capability: "image_generation", Enabled: true},
+			{PublicModel: "gpt-image-1", Protocol: string(engine.ProtocolUnified), Capability: "image_edit", Enabled: true},
+			{PublicModel: "seedance-2.0-text-to-video", Protocol: string(engine.ProtocolUnified), Capability: "video_generation", Enabled: true},
+			{PublicModel: "tts-1", Protocol: string(engine.ProtocolUnified), Capability: "audio_speech", Enabled: true},
+			{PublicModel: "whisper-1", Protocol: string(engine.ProtocolUnified), Capability: "audio_transcription", Enabled: true},
+			{PublicModel: "suno-music", Protocol: string(engine.ProtocolUnified), Capability: "music_generation", Enabled: true},
 		}
 		runtime.Channels = []cpsnapshot.ChannelRuntime{{
 			ID:           seed.ChannelID,
@@ -54,6 +60,20 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 				{PublicModel: "claude-3-5-sonnet-latest", UpstreamModel: "claude-3-5-sonnet-latest"},
 			},
 		}, {
+			ID:           "channel_mock_media",
+			ProviderType: "mock_media",
+			BaseURL:      "mock://media",
+			Enabled:      true,
+			Timeout:      seed.ChannelTimeout.Duration,
+			Models: []cpsnapshot.ChannelModelRuntime{
+				{PublicModel: "gemini-3.1-flash-image-preview", UpstreamModel: "gemini-3.1-flash-image-preview"},
+				{PublicModel: "gpt-image-1", UpstreamModel: "gpt-image-1"},
+				{PublicModel: "seedance-2.0-text-to-video", UpstreamModel: "seedance-2.0-text-to-video"},
+				{PublicModel: "tts-1", UpstreamModel: "tts-1"},
+				{PublicModel: "whisper-1", UpstreamModel: "whisper-1"},
+				{PublicModel: "suno-music", UpstreamModel: "suno-music"},
+			},
+		}, {
 			ID:           "channel_mock_gemini",
 			ProviderType: "gemini",
 			BaseURL:      "mock://gemini",
@@ -68,6 +88,12 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 			seedRoute("text-embedding-3-small", seed.ChannelID, seed),
 			seedRoute("claude-3-5-sonnet-latest", "channel_mock_claude", seed),
 			seedRoute("gemini-2.5-flash", "channel_mock_gemini", seed),
+			seedRoute("gemini-3.1-flash-image-preview", "channel_mock_media", seed),
+			seedRoute("gpt-image-1", "channel_mock_media", seed),
+			seedRoute("seedance-2.0-text-to-video", "channel_mock_media", seed),
+			seedRoute("tts-1", "channel_mock_media", seed),
+			seedRoute("whisper-1", "channel_mock_media", seed),
+			seedRoute("suno-music", "channel_mock_media", seed),
 		}
 	}
 	return dpsnapshot.Build(runtime)

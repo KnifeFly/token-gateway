@@ -28,6 +28,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/provider/claude"
 	"github.com/KnifeFly/token-gateway/internal/provider/gemini"
 	"github.com/KnifeFly/token-gateway/internal/provider/openai"
+	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 )
 
@@ -108,6 +109,14 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 	admissionController := engine.AdmissionController(engine.NoopAdmission{})
 	limitEnforcer := engine.LimitEnforcer(engine.NoopLimitEnforcer{})
 	settlementService := engine.SettlementService(engine.NoopSettlement{})
+	taskRepo := tasksvc.Repository(tasksvc.NewMemoryRepository())
+	if cfg.Database.Enabled && database != nil && database.DB() != nil {
+		taskRepo = tasksvc.NewMySQLRepository(database.DB())
+	}
+	taskService := tasksvc.NewService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration)
+	taskDispatcher := tasksvc.NewMockProviderTaskDispatcher()
+	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher)
+	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration))
 	var attemptRecorder dispatch.AttemptRecorder
 	if cfg.Gateway.Billing.Enabled {
 		repo := billing.NewMySQLRepository(database.DB())
@@ -155,6 +164,8 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 		engine.WithDispatcher(dispatch.New(registry, observeRecorder, attemptRecorder, logger)),
 		engine.WithSettlement(settlementService),
 		engine.WithStreamFinalizer(streamFinalizer),
+		engine.WithTaskBridge(taskBridge),
+		engine.WithFileService(fileBridge),
 		engine.WithObserveRecorder(observeRecorder),
 	)
 }

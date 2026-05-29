@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 
+	"github.com/KnifeFly/token-gateway/pkg/apperr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -51,6 +52,28 @@ func (NoopStreamFinalizer) Wrap(_ context.Context, _ *RequestState, result *Prov
 		return nil, nil
 	}
 	return result.Response, nil
+}
+
+// NoopTaskBridge rejects async task operations when no task service is configured.
+type NoopTaskBridge struct{}
+
+func (NoopTaskBridge) CheckIdempotency(context.Context, *RequestState) (*GatewayResponse, bool, error) {
+	return nil, false, nil
+}
+
+func (NoopTaskBridge) CreateAndDispatch(context.Context, *RequestState) (*GatewayResponse, error) {
+	return nil, apperr.ConfigUnavailable("task bridge is unavailable")
+}
+
+func (NoopTaskBridge) HandleTaskOperation(context.Context, *RequestState) (*GatewayResponse, error) {
+	return nil, apperr.ConfigUnavailable("task bridge is unavailable")
+}
+
+// NoopFileService rejects file operations when no file service is configured.
+type NoopFileService struct{}
+
+func (NoopFileService) HandleFileOperation(context.Context, *RequestState) (*GatewayResponse, error) {
+	return nil, apperr.ConfigUnavailable("file service is unavailable")
 }
 
 // NoopObserveRecorder keeps tests and minimal setups dependency-free.

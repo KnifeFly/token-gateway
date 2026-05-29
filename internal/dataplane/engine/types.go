@@ -32,6 +32,36 @@ const (
 	CanonicalOpenAIEmbeddings      CanonicalAPI = "openai.embeddings"
 	CanonicalClaudeMessages        CanonicalAPI = "claude.messages"
 	CanonicalGeminiGenerateContent CanonicalAPI = "gemini.generate_content"
+	CanonicalImageGeneration       CanonicalAPI = "unified.image_generation"
+	CanonicalImageEdit             CanonicalAPI = "unified.image_edit"
+	CanonicalVideoGeneration       CanonicalAPI = "unified.video_generation"
+	CanonicalAudioSpeech           CanonicalAPI = "unified.audio_speech"
+	CanonicalAudioTranscription    CanonicalAPI = "unified.audio_transcription"
+	CanonicalMusicGeneration       CanonicalAPI = "unified.music_generation"
+	CanonicalTaskGet               CanonicalAPI = "task.get"
+	CanonicalTaskCancel            CanonicalAPI = "task.cancel"
+	CanonicalFileUploadBase64      CanonicalAPI = "file.upload_base64"
+	CanonicalFileUploadURL         CanonicalAPI = "file.upload_url"
+	CanonicalFileUploadStream      CanonicalAPI = "file.upload_stream"
+	CanonicalFileQuota             CanonicalAPI = "file.quota"
+)
+
+// TaskOperation identifies a task read/control operation.
+type TaskOperation string
+
+const (
+	TaskOperationGet    TaskOperation = "get"
+	TaskOperationCancel TaskOperation = "cancel"
+)
+
+// FileOperation identifies a file operation.
+type FileOperation string
+
+const (
+	FileOperationUploadBase64 FileOperation = "upload_base64"
+	FileOperationUploadURL    FileOperation = "upload_url"
+	FileOperationUploadStream FileOperation = "upload_stream"
+	FileOperationQuota        FileOperation = "quota"
 )
 
 // EndpointSpec records the matched public endpoint.
@@ -140,6 +170,9 @@ type ParsedRequest struct {
 	Embedding      *EmbeddingRequest
 	ClaudeMessage  *ClaudeMessageRequest
 	Gemini         *GeminiRequest
+	Media          *UnifiedMediaRequest
+	Task           *TaskRequest
+	File           *FileRequest
 }
 
 // OpenAIChatRequest contains M1 fields needed from an OpenAI-compatible chat request.
@@ -170,6 +203,32 @@ type ClaudeMessageRequest struct {
 type GeminiRequest struct {
 	Model  string
 	Stream bool
+}
+
+// UnifiedMediaRequest contains M4 async media task fields.
+type UnifiedMediaRequest struct {
+	Kind        string
+	MediaType   string
+	Model       string
+	CallbackURL string
+	Metadata    map[string]string
+	ModelParams map[string]any
+}
+
+// TaskRequest contains M4 task query/control fields.
+type TaskRequest struct {
+	Operation TaskOperation
+	TaskID    string
+}
+
+// FileRequest contains M4 file upload/quota fields.
+type FileRequest struct {
+	Operation    FileOperation
+	FileName     string
+	OriginalName string
+	SizeBytes    int64
+	MIMEType     string
+	UploadPath   string
 }
 
 // OpenAIChatMessage is a minimal OpenAI-compatible chat message.
@@ -264,6 +323,18 @@ type LimitRelease interface {
 // StreamFinalizer wraps provider streams and performs close-time accounting.
 type StreamFinalizer interface {
 	Wrap(ctx context.Context, state *RequestState, result *ProviderResult) (*GatewayResponse, error)
+}
+
+// TaskBridge handles async task idempotency, creation, query, and cancel operations.
+type TaskBridge interface {
+	CheckIdempotency(ctx context.Context, state *RequestState) (*GatewayResponse, bool, error)
+	CreateAndDispatch(ctx context.Context, state *RequestState) (*GatewayResponse, error)
+	HandleTaskOperation(ctx context.Context, state *RequestState) (*GatewayResponse, error)
+}
+
+// FileService handles file uploads and quota operations.
+type FileService interface {
+	HandleFileOperation(ctx context.Context, state *RequestState) (*GatewayResponse, error)
 }
 
 // SettlementService performs final usage settlement after provider success.

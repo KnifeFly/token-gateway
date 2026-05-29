@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射。
-- 未开始：M4 unified media async task 和后续控制面能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service。
+- 未开始：M5 control plane + runtime snapshot 和后续控制面能力。
 - 阻塞：无。
-- 下一步建议：进入 M4，先实现 task domain/idempotency 和 unified media parser，再接 TaskBridge、provider task poller、callback outbox 与 task settlement。
-- 最近验证：M3 收口时 `go test ./...`、`make test`、`make lint`、`make race`、`make build`、`git diff --check` 均通过；compose smoke 通过，`migrate-up`、`/healthz`、`/readyz`、`/metrics`、`/v1/chat/completions`、`/v1/responses`、`/v1/embeddings`、`/v1/messages`、Gemini `generateContent`/`streamGenerateContent`、OpenAI Responses stream 和 Claude stream 均返回 200，账务表生成 9 条 hold/attempt/usage_record/ledger，`migrate-down`、`compose-down` 均成功。
+- 下一步建议：进入 M5，先实现 admin auth 和 tenant/project/api key CRUD，再推进 model/schema/channel/credential/route/price/limit CRUD 与 snapshot builder/publisher/watcher。
+- 最近验证：M4 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
 
 ## 使用规则
 
@@ -81,15 +81,15 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | M4/E4-T01/P0 | P0 | 实现 Task domain 和状态机 | `internal/task` | queued、running、succeeded、failed、canceled 有效 |
-| [ ] | M4/E4-T02/P0 | P0 | 实现 IdempotencyStore | `internal/task/idempotency.go` | 同 key 同 body 返回同 task，同 key 不同 body 返回 409 |
-| [ ] | M4/E4-T03/P0 | P0 | 实现 Unified media parser | `internal/dataplane/parser/unified_media_parser.go` | image、video、audio、music 和 `model_params` 可解析 |
-| [ ] | M4/E4-T04/P0 | P0 | 实现 File service | `internal/task/file_service.go` | base64、url、stream upload 可用 |
-| [ ] | M4/E4-T05/P0 | P0 | 实现 TaskBridge | `internal/dataplane/engine/task_bridge.go` | 创建 internal task 并返回 task object |
-| [ ] | M4/E4-T06/P0 | P0 | 实现 ProviderTaskDispatcher | `internal/task/provider_dispatcher.go` | external_task_id 落库 |
-| [ ] | M4/E4-T07/P0 | P0 | 实现 provider task poller | `internal/worker/jobs/provider_task_poller.go` | task 状态推进 |
-| [ ] | M4/E4-T08/P0 | P0 | 实现 callback outbox/dispatcher | `internal/worker/jobs/callback_dispatcher.go` | callback 失败可重试 |
-| [ ] | M4/E4-T09/P1 | P1 | 实现 task settlement | `internal/task/settlement.go` | 任务成功后最终扣费 |
+| [x] | M4/E4-T01/P0 | P0 | 实现 Task domain 和状态机 | `internal/task` | queued、running、succeeded、failed、canceled 有效 |
+| [x] | M4/E4-T02/P0 | P0 | 实现 IdempotencyStore | `internal/task/idempotency.go` | 同 key 同 body 返回同 task，同 key 不同 body 返回 409 |
+| [x] | M4/E4-T03/P0 | P0 | 实现 Unified media parser | `internal/dataplane/parser/unified_media_parser.go` | image、video、audio、music 和 `model_params` 可解析 |
+| [x] | M4/E4-T04/P0 | P0 | 实现 File service | `internal/task/file_service.go` | base64、url、stream upload 可用 |
+| [x] | M4/E4-T05/P0 | P0 | 实现 TaskBridge | `internal/task/bridge.go`, `internal/dataplane/engine` | 创建 internal task 并返回 task object |
+| [x] | M4/E4-T06/P0 | P0 | 实现 ProviderTaskDispatcher | `internal/task/provider_dispatcher.go` | external_task_id 落库 |
+| [x] | M4/E4-T07/P0 | P0 | 实现 provider task poller | `internal/worker/jobs/provider_task_poller.go` | task 状态推进 |
+| [x] | M4/E4-T08/P0 | P0 | 实现 callback outbox/dispatcher | `internal/worker/jobs/callback_dispatcher.go` | callback 失败可重试 |
+| [x] | M4/E4-T09/P1 | P1 | 实现 task settlement | `internal/task/settlement.go` | 任务成功后最终扣费 |
 
 ## M5 Control Plane + Snapshot
 

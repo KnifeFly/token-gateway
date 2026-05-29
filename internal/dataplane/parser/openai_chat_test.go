@@ -74,6 +74,59 @@ func TestParserGeminiModelFromPath(t *testing.T) {
 	}
 }
 
+func TestParserUnifiedMediaVideo(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalVideoGeneration,
+		Incoming: engine.IncomingRequest{
+			Path:   "/v1/videos/generations",
+			Header: http.Header{"Idempotency-Key": []string{"idem-video"}},
+			Body: io.NopCloser(strings.NewReader(`{
+				"model":"seedance-2.0-text-to-video",
+				"prompt":"camera move",
+				"callback_url":"https://example.com/callback",
+				"metadata":{"scene":"1"},
+				"model_params":{"seed":123}
+			}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !state.Async || state.IdempotencyKey != "idem-video" {
+		t.Fatalf("async = %v idempotency = %q", state.Async, state.IdempotencyKey)
+	}
+	if state.RequestedModel != "seedance-2.0-text-to-video" {
+		t.Fatalf("RequestedModel = %q", state.RequestedModel)
+	}
+	if state.Parsed.Media == nil || state.Parsed.Media.Kind != "video.generation" || state.Parsed.Media.Metadata["scene"] != "1" {
+		t.Fatalf("media = %#v", state.Parsed.Media)
+	}
+	if state.Parsed.Media.ModelParams["seed"].(float64) != 123 {
+		t.Fatalf("model_params = %#v", state.Parsed.Media.ModelParams)
+	}
+}
+
+func TestParserFileBase64(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalFileUploadBase64,
+		Incoming: engine.IncomingRequest{
+			Path:   "/v1/files/upload/base64",
+			Header: http.Header{"Idempotency-Key": []string{"idem-file"}},
+			Body:   io.NopCloser(strings.NewReader(`{"base64_data":"aGk=","file_name":"hi.txt"}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.Parsed.File == nil || state.Parsed.File.SizeBytes != 2 || state.IdempotencyKey != "idem-file" {
+		t.Fatalf("file = %#v idempotency = %q", state.Parsed.File, state.IdempotencyKey)
+	}
+}
+
 func TestBodyStoreRejectsOversizeBody(t *testing.T) {
 	_, err := (BodyStore{MaxBytes: 3}).Read(strings.NewReader("abcd"))
 	appErr, ok := apperr.As(err)

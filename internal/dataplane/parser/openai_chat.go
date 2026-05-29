@@ -29,6 +29,12 @@ func NewOpenAIChatParser(maxBodyBytes int64) *Parser {
 
 // Parse reads the request body and extracts normalized model and stream fields.
 func (p *Parser) Parse(_ context.Context, state *engine.RequestState) error {
+	switch state.CanonicalAPI {
+	case engine.CanonicalTaskGet, engine.CanonicalTaskCancel:
+		return p.parseTaskOperation(state)
+	case engine.CanonicalFileQuota:
+		return p.parseFileQuota(state)
+	}
 	body, err := p.bodyStore.Read(state.Incoming.Body)
 	if err != nil {
 		return err
@@ -44,6 +50,20 @@ func (p *Parser) Parse(_ context.Context, state *engine.RequestState) error {
 		return p.parseClaudeMessage(state, body)
 	case engine.CanonicalGeminiGenerateContent:
 		return p.parseGemini(state, body)
+	case engine.CanonicalImageGeneration,
+		engine.CanonicalImageEdit,
+		engine.CanonicalVideoGeneration,
+		engine.CanonicalAudioSpeech,
+		engine.CanonicalMusicGeneration:
+		return p.parseUnifiedMedia(state, body)
+	case engine.CanonicalAudioTranscription:
+		return p.parseAudioTranscription(state, body)
+	case engine.CanonicalFileUploadBase64:
+		return p.parseFileBase64(state, body)
+	case engine.CanonicalFileUploadURL:
+		return p.parseFileURL(state, body)
+	case engine.CanonicalFileUploadStream:
+		return p.parseFileStream(state, body)
 	default:
 		return apperr.InvalidArgument("unsupported request parser")
 	}

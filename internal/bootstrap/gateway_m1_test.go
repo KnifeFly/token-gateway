@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -150,6 +151,84 @@ func TestGatewayEngineM3Stream(t *testing.T) {
 	}
 }
 
+func TestGatewayEngineM4VideoTaskIdempotencyAndCancel(t *testing.T) {
+	cfg := m1TestConfig()
+	tel, err := telemetry.New(context.Background(), telemetry.Config{
+		ServiceName:    cfg.Service.Name,
+		ServiceVersion: cfg.Service.Version,
+		MetricsEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("telemetry.New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+
+	gateway, err := newGatewayEngine(context.Background(), cfg, tel, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("newGatewayEngine() error = %v", err)
+	}
+
+	body := `{"model":"seedance-2.0-text-to-video","prompt":"camera move"}`
+	response, err := gateway.Handle(context.Background(), testIncomingWithHeaders(cfg.Gateway.Seed.APIKey, "/v1/videos/generations", body, http.Header{"Idempotency-Key": []string{"task-idem"}}))
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	taskID := taskIDFromResponse(t, response)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.StatusCode, response.Body)
+	}
+
+	duplicate, err := gateway.Handle(context.Background(), testIncomingWithHeaders(cfg.Gateway.Seed.APIKey, "/v1/videos/generations", body, http.Header{"Idempotency-Key": []string{"task-idem"}}))
+	if err != nil {
+		t.Fatalf("duplicate Handle() error = %v", err)
+	}
+	if got := taskIDFromResponse(t, duplicate); got != taskID {
+		t.Fatalf("duplicate task id = %q, want %q", got, taskID)
+	}
+
+	detail, err := gateway.Handle(context.Background(), testIncomingWithMethod(cfg.Gateway.Seed.APIKey, http.MethodGet, "/v1/tasks/"+taskID, ""))
+	if err != nil {
+		t.Fatalf("detail Handle() error = %v", err)
+	}
+	if got := taskIDFromResponse(t, detail); got != taskID {
+		t.Fatalf("detail task id = %q, want %q", got, taskID)
+	}
+
+	cancel, err := gateway.Handle(context.Background(), testIncomingWithMethod(cfg.Gateway.Seed.APIKey, http.MethodPost, "/v1/tasks/"+taskID+"/cancel", ""))
+	if err != nil {
+		t.Fatalf("cancel Handle() error = %v", err)
+	}
+	if !strings.Contains(string(cancel.Body), `"status":"cancelled"`) {
+		t.Fatalf("cancel body = %s", cancel.Body)
+	}
+}
+
+func TestGatewayEngineM4FileUpload(t *testing.T) {
+	cfg := m1TestConfig()
+	tel, err := telemetry.New(context.Background(), telemetry.Config{
+		ServiceName:    cfg.Service.Name,
+		ServiceVersion: cfg.Service.Version,
+		MetricsEnabled: true,
+	})
+	if err != nil {
+		t.Fatalf("telemetry.New() error = %v", err)
+	}
+	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
+
+	gateway, err := newGatewayEngine(context.Background(), cfg, tel, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("newGatewayEngine() error = %v", err)
+	}
+
+	response, err := gateway.Handle(context.Background(), testIncomingWithHeaders(cfg.Gateway.Seed.APIKey, "/v1/files/upload/base64", `{"base64_data":"aGk=","file_name":"hi.txt"}`, http.Header{"Idempotency-Key": []string{"file-idem"}}))
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"success":true`) {
+		t.Fatalf("response = %d %s", response.StatusCode, response.Body)
+	}
+}
+
 func m1TestConfig() Config {
 	cfg := DefaultConfig()
 	cfg.Gateway.Seed.Enabled = true
@@ -167,10 +246,38 @@ func testIncomingRequest(apiKey string) engine.IncomingRequest {
 }
 
 func testIncoming(apiKey string, path string, body string) engine.IncomingRequest {
+	return testIncomingWithMethod(apiKey, http.MethodPost, path, body)
+}
+
+func testIncomingWithMethod(apiKey string, method string, path string, body string) engine.IncomingRequest {
 	return engine.IncomingRequest{
-		Method: http.MethodPost,
+		Method: method,
 		Path:   path,
 		Header: http.Header{"Authorization": []string{"Bearer " + apiKey}},
 		Body:   io.NopCloser(strings.NewReader(body)),
 	}
+}
+
+func testIncomingWithHeaders(apiKey string, path string, body string, header http.Header) engine.IncomingRequest {
+	request := testIncoming(apiKey, path, body)
+	for key, values := range header {
+		for _, value := range values {
+			request.Header.Add(key, value)
+		}
+	}
+	return request
+}
+
+func taskIDFromResponse(t *testing.T, response *engine.GatewayResponse) string {
+	t.Helper()
+	var payload struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(response.Body, &payload); err != nil {
+		t.Fatalf("Unmarshal() error = %v body = %s", err, response.Body)
+	}
+	if payload.ID == "" {
+		t.Fatalf("missing id in body = %s", response.Body)
+	}
+	return payload.ID
 }

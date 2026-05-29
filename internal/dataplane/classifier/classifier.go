@@ -23,6 +23,16 @@ var endpoints = []engine.EndpointSpec{
 	{Method: http.MethodPost, Path: "/v1/responses", Canonical: engine.CanonicalOpenAIResponses, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/embeddings", Canonical: engine.CanonicalOpenAIEmbeddings, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/messages", Canonical: engine.CanonicalClaudeMessages, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeClaude}},
+	{Method: http.MethodPost, Path: "/v1/images/generations", Canonical: engine.CanonicalImageGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/images/edits", Canonical: engine.CanonicalImageEdit, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/videos/generations", Canonical: engine.CanonicalVideoGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/audio/speech", Canonical: engine.CanonicalAudioSpeech, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/audio/transcriptions", Canonical: engine.CanonicalAudioTranscription, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/music/generations", Canonical: engine.CanonicalMusicGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/files/upload/base64", Canonical: engine.CanonicalFileUploadBase64, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/files/upload/url", Canonical: engine.CanonicalFileUploadURL, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/files/upload/stream", Canonical: engine.CanonicalFileUploadStream, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodGet, Path: "/v1/files/quota", Canonical: engine.CanonicalFileQuota, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
 }
 
 // DefaultClassifier classifies M1/M3 data-plane endpoints.
@@ -52,10 +62,23 @@ func (c *DefaultClassifier) Classify(_ context.Context, state *engine.RequestSta
 }
 
 func matchEndpoint(method, path string) (engine.EndpointSpec, bool) {
-	if method != http.MethodPost {
-		return engine.EndpointSpec{}, false
+	if method == http.MethodGet && strings.HasPrefix(path, "/v1/tasks/") && !strings.HasSuffix(path, "/cancel") {
+		return engine.EndpointSpec{
+			Method:      http.MethodGet,
+			Path:        "/v1/tasks/{task_id}",
+			Canonical:   engine.CanonicalTaskGet,
+			AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified},
+		}, true
 	}
-	if strings.HasPrefix(path, "/v1beta/models/") &&
+	if method == http.MethodPost && strings.HasPrefix(path, "/v1/tasks/") && strings.HasSuffix(path, "/cancel") {
+		return engine.EndpointSpec{
+			Method:      http.MethodPost,
+			Path:        "/v1/tasks/{task_id}/cancel",
+			Canonical:   engine.CanonicalTaskCancel,
+			AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified},
+		}, true
+	}
+	if method == http.MethodPost && strings.HasPrefix(path, "/v1beta/models/") &&
 		(strings.HasSuffix(path, ":generateContent") || strings.HasSuffix(path, ":streamGenerateContent")) {
 		return engine.EndpointSpec{
 			Method:      http.MethodPost,
@@ -78,6 +101,19 @@ func defaultProtocol(api engine.CanonicalAPI) engine.ProtocolMode {
 		return engine.ProtocolNativeClaude
 	case engine.CanonicalGeminiGenerateContent:
 		return engine.ProtocolNativeGemini
+	case engine.CanonicalImageGeneration,
+		engine.CanonicalImageEdit,
+		engine.CanonicalVideoGeneration,
+		engine.CanonicalAudioSpeech,
+		engine.CanonicalAudioTranscription,
+		engine.CanonicalMusicGeneration,
+		engine.CanonicalTaskGet,
+		engine.CanonicalTaskCancel,
+		engine.CanonicalFileUploadBase64,
+		engine.CanonicalFileUploadURL,
+		engine.CanonicalFileUploadStream,
+		engine.CanonicalFileQuota:
+		return engine.ProtocolUnified
 	default:
 		return engine.ProtocolNativeOpenAI
 	}
