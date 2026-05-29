@@ -18,12 +18,15 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/dataplane/parser"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/router"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/stream"
 	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
 	"github.com/KnifeFly/token-gateway/internal/provider"
+	"github.com/KnifeFly/token-gateway/internal/provider/claude"
+	"github.com/KnifeFly/token-gateway/internal/provider/gemini"
 	"github.com/KnifeFly/token-gateway/internal/provider/openai"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 )
@@ -95,6 +98,13 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 	if err := registry.Register("openai_compatible", openai.NewAdapter(nil)); err != nil {
 		return nil, err
 	}
+	if err := registry.Register("claude", claude.NewAdapter(nil)); err != nil {
+		return nil, err
+	}
+	if err := registry.Register("gemini", gemini.NewAdapter(nil)); err != nil {
+		return nil, err
+	}
+
 	admissionController := engine.AdmissionController(engine.NoopAdmission{})
 	limitEnforcer := engine.LimitEnforcer(engine.NoopLimitEnforcer{})
 	settlementService := engine.SettlementService(engine.NoopSettlement{})
@@ -132,6 +142,8 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 			KeyPrefix:   cfg.Gateway.Limits.KeyPrefix,
 		})
 	}
+	streamFinalizer := stream.NewFinalizer(settlementService, observeRecorder)
+
 	return engine.New(
 		engine.WithSnapshot(dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed))),
 		engine.WithClassifier(classifier.NewDefault()),
@@ -142,6 +154,7 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 		engine.WithLimitEnforcer(limitEnforcer),
 		engine.WithDispatcher(dispatch.New(registry, observeRecorder, attemptRecorder, logger)),
 		engine.WithSettlement(settlementService),
+		engine.WithStreamFinalizer(streamFinalizer),
 		engine.WithObserveRecorder(observeRecorder),
 	)
 }

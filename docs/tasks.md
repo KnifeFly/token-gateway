@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation。
-- 未开始：M3 streaming/native compatible 扩展和后续控制面能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射。
+- 未开始：M4 unified media async task 和后续控制面能力。
 - 阻塞：无。
-- 下一步建议：进入 M3，先实现 OpenAI-compatible SSE writer、ProviderStream/AccountingStream、StreamFinalizer 和 stream close-time settlement，再扩展 Claude/Gemini native parser/adapter。
-- 最近验证：M2 开发中 `go test ./...`、`make lint` 通过；compose smoke 通过，`migrate-up`、`/readyz`、`/v1/chat/completions` 成功，账务表生成 1 条 hold/attempt/usage_record/ledger，重复 request_id 只生成 1 条 usage_record 和 1 条 ledger，balance held 回到 0，provider attempt 和 failed settlement backlog metrics 可见，`migrate-down`、`compose-down` 均成功。
+- 下一步建议：进入 M4，先实现 task domain/idempotency 和 unified media parser，再接 TaskBridge、provider task poller、callback outbox 与 task settlement。
+- 最近验证：M3 收口时 `go test ./...`、`make test`、`make lint`、`make race`、`make build`、`git diff --check` 均通过；compose smoke 通过，`migrate-up`、`/healthz`、`/readyz`、`/metrics`、`/v1/chat/completions`、`/v1/responses`、`/v1/embeddings`、`/v1/messages`、Gemini `generateContent`/`streamGenerateContent`、OpenAI Responses stream 和 Claude stream 均返回 200，账务表生成 9 条 hold/attempt/usage_record/ledger，`migrate-down`、`compose-down` 均成功。
 
 ## 使用规则
 
@@ -68,14 +68,14 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | M3/E3-T01/P0 | P0 | 实现 SSE writer | `internal/transport/gatewayhttp/sse_writer.go` | OpenAI stream 可输出 |
-| [ ] | M3/E3-T02/P0 | P0 | 定义 ProviderStream / AccountingStream | `internal/provider/relay`, `internal/dataplane/stream` | close-time settlement 入口唯一 |
-| [ ] | M3/E3-T03/P0 | P0 | 实现 StreamFinalizer | `internal/dataplane/stream/finalizer.go` | stream close 后完成 settlement |
-| [ ] | M3/E3-T04/P0 | P0 | 分类 client disconnect | `internal/dataplane/stream` | 不误罚 provider health |
-| [ ] | M3/E3-T05/P0 | P0 | 实现 Claude Messages parser/adapter | `internal/provider/claude` | `/v1/messages` 可用 |
-| [ ] | M3/E3-T06/P0 | P0 | 实现 Gemini GenerateContent parser/adapter | `internal/provider/gemini` | `/v1beta/...` 可用 |
-| [ ] | M3/E3-T07/P1 | P1 | 实现 OpenAI Responses / Embeddings | `internal/provider/openai` | OpenAI SDK 可调用 |
-| [ ] | M3/E3-T08/P1 | P1 | 补齐协议消歧测试 | `tests/e2e` | `X-Gateway-Protocol`、model registry、body schema 和 `ambiguous_protocol` 覆盖 |
+| [x] | M3/E3-T01/P0 | P0 | 实现 SSE writer | `internal/transport/httpserver/sse_writer.go` | OpenAI stream 可输出 |
+| [x] | M3/E3-T02/P0 | P0 | 定义 ProviderStream / AccountingStream | `internal/provider/relay`, `internal/dataplane/stream` | close-time settlement 入口唯一 |
+| [x] | M3/E3-T03/P0 | P0 | 实现 StreamFinalizer | `internal/dataplane/stream/finalizer.go` | stream close 后完成 settlement |
+| [x] | M3/E3-T04/P0 | P0 | 分类 client disconnect | `internal/dataplane/stream` | 不误罚 provider health |
+| [x] | M3/E3-T05/P0 | P0 | 实现 Claude Messages parser/adapter | `internal/provider/claude` | `/v1/messages` 可用 |
+| [x] | M3/E3-T06/P0 | P0 | 实现 Gemini GenerateContent parser/adapter | `internal/provider/gemini` | `/v1beta/...` 可用 |
+| [x] | M3/E3-T07/P1 | P1 | 实现 OpenAI Responses / Embeddings | `internal/provider/openai` | OpenAI SDK 可调用 |
+| [x] | M3/E3-T08/P1 | P1 | 补齐协议消歧测试 | `internal/dataplane/classifier`, `internal/dataplane/engine` | `X-Gateway-Protocol`、model registry、body schema 和 `ambiguous_protocol` 覆盖 |
 
 ## M4 Unified Media Async Task
 

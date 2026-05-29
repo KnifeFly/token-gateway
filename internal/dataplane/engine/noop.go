@@ -43,6 +43,16 @@ func (noopLimitRelease) Release(context.Context) error {
 	return nil
 }
 
+// NoopStreamFinalizer returns provider streams without extra wrapping.
+type NoopStreamFinalizer struct{}
+
+func (NoopStreamFinalizer) Wrap(_ context.Context, _ *RequestState, result *ProviderResult) (*GatewayResponse, error) {
+	if result == nil {
+		return nil, nil
+	}
+	return result.Response, nil
+}
+
 // NoopObserveRecorder keeps tests and minimal setups dependency-free.
 type NoopObserveRecorder struct{}
 

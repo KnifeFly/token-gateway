@@ -13,10 +13,12 @@ type Registry struct {
 	adapters map[string]relay.Adapter
 }
 
+// NewRegistry returns an empty provider registry.
 func NewRegistry() *Registry {
 	return &Registry{adapters: make(map[string]relay.Adapter)}
 }
 
+// Register stores an adapter for a provider type.
 func (r *Registry) Register(providerType string, adapter relay.Adapter) error {
 	if providerType == "" {
 		return fmt.Errorf("provider type is required")
@@ -30,6 +32,7 @@ func (r *Registry) Register(providerType string, adapter relay.Adapter) error {
 	return nil
 }
 
+// Adapter returns the registered adapter for a provider type.
 func (r *Registry) Adapter(providerType string) (relay.Adapter, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

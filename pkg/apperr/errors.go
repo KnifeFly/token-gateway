@@ -140,6 +140,11 @@ func ProviderError(message string, opts ...Option) *Error {
 	return New(CodeProviderError, message, http.StatusBadGateway, opts...)
 }
 
+// AmbiguousProtocol returns an error when a request cannot be assigned to one protocol.
+func AmbiguousProtocol(message string, opts ...Option) *Error {
+	return New(CodeAmbiguousProtocol, message, http.StatusBadRequest, opts...)
+}
+
 func ConfigUnavailable(message string, opts ...Option) *Error {
 	return New(CodeConfigUnavailable, message, http.StatusServiceUnavailable, opts...)
 }

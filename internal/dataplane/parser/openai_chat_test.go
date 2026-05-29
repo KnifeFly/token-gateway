@@ -35,7 +35,7 @@ func TestOpenAIChatParser(t *testing.T) {
 	}
 }
 
-func TestOpenAIChatParserRejectsStream(t *testing.T) {
+func TestOpenAIChatParserAcceptsStream(t *testing.T) {
 	state := &engine.RequestState{
 		CanonicalAPI: engine.CanonicalOpenAIChatCompletions,
 		Incoming: engine.IncomingRequest{
@@ -48,9 +48,29 @@ func TestOpenAIChatParserRejectsStream(t *testing.T) {
 	}
 
 	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
-	appErr, ok := apperr.As(err)
-	if !ok || appErr.Code != apperr.CodeInvalidArgument {
-		t.Fatalf("error = %v, want invalid argument", err)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !state.Stream {
+		t.Fatal("stream flag was not parsed")
+	}
+}
+
+func TestParserGeminiModelFromPath(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalGeminiGenerateContent,
+		Incoming: engine.IncomingRequest{
+			Path: "/v1beta/models/gemini-2.5-flash:streamGenerateContent",
+			Body: io.NopCloser(strings.NewReader(`{"contents":[{"parts":[{"text":"hi"}]}]}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.RequestedModel != "gemini-2.5-flash" || !state.Stream {
+		t.Fatalf("model = %q stream = %v", state.RequestedModel, state.Stream)
 	}
 }
 

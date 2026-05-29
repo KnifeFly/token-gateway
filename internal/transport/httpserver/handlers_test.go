@@ -5,9 +5,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/internal/provider/relay"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -68,6 +70,24 @@ func TestChatCompletionsRouteDelegatesGateway(t *testing.T) {
 	}
 }
 
+func TestStreamRouteWritesSSE(t *testing.T) {
+	handler := NewHandler(func(context.Context) []DependencyStatus { return nil }, prometheus.NewRegistry(), nil, fakeStreamGateway{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(nil))
+	res := httptest.NewRecorder()
+
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d", res.Code)
+	}
+	if contentType := res.Header().Get("Content-Type"); !strings.Contains(contentType, "text/event-stream") {
+		t.Fatalf("content type = %q", contentType)
+	}
+	if !strings.Contains(res.Body.String(), "data: hello") {
+		t.Fatalf("body = %q", res.Body.String())
+	}
+}
+
 type fakeGateway struct{}
 
 func (fakeGateway) Handle(context.Context, engine.IncomingRequest) (*engine.GatewayResponse, error) {
@@ -75,5 +95,17 @@ func (fakeGateway) Handle(context.Context, engine.IncomingRequest) (*engine.Gate
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       []byte(`{"id":"ok"}`),
+	}, nil
+}
+
+type fakeStreamGateway struct{}
+
+func (fakeStreamGateway) Handle(context.Context, engine.IncomingRequest) (*engine.GatewayResponse, error) {
+	return &engine.GatewayResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Stream: &relay.StaticStream{
+			Chunks: [][]byte{[]byte("data: hello\n\n")},
+		},
 	}, nil
 }

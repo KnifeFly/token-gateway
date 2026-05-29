@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/provider/relay"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -27,6 +28,10 @@ type CanonicalAPI string
 
 const (
 	CanonicalOpenAIChatCompletions CanonicalAPI = "openai.chat_completions"
+	CanonicalOpenAIResponses       CanonicalAPI = "openai.responses"
+	CanonicalOpenAIEmbeddings      CanonicalAPI = "openai.embeddings"
+	CanonicalClaudeMessages        CanonicalAPI = "claude.messages"
+	CanonicalGeminiGenerateContent CanonicalAPI = "gemini.generate_content"
 )
 
 // EndpointSpec records the matched public endpoint.
@@ -53,6 +58,7 @@ type GatewayResponse struct {
 	StatusCode int
 	Header     http.Header
 	Body       []byte
+	Stream     relay.ProviderStream
 	Usage      tokenusage.Actual
 }
 
@@ -126,8 +132,14 @@ type Principal struct {
 
 // ParsedRequest is the normalized request body extracted by parsers.
 type ParsedRequest struct {
-	RawBody    []byte
-	OpenAIChat *OpenAIChatRequest
+	RawBody        []byte
+	Model          string
+	Stream         bool
+	OpenAIChat     *OpenAIChatRequest
+	OpenAIResponse *OpenAIResponseRequest
+	Embedding      *EmbeddingRequest
+	ClaudeMessage  *ClaudeMessageRequest
+	Gemini         *GeminiRequest
 }
 
 // OpenAIChatRequest contains M1 fields needed from an OpenAI-compatible chat request.
@@ -135,6 +147,29 @@ type OpenAIChatRequest struct {
 	Model    string
 	Messages []OpenAIChatMessage
 	Stream   bool
+}
+
+// OpenAIResponseRequest contains M3 fields needed from a Responses request.
+type OpenAIResponseRequest struct {
+	Model  string
+	Stream bool
+}
+
+// EmbeddingRequest contains M3 fields needed from an embeddings request.
+type EmbeddingRequest struct {
+	Model string
+}
+
+// ClaudeMessageRequest contains M3 fields needed from a Claude messages request.
+type ClaudeMessageRequest struct {
+	Model  string
+	Stream bool
+}
+
+// GeminiRequest contains M3 fields needed from a Gemini generateContent request.
+type GeminiRequest struct {
+	Model  string
+	Stream bool
 }
 
 // OpenAIChatMessage is a minimal OpenAI-compatible chat message.
@@ -224,6 +259,11 @@ type LimitEnforcer interface {
 // LimitRelease releases a previously acquired limit lease.
 type LimitRelease interface {
 	Release(ctx context.Context) error
+}
+
+// StreamFinalizer wraps provider streams and performs close-time accounting.
+type StreamFinalizer interface {
+	Wrap(ctx context.Context, state *RequestState, result *ProviderResult) (*GatewayResponse, error)
 }
 
 // SettlementService performs final usage settlement after provider success.

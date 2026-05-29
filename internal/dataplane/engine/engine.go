@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// GatewayEngine coordinates the M1 non-stream data-plane request lifecycle.
+// GatewayEngine coordinates the data-plane request lifecycle.
 type GatewayEngine struct {
 	snapshot   SnapshotProvider
 	classifier APIClassifier
@@ -21,6 +21,7 @@ type GatewayEngine struct {
 	admission  AdmissionController
 	limiter    LimitEnforcer
 	dispatcher ProviderDispatcher
+	stream     StreamFinalizer
 	settlement SettlementService
 	observe    ObserveRecorder
 }
@@ -28,42 +29,57 @@ type GatewayEngine struct {
 // Option mutates GatewayEngine during construction.
 type Option func(*GatewayEngine)
 
+// WithSnapshot configures the snapshot provider.
 func WithSnapshot(provider SnapshotProvider) Option {
 	return func(e *GatewayEngine) { e.snapshot = provider }
 }
 
+// WithClassifier configures the API classifier.
 func WithClassifier(classifier APIClassifier) Option {
 	return func(e *GatewayEngine) { e.classifier = classifier }
 }
 
+// WithParser configures the request parser.
 func WithParser(parser RequestParser) Option {
 	return func(e *GatewayEngine) { e.parser = parser }
 }
 
+// WithAuthenticator configures the API key authenticator.
 func WithAuthenticator(auth Authenticator) Option {
 	return func(e *GatewayEngine) { e.auth = auth }
 }
 
+// WithRoutePlanner configures the route planner.
 func WithRoutePlanner(router RoutePlanner) Option {
 	return func(e *GatewayEngine) { e.router = router }
 }
 
+// WithDispatcher configures the provider dispatcher.
 func WithDispatcher(dispatcher ProviderDispatcher) Option {
 	return func(e *GatewayEngine) { e.dispatcher = dispatcher }
 }
 
+// WithAdmission configures admission control.
 func WithAdmission(admission AdmissionController) Option {
 	return func(e *GatewayEngine) { e.admission = admission }
 }
 
+// WithLimitEnforcer configures request limit enforcement.
 func WithLimitEnforcer(limiter LimitEnforcer) Option {
 	return func(e *GatewayEngine) { e.limiter = limiter }
 }
 
+// WithSettlement configures final request settlement.
 func WithSettlement(settlement SettlementService) Option {
 	return func(e *GatewayEngine) { e.settlement = settlement }
 }
 
+// WithStreamFinalizer configures stream close-time finalization.
+func WithStreamFinalizer(stream StreamFinalizer) Option {
+	return func(e *GatewayEngine) { e.stream = stream }
+}
+
+// WithObserveRecorder configures metrics, traces, and logs.
 func WithObserveRecorder(observe ObserveRecorder) Option {
 	return func(e *GatewayEngine) { e.observe = observe }
 }
@@ -83,6 +99,9 @@ func New(opts ...Option) (*GatewayEngine, error) {
 	if e.limiter == nil {
 		e.limiter = NoopLimitEnforcer{}
 	}
+	if e.stream == nil {
+		e.stream = NoopStreamFinalizer{}
+	}
 	if e.observe == nil {
 		e.observe = NoopObserveRecorder{}
 	}
@@ -92,7 +111,7 @@ func New(opts ...Option) (*GatewayEngine, error) {
 	return e, nil
 }
 
-// Handle runs the M1 non-stream GatewayEngine lifecycle.
+// Handle runs the GatewayEngine lifecycle.
 func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*GatewayResponse, error) {
 	state := newState(req)
 	defer state.Cleanup()
@@ -103,6 +122,7 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		e.observe.FinishRequest(ctx, state, response, err)
 	}()
 
+	// Step 1: classify and parse before attaching the runtime snapshot.
 	if err = e.classifier.Classify(ctx, state); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
@@ -111,6 +131,8 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
+
+	// Step 2: attach snapshot state and authenticate the caller.
 	if err = e.snapshot.Attach(ctx, state); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
@@ -119,6 +141,8 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
+
+	// Step 3: resolve routing and reserve local limits before provider dispatch.
 	ctx, span := e.observe.StartSpan(ctx, "gateway.route",
 		attribute.String("gateway.request_id", state.RequestID),
 		attribute.String("gateway.model", state.RequestedModel),
@@ -145,6 +169,7 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	state.AddLimitRelease(release)
 	defer e.releaseLimits(ctx, state)
 
+	// Step 4: dispatch to the selected provider and finalize billing.
 	result, dispatchErr := e.dispatcher.Dispatch(ctx, state)
 	if dispatchErr != nil {
 		_ = e.admission.Release(ctx, state, dispatchErr)
@@ -154,6 +179,14 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	state.ProviderResult = result
 	state.ActualUsage = result.Usage
+	if result.Response != nil && result.Response.Stream != nil {
+		response, err = e.stream.Wrap(ctx, state, result)
+		if err != nil {
+			response = e.errorResponse(state, err)
+			return response, nil
+		}
+		return response, nil
+	}
 	if err = e.settlement.Settle(ctx, state); err != nil {
 		recordErr := e.settlement.RecordFailed(ctx, state, err)
 		if recordErr == nil {
@@ -193,6 +226,9 @@ func (e *GatewayEngine) validate() error {
 	}
 	if e.limiter == nil {
 		errs = append(errs, errors.New("limit enforcer is required"))
+	}
+	if e.stream == nil {
+		errs = append(errs, errors.New("stream finalizer is required"))
 	}
 	return errors.Join(errs...)
 }
@@ -240,8 +276,10 @@ func (e *GatewayEngine) errorResponse(state *RequestState, err error) *GatewayRe
 
 func externalCode(code apperr.Code) string {
 	switch code {
-	case apperr.CodeInvalidArgument, apperr.CodeAmbiguousProtocol:
+	case apperr.CodeInvalidArgument:
 		return "invalid_request"
+	case apperr.CodeAmbiguousProtocol:
+		return "ambiguous_protocol"
 	case apperr.CodeNotFound:
 		return "resource_not_found"
 	case apperr.CodeConfigUnavailable, apperr.CodeServiceUnavailable, apperr.CodeSnapshotStale:

@@ -62,7 +62,7 @@ type fakeAdapter struct {
 	err error
 }
 
-func (a fakeAdapter) ChatCompletions(context.Context, relay.ChannelConfig, relay.ChatCompletionRequest) (*relay.Response, error) {
+func (a fakeAdapter) Relay(context.Context, relay.ChannelConfig, relay.Request) (*relay.Response, error) {
 	if a.err != nil {
 		return nil, a.err
 	}

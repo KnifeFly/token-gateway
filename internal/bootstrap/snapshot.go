@@ -25,14 +25,14 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 			Name:          "local seed key",
 			KeyHash:       auth.HashAPIKey(seed.APIKey),
 			Enabled:       true,
-			AllowedModels: []string{seed.Model},
+			AllowedModels: []string{"*"},
 		}}
-		runtime.Models = []cpsnapshot.ModelRuntime{{
-			PublicModel: seed.Model,
-			Protocol:    string(engine.ProtocolNativeOpenAI),
-			Capability:  "chat",
-			Enabled:     true,
-		}}
+		runtime.Models = []cpsnapshot.ModelRuntime{
+			{PublicModel: seed.Model, Protocol: string(engine.ProtocolNativeOpenAI), Capability: "chat", Enabled: true},
+			{PublicModel: "text-embedding-3-small", Protocol: string(engine.ProtocolNativeOpenAI), Capability: "embeddings", Enabled: true},
+			{PublicModel: "claude-3-5-sonnet-latest", Protocol: string(engine.ProtocolNativeClaude), Capability: "messages", Enabled: true},
+			{PublicModel: "gemini-2.5-flash", Protocol: string(engine.ProtocolNativeGemini), Capability: "generate_content", Enabled: true},
+		}
 		runtime.Channels = []cpsnapshot.ChannelRuntime{{
 			ID:           seed.ChannelID,
 			ProviderType: seed.ProviderType,
@@ -40,23 +40,50 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 			APIKey:       seed.ProviderAPIKey,
 			Enabled:      true,
 			Timeout:      seed.ChannelTimeout.Duration,
-			Models: []cpsnapshot.ChannelModelRuntime{{
-				PublicModel:   seed.Model,
-				UpstreamModel: seed.UpstreamModel,
-			}},
+			Models: []cpsnapshot.ChannelModelRuntime{
+				{PublicModel: seed.Model, UpstreamModel: seed.UpstreamModel},
+				{PublicModel: "text-embedding-3-small", UpstreamModel: "text-embedding-3-small"},
+			},
+		}, {
+			ID:           "channel_mock_claude",
+			ProviderType: "claude",
+			BaseURL:      "mock://claude",
+			Enabled:      true,
+			Timeout:      seed.ChannelTimeout.Duration,
+			Models: []cpsnapshot.ChannelModelRuntime{
+				{PublicModel: "claude-3-5-sonnet-latest", UpstreamModel: "claude-3-5-sonnet-latest"},
+			},
+		}, {
+			ID:           "channel_mock_gemini",
+			ProviderType: "gemini",
+			BaseURL:      "mock://gemini",
+			Enabled:      true,
+			Timeout:      seed.ChannelTimeout.Duration,
+			Models: []cpsnapshot.ChannelModelRuntime{
+				{PublicModel: "gemini-2.5-flash", UpstreamModel: "gemini-2.5-flash"},
+			},
 		}}
-		runtime.RoutePolicies = []cpsnapshot.RoutePolicyRuntime{{
-			ID:          fmt.Sprintf("route_%s", seed.Model),
-			PublicModel: seed.Model,
-			Strategy:    seed.RouteStrategy,
-			Candidates: []cpsnapshot.RouteCandidateRuntime{{
-				ChannelID: seed.ChannelID,
-				Priority:  seed.RoutePriority,
-				Weight:    seed.RouteWeight,
-			}},
-		}}
+		runtime.RoutePolicies = []cpsnapshot.RoutePolicyRuntime{
+			seedRoute(seed.Model, seed.ChannelID, seed),
+			seedRoute("text-embedding-3-small", seed.ChannelID, seed),
+			seedRoute("claude-3-5-sonnet-latest", "channel_mock_claude", seed),
+			seedRoute("gemini-2.5-flash", "channel_mock_gemini", seed),
+		}
 	}
 	return dpsnapshot.Build(runtime)
+}
+
+func seedRoute(model string, channelID string, seed SeedSnapshotConfig) cpsnapshot.RoutePolicyRuntime {
+	return cpsnapshot.RoutePolicyRuntime{
+		ID:          fmt.Sprintf("route_%s", model),
+		PublicModel: model,
+		Strategy:    seed.RouteStrategy,
+		Candidates: []cpsnapshot.RouteCandidateRuntime{{
+			ChannelID: channelID,
+			Priority:  seed.RoutePriority,
+			Weight:    seed.RouteWeight,
+		}},
+	}
 }
 
 func seedVersion(cfg Config) string {

@@ -37,6 +37,9 @@ func (p *RoutePlanner) Plan(_ context.Context, state *engine.RequestState) error
 	if !modelAllowed(state.Principal.AllowedModels, model.PublicModel) {
 		return apperr.Forbidden("model is not allowed")
 	}
+	if !protocolMatchesModel(state.ProtocolMode, model.Protocol) {
+		return apperr.InvalidArgument("model protocol does not match endpoint")
+	}
 	route, ok := state.Snapshot.LookupRoute(model.PublicModel)
 	if !ok || len(route.Candidates) == 0 {
 		return apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
@@ -79,6 +82,13 @@ func modelAllowed(allowed []string, model string) bool {
 		}
 	}
 	return false
+}
+
+func protocolMatchesModel(requestMode engine.ProtocolMode, modelMode engine.ProtocolMode) bool {
+	if requestMode == "" || modelMode == "" {
+		return true
+	}
+	return requestMode == modelMode
 }
 
 // PrioritySelector orders lower priority numbers first and shuffles equal
