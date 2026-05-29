@@ -48,6 +48,7 @@ type Config struct {
 	Redis       RedisConfig     `yaml:"redis"`
 	Telemetry   TelemetryConfig `yaml:"telemetry"`
 	Gateway     GatewayConfig   `yaml:"gateway"`
+	Control     ControlConfig   `yaml:"control"`
 	Worker      WorkerConfig    `yaml:"worker"`
 }
 
@@ -165,6 +166,14 @@ type LimitsConfig struct {
 	KeyPrefix   string   `yaml:"key_prefix"`
 }
 
+type ControlConfig struct {
+	Addr                 string   `yaml:"addr"`
+	AdminToken           string   `yaml:"admin_token"`
+	CredentialKey        string   `yaml:"credential_key"`
+	SnapshotPollInterval Duration `yaml:"snapshot_poll_interval"`
+	RevocationTTL        Duration `yaml:"revocation_ttl"`
+}
+
 type WorkerConfig struct {
 	Enabled bool `yaml:"enabled"`
 }
@@ -256,6 +265,13 @@ func DefaultConfig() Config {
 				LeaseTTL:    Duration{30 * time.Second},
 				KeyPrefix:   "token-gateway",
 			},
+		},
+		Control: ControlConfig{
+			Addr:                 ":9502",
+			AdminToken:           "local-admin-token",
+			CredentialKey:        "local-control-plane-credential-key",
+			SnapshotPollInterval: Duration{5 * time.Second},
+			RevocationTTL:        Duration{24 * time.Hour},
 		},
 	}
 }
@@ -365,6 +381,18 @@ func (c *Config) Normalize() {
 	if c.Gateway.Limits.KeyPrefix == "" {
 		c.Gateway.Limits.KeyPrefix = "token-gateway"
 	}
+	if c.Control.Addr == "" {
+		c.Control.Addr = ":9502"
+	}
+	if c.Control.CredentialKey == "" {
+		c.Control.CredentialKey = "local-control-plane-credential-key"
+	}
+	if c.Control.SnapshotPollInterval.Duration <= 0 {
+		c.Control.SnapshotPollInterval = Duration{5 * time.Second}
+	}
+	if c.Control.RevocationTTL.Duration <= 0 {
+		c.Control.RevocationTTL = Duration{24 * time.Hour}
+	}
 }
 
 // Validate checks the minimum viable M0 configuration.
@@ -472,4 +500,7 @@ func applyEnv(cfg *Config) {
 	setBool("TOKEN_GATEWAY_BILLING_ENABLED", &cfg.Gateway.Billing.Enabled)
 	setString("TOKEN_GATEWAY_BILLING_CURRENCY", &cfg.Gateway.Billing.Currency)
 	setBool("TOKEN_GATEWAY_LIMITS_ENABLED", &cfg.Gateway.Limits.Enabled)
+	setString("TOKEN_GATEWAY_CONTROL_ADDR", &cfg.Control.Addr)
+	setString("TOKEN_GATEWAY_CONTROL_ADMIN_TOKEN", &cfg.Control.AdminToken)
+	setString("TOKEN_GATEWAY_CONTROL_CREDENTIAL_KEY", &cfg.Control.CredentialKey)
 }

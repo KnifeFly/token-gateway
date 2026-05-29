@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS cp_runtime_snapshots;
+DROP TABLE IF EXISTS cp_limit_rules;
+DROP TABLE IF EXISTS cp_price_rules;
+DROP TABLE IF EXISTS cp_route_candidates;
+DROP TABLE IF EXISTS cp_route_policies;
+DROP TABLE IF EXISTS cp_channel_models;
+DROP TABLE IF EXISTS cp_channels;
+DROP TABLE IF EXISTS cp_models;
+DROP TABLE IF EXISTS cp_api_keys;
+DROP TABLE IF EXISTS cp_projects;
+DROP TABLE IF EXISTS cp_tenants;

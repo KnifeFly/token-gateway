@@ -82,3 +82,15 @@ func (s fakeSnapshot) LookupRoute(string) (engine.RoutePolicyView, bool) {
 func (s fakeSnapshot) LookupChannel(string) (engine.ChannelView, bool) {
 	return engine.ChannelView{}, false
 }
+
+func (s fakeSnapshot) LookupPrice(string) (engine.PriceRuleView, bool) {
+	return engine.PriceRuleView{}, false
+}
+
+func (s fakeSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
+	return engine.LimitRuleView{}, false
+}
+
+func (s fakeSnapshot) IsAPIKeyRevoked(string) bool {
+	return false
+}

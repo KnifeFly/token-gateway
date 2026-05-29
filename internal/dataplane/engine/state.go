@@ -28,6 +28,8 @@ type RequestState struct {
 
 	RequestedModel string
 	ResolvedModel  ModelView
+	PriceRule      PriceRuleView
+	LimitRule      LimitRuleView
 	Stream         bool
 	Async          bool
 	IdempotencyKey string

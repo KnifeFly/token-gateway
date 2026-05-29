@@ -45,3 +45,26 @@ func TestControllerReserve(t *testing.T) {
 		t.Fatalf("estimated charge = %d", state.EstimatedChargeMicros)
 	}
 }
+
+func TestPriceEstimatorUsesPinnedSnapshotPrice(t *testing.T) {
+	state := &engine.RequestState{
+		EstimatedUsage: tokenusage.Estimate{InputTokens: 10},
+		PriceRule: engine.PriceRuleView{
+			PublicModel:           "gpt-4o-mini",
+			Currency:              "USD",
+			InputMicrosPerToken:   10,
+			OutputMicrosPerToken:  20,
+			EstimatedOutputTokens: 5,
+			Enabled:               true,
+		},
+	}
+
+	amount := NewPriceEstimator(pricing.TokenPrice{
+		Currency:             "USD",
+		InputMicrosPerToken:  1,
+		OutputMicrosPerToken: 2,
+	}, 100).Estimate(state)
+	if amount.Micros != 200 {
+		t.Fatalf("amount = %d, want 200", amount.Micros)
+	}
+}

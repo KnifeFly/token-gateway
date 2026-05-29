@@ -84,5 +84,12 @@ gateway:
     lease_ttl: 30s
     key_prefix: token-gateway-local
 
+control:
+  addr: ":9502"
+  admin_token: "local-admin-token"
+  credential_key: "local-control-plane-credential-key"
+  snapshot_poll_interval: 5s
+  revocation_ttl: 24h
+
 worker:
   enabled: false

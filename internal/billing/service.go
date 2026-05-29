@@ -84,6 +84,13 @@ func NewSettlementPlanner(price pricing.TokenPrice) *SettlementPlanner {
 
 func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
 	amount := p.price.QuoteActual(state.ActualUsage)
+	if state.PriceRule.Enabled {
+		amount = pricing.TokenPrice{
+			Currency:             state.PriceRule.Currency,
+			InputMicrosPerToken:  state.PriceRule.InputMicrosPerToken,
+			OutputMicrosPerToken: state.PriceRule.OutputMicrosPerToken,
+		}.QuoteActual(state.ActualUsage)
+	}
 	if amount.Micros == 0 && state.EstimatedChargeMicros > 0 {
 		amount.Micros = state.EstimatedChargeMicros
 		amount.Currency = state.Currency

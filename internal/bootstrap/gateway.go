@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/admission"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/classifier"
@@ -91,9 +93,31 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 	if err != nil {
 		return nil, err
 	}
+	snapshotStore := dpsnapshot.NewStore(indexed)
 	observeRecorder, err := observe.NewRecorder(tel.Registry, logger)
 	if err != nil {
 		return nil, err
+	}
+	snapshotMetrics, err := dpsnapshot.NewMetrics(tel.Registry)
+	if err != nil {
+		return nil, err
+	}
+	if snapshotMetrics != nil {
+		snapshotMetrics.Observe(indexed.Ref())
+	}
+	if cfg.Database.Enabled && database != nil && database.DB() != nil {
+		adminRepo := admin.NewMySQLRepository(database.DB())
+		if active, ok, err := cpsnapshot.ActiveRuntimeSnapshot(ctx, adminRepo); err == nil && ok {
+			if activeIndexed, buildErr := dpsnapshot.Build(*active); buildErr == nil {
+				_ = snapshotStore.Replace(activeIndexed)
+			} else {
+				logger.Warn("active runtime snapshot rejected", "error", buildErr)
+			}
+		} else if err != nil {
+			logger.Warn("active runtime snapshot unavailable", "error", err)
+		}
+		watcher := dpsnapshot.NewWatcher(cpsnapshot.NewActiveProvider(adminRepo), snapshotStore, snapshotMetrics, cfg.Control.SnapshotPollInterval.Duration, logger)
+		go watcher.Start(ctx)
 	}
 	registry := provider.NewRegistry()
 	if err := registry.Register("openai_compatible", openai.NewAdapter(nil)); err != nil {
@@ -153,21 +177,33 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 	}
 	streamFinalizer := stream.NewFinalizer(settlementService, observeRecorder)
 
+	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
 	return engine.New(
-		engine.WithSnapshot(dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed))),
+		engine.WithSnapshot(dpsnapshot.NewProvider(snapshotStore)),
 		engine.WithClassifier(classifier.NewDefault()),
 		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
-		engine.WithAuthenticator(auth.NewSnapshotAuthenticator()),
+		engine.WithAuthenticator(auth.NewSnapshotAuthenticator(revocationStore)),
 		engine.WithRoutePlanner(router.NewRoutePlanner(nil)),
 		engine.WithAdmission(admissionController),
 		engine.WithLimitEnforcer(limitEnforcer),
-		engine.WithDispatcher(dispatch.New(registry, observeRecorder, attemptRecorder, logger)),
+		engine.WithDispatcher(dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)}, logger)),
 		engine.WithSettlement(settlementService),
 		engine.WithStreamFinalizer(streamFinalizer),
 		engine.WithTaskBridge(taskBridge),
 		engine.WithFileService(fileBridge),
 		engine.WithObserveRecorder(observeRecorder),
 	)
+}
+
+type providerCredentialResolver struct {
+	codec *admin.CredentialCodec
+}
+
+func (r providerCredentialResolver) ResolveProviderAPIKey(_ context.Context, channel engine.ChannelView) (string, error) {
+	if channel.APIKey != "" || channel.EncryptedAPIKey == "" {
+		return channel.APIKey, nil
+	}
+	return r.codec.Decrypt(channel.EncryptedAPIKey)
 }
 
 func ensureLocalSeedBalance(ctx context.Context, cfg Config, repo billing.Repository) error {

@@ -24,8 +24,18 @@ func (e *PriceEstimator) Estimate(state *engine.RequestState) money.Amount {
 	estimate := state.EstimatedUsage
 	if estimate.OutputTokens == 0 {
 		estimate.OutputTokens = e.defaultOutputTokens
+		if state.PriceRule.EstimatedOutputTokens > 0 {
+			estimate.OutputTokens = state.PriceRule.EstimatedOutputTokens
+		}
 	}
 	state.EstimatedUsage = estimate
+	if state.PriceRule.Enabled {
+		return pricing.TokenPrice{
+			Currency:             state.PriceRule.Currency,
+			InputMicrosPerToken:  state.PriceRule.InputMicrosPerToken,
+			OutputMicrosPerToken: state.PriceRule.OutputMicrosPerToken,
+		}.QuoteEstimate(estimate)
+	}
 	return e.price.QuoteEstimate(estimate)
 }
 

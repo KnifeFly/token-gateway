@@ -1,0 +1,122 @@
+package admin
+
+import "time"
+
+// Tenant is a customer account boundary.
+type Tenant struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+}
+
+// Project groups API keys and usage under one tenant.
+type Project struct {
+	ID        string    `json:"id"`
+	TenantID  string    `json:"tenant_id"`
+	Name      string    `json:"name"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
+	UpdatedAt time.Time `json:"updated_at,omitempty"`
+}
+
+// APIKey stores only the hashed customer key.
+type APIKey struct {
+	ID            string     `json:"id"`
+	TenantID      string     `json:"tenant_id"`
+	ProjectID     string     `json:"project_id"`
+	Name          string     `json:"name"`
+	KeyHash       string     `json:"key_hash"`
+	PlaintextKey  string     `json:"plaintext_key,omitempty"`
+	Enabled       bool       `json:"enabled"`
+	AllowedModels []string   `json:"allowed_models"`
+	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at,omitempty"`
+	UpdatedAt     time.Time  `json:"updated_at,omitempty"`
+}
+
+// ModelConfig is a public model advertised by the gateway.
+type ModelConfig struct {
+	PublicModel string `json:"public_model"`
+	Protocol    string `json:"protocol"`
+	Capability  string `json:"capability"`
+	Enabled     bool   `json:"enabled"`
+}
+
+// ChannelConfig is a provider channel and encrypted credential reference.
+type ChannelConfig struct {
+	ID              string         `json:"id"`
+	ProviderType    string         `json:"provider_type"`
+	BaseURL         string         `json:"base_url"`
+	APIKey          string         `json:"api_key,omitempty"`
+	CredentialRef   string         `json:"credential_ref"`
+	EncryptedAPIKey string         `json:"encrypted_api_key,omitempty"`
+	Enabled         bool           `json:"enabled"`
+	Timeout         time.Duration  `json:"timeout,omitempty"`
+	TimeoutMillis   int64          `json:"timeout_millis,omitempty"`
+	Models          []ChannelModel `json:"models"`
+}
+
+// ChannelModel maps a public model to one upstream model.
+type ChannelModel struct {
+	PublicModel   string `json:"public_model"`
+	UpstreamModel string `json:"upstream_model"`
+}
+
+// RoutePolicyConfig is the route candidate set for one public model.
+type RoutePolicyConfig struct {
+	ID          string           `json:"id"`
+	PublicModel string           `json:"public_model"`
+	Strategy    string           `json:"strategy"`
+	Enabled     bool             `json:"enabled"`
+	Candidates  []RouteCandidate `json:"candidates"`
+}
+
+// RouteCandidate points a route policy at one channel.
+type RouteCandidate struct {
+	ChannelID string `json:"channel_id"`
+	Priority  int    `json:"priority"`
+	Weight    int    `json:"weight"`
+}
+
+// PriceRuleConfig pins customer-facing price for one model.
+type PriceRuleConfig struct {
+	PublicModel           string `json:"public_model"`
+	Currency              string `json:"currency"`
+	InputMicrosPerToken   int64  `json:"input_micros_per_token"`
+	OutputMicrosPerToken  int64  `json:"output_micros_per_token"`
+	EstimatedOutputTokens int64  `json:"estimated_output_tokens"`
+	Enabled               bool   `json:"enabled"`
+}
+
+// LimitRuleConfig pins request limits for one model.
+type LimitRuleConfig struct {
+	PublicModel string `json:"public_model"`
+	QPS         int64  `json:"qps"`
+	TPM         int64  `json:"tpm"`
+	Concurrency int64  `json:"concurrency"`
+	Enabled     bool   `json:"enabled"`
+}
+
+// SnapshotRecord stores one published runtime snapshot payload.
+type SnapshotRecord struct {
+	Version   string     `json:"version"`
+	Checksum  string     `json:"checksum"`
+	Status    string     `json:"status"`
+	Payload   []byte     `json:"payload,omitempty"`
+	Error     string     `json:"error,omitempty"`
+	CreatedAt time.Time  `json:"created_at,omitempty"`
+	ActiveAt  *time.Time `json:"active_at,omitempty"`
+}
+
+// SnapshotConfig is the normalized admin config used by snapshot builder.
+type SnapshotConfig struct {
+	APIKeys     []APIKey
+	Models      []ModelConfig
+	Channels    []ChannelConfig
+	Routes      []RoutePolicyConfig
+	Prices      []PriceRuleConfig
+	Limits      []LimitRuleConfig
+	RevokedKeys []APIKey
+}

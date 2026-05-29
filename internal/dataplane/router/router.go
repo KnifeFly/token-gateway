@@ -68,6 +68,12 @@ func (p *RoutePlanner) Plan(_ context.Context, state *engine.RequestState) error
 		return apperr.ServiceUnavailable("no provider channel is available", apperr.WithTemporary())
 	}
 	state.ResolvedModel = model
+	if price, ok := state.Snapshot.LookupPrice(model.PublicModel); ok {
+		state.PriceRule = price
+	}
+	if limit, ok := state.Snapshot.LookupLimit(model.PublicModel); ok {
+		state.LimitRule = limit
+	}
 	state.RoutePlan = &engine.RoutePlan{
 		PolicyID:   route.ID,
 		Candidates: p.selector.Order(candidates),

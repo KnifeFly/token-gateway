@@ -58,6 +58,39 @@ func TestDispatcherMapsProvider401(t *testing.T) {
 	}
 }
 
+func TestDispatcherResolvesEncryptedCredential(t *testing.T) {
+	registry := provider.NewRegistry()
+	adapter := captureAdapter{}
+	if err := registry.Register("fake", &adapter); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	resolver := staticCredentialResolver{apiKey: "resolved-key"}
+	_, err := NewWithCredentials(registry, nil, nil, resolver, nil).Dispatch(context.Background(), dispatchState())
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if adapter.apiKey != "resolved-key" {
+		t.Fatalf("api key = %q", adapter.apiKey)
+	}
+}
+
+type staticCredentialResolver struct {
+	apiKey string
+}
+
+func (r staticCredentialResolver) ResolveProviderAPIKey(context.Context, engine.ChannelView) (string, error) {
+	return r.apiKey, nil
+}
+
+type captureAdapter struct {
+	apiKey string
+}
+
+func (a *captureAdapter) Relay(_ context.Context, channel relay.ChannelConfig, _ relay.Request) (*relay.Response, error) {
+	a.apiKey = channel.APIKey
+	return &relay.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: []byte(`{"id":"ok"}`)}, nil
+}
+
 type fakeAdapter struct {
 	err error
 }
@@ -106,4 +139,16 @@ func (dispatchSnapshot) LookupChannel(channelID string) (engine.ChannelView, boo
 		BaseURL:      "mock://fake",
 		Enabled:      true,
 	}, true
+}
+
+func (dispatchSnapshot) LookupPrice(string) (engine.PriceRuleView, bool) {
+	return engine.PriceRuleView{}, false
+}
+
+func (dispatchSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
+	return engine.LimitRuleView{}, false
+}
+
+func (dispatchSnapshot) IsAPIKeyRevoked(string) bool {
+	return false
 }

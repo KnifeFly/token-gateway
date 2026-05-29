@@ -16,10 +16,11 @@ import (
 
 // Dispatcher calls registered provider adapters and records attempts.
 type Dispatcher struct {
-	registry *provider.Registry
-	observe  engine.ObserveRecorder
-	attempts AttemptRecorder
-	logger   *slog.Logger
+	registry    *provider.Registry
+	observe     engine.ObserveRecorder
+	attempts    AttemptRecorder
+	credentials CredentialResolver
+	logger      *slog.Logger
 }
 
 // AttemptRecorder persists provider attempts.
@@ -27,14 +28,23 @@ type AttemptRecorder interface {
 	RecordProviderAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) error
 }
 
+// CredentialResolver resolves provider credentials outside runtime snapshots.
+type CredentialResolver interface {
+	ResolveProviderAPIKey(ctx context.Context, channel engine.ChannelView) (string, error)
+}
+
 func New(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, logger *slog.Logger) *Dispatcher {
+	return NewWithCredentials(registry, observe, attempts, nil, logger)
+}
+
+func NewWithCredentials(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, credentials CredentialResolver, logger *slog.Logger) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if observe == nil {
 		observe = engine.NoopObserveRecorder{}
 	}
-	return &Dispatcher{registry: registry, observe: observe, attempts: attempts, logger: logger}
+	return &Dispatcher{registry: registry, observe: observe, attempts: attempts, credentials: credentials, logger: logger}
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (*engine.ProviderResult, error) {
@@ -53,6 +63,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			lastErr = apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
 			continue
 		}
+		apiKey := channel.APIKey
+		if d.credentials != nil {
+			resolved, err := d.credentials.ResolveProviderAPIKey(ctx, channel)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			apiKey = resolved
+		}
 		started := time.Now()
 		spanCtx, span := d.observe.StartSpan(ctx, "gateway.provider_attempt",
 			attribute.String("gateway.provider", candidate.ProviderType),
@@ -63,7 +82,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			ChannelID:     candidate.ChannelID,
 			ProviderType:  candidate.ProviderType,
 			BaseURL:       channel.BaseURL,
-			APIKey:        channel.APIKey,
+			APIKey:        apiKey,
 			UpstreamModel: candidate.UpstreamModel,
 			Timeout:       candidate.Timeout,
 		}, relay.Request{

@@ -19,6 +19,9 @@ type IndexedSnapshot struct {
 	modelsByName  map[string]engine.ModelView
 	channelsByID  map[string]engine.ChannelView
 	routesByModel map[string]engine.RoutePolicyView
+	pricesByModel map[string]engine.PriceRuleView
+	limitsByModel map[string]engine.LimitRuleView
+	revokedHashes map[string]struct{}
 }
 
 // Build validates and indexes a control-plane RuntimeSnapshot.
@@ -38,6 +41,9 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		modelsByName:  make(map[string]engine.ModelView, len(runtime.Models)),
 		channelsByID:  make(map[string]engine.ChannelView, len(runtime.Channels)),
 		routesByModel: make(map[string]engine.RoutePolicyView, len(runtime.RoutePolicies)),
+		pricesByModel: make(map[string]engine.PriceRuleView, len(runtime.PriceRules)),
+		limitsByModel: make(map[string]engine.LimitRuleView, len(runtime.LimitRules)),
+		revokedHashes: make(map[string]struct{}, len(runtime.RevokedKeys)),
 	}
 	for _, apiKey := range runtime.APIKeys {
 		if apiKey.KeyHash == "" {
@@ -82,13 +88,15 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			models[model.PublicModel] = model.UpstreamModel
 		}
 		indexed.channelsByID[channel.ID] = engine.ChannelView{
-			ID:           channel.ID,
-			ProviderType: channel.ProviderType,
-			BaseURL:      channel.BaseURL,
-			APIKey:       channel.APIKey,
-			Enabled:      channel.Enabled,
-			Timeout:      channel.Timeout,
-			Models:       models,
+			ID:              channel.ID,
+			ProviderType:    channel.ProviderType,
+			BaseURL:         channel.BaseURL,
+			APIKey:          channel.APIKey,
+			CredentialRef:   channel.CredentialRef,
+			EncryptedAPIKey: channel.EncryptedAPIKey,
+			Enabled:         channel.Enabled,
+			Timeout:         channel.Timeout,
+			Models:          models,
 		}
 	}
 	for _, route := range runtime.RoutePolicies {
@@ -111,6 +119,36 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			PublicModel: route.PublicModel,
 			Strategy:    route.Strategy,
 			Candidates:  candidates,
+		}
+	}
+	for _, price := range runtime.PriceRules {
+		if price.PublicModel == "" || !price.Enabled {
+			continue
+		}
+		indexed.pricesByModel[price.PublicModel] = engine.PriceRuleView{
+			PublicModel:           price.PublicModel,
+			Currency:              price.Currency,
+			InputMicrosPerToken:   price.InputMicrosPerToken,
+			OutputMicrosPerToken:  price.OutputMicrosPerToken,
+			EstimatedOutputTokens: price.EstimatedOutputTokens,
+			Enabled:               price.Enabled,
+		}
+	}
+	for _, limit := range runtime.LimitRules {
+		if limit.PublicModel == "" || !limit.Enabled {
+			continue
+		}
+		indexed.limitsByModel[limit.PublicModel] = engine.LimitRuleView{
+			PublicModel: limit.PublicModel,
+			QPS:         limit.QPS,
+			TPM:         limit.TPM,
+			Concurrency: limit.Concurrency,
+			Enabled:     limit.Enabled,
+		}
+	}
+	for _, revoked := range runtime.RevokedKeys {
+		if revoked.KeyHash != "" {
+			indexed.revokedHashes[revoked.KeyHash] = struct{}{}
 		}
 	}
 	return indexed, nil
@@ -138,6 +176,21 @@ func (s *IndexedSnapshot) LookupRoute(publicModel string) (engine.RoutePolicyVie
 func (s *IndexedSnapshot) LookupChannel(channelID string) (engine.ChannelView, bool) {
 	value, ok := s.channelsByID[channelID]
 	return value, ok
+}
+
+func (s *IndexedSnapshot) LookupPrice(publicModel string) (engine.PriceRuleView, bool) {
+	value, ok := s.pricesByModel[publicModel]
+	return value, ok
+}
+
+func (s *IndexedSnapshot) LookupLimit(publicModel string) (engine.LimitRuleView, bool) {
+	value, ok := s.limitsByModel[publicModel]
+	return value, ok
+}
+
+func (s *IndexedSnapshot) IsAPIKeyRevoked(hash string) bool {
+	_, ok := s.revokedHashes[hash]
+	return ok
 }
 
 // Store keeps the current indexed snapshot as an atomic pointer.

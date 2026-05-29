@@ -12,6 +12,9 @@ type RuntimeSnapshot struct {
 	Models        []ModelRuntime
 	Channels      []ChannelRuntime
 	RoutePolicies []RoutePolicyRuntime
+	PriceRules    []PriceRuleRuntime
+	LimitRules    []LimitRuleRuntime
+	RevokedKeys   []RevokedKeyRuntime
 }
 
 // APIKeyRuntime contains no plaintext API key, only the stable hash.
@@ -35,13 +38,15 @@ type ModelRuntime struct {
 
 // ChannelRuntime describes one provider channel.
 type ChannelRuntime struct {
-	ID           string
-	ProviderType string
-	BaseURL      string
-	APIKey       string
-	Enabled      bool
-	Timeout      time.Duration
-	Models       []ChannelModelRuntime
+	ID              string
+	ProviderType    string
+	BaseURL         string
+	APIKey          string
+	CredentialRef   string
+	EncryptedAPIKey string
+	Enabled         bool
+	Timeout         time.Duration
+	Models          []ChannelModelRuntime
 }
 
 // ChannelModelRuntime maps a public model to the provider model.
@@ -63,4 +68,29 @@ type RouteCandidateRuntime struct {
 	ChannelID string
 	Priority  int
 	Weight    int
+}
+
+// PriceRuleRuntime pins customer-facing price for one public model.
+type PriceRuleRuntime struct {
+	PublicModel           string
+	Currency              string
+	InputMicrosPerToken   int64
+	OutputMicrosPerToken  int64
+	EstimatedOutputTokens int64
+	Enabled               bool
+}
+
+// LimitRuleRuntime pins request limits for one public model.
+type LimitRuleRuntime struct {
+	PublicModel string
+	QPS         int64
+	TPM         int64
+	Concurrency int64
+	Enabled     bool
+}
+
+// RevokedKeyRuntime records fast API key revocations included in snapshots.
+type RevokedKeyRuntime struct {
+	KeyHash   string
+	RevokedAt time.Time
 }

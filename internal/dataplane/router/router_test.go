@@ -111,3 +111,15 @@ func (routeSnapshot) LookupChannel(channelID string) (engine.ChannelView, bool) 
 		Models:       map[string]string{"gpt-4o-mini": "gpt-4o-mini"},
 	}, true
 }
+
+func (routeSnapshot) LookupPrice(string) (engine.PriceRuleView, bool) {
+	return engine.PriceRuleView{}, false
+}
+
+func (routeSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
+	return engine.LimitRuleView{}, false
+}
+
+func (routeSnapshot) IsAPIKeyRevoked(string) bool {
+	return false
+}

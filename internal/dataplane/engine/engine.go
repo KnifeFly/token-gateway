@@ -137,6 +137,7 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	var response *GatewayResponse
 	var err error
 	defer func() {
+		addSnapshotHeader(response, state)
 		e.observe.FinishRequest(ctx, state, response, err)
 	}()
 
@@ -252,6 +253,16 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	response = result.Response
 	return response, nil
+}
+
+func addSnapshotHeader(response *GatewayResponse, state *RequestState) {
+	if response == nil || state == nil || state.SnapshotRef.Version == "" {
+		return
+	}
+	if response.Header == nil {
+		response.Header = http.Header{}
+	}
+	response.Header.Set("X-Gateway-Snapshot-Version", state.SnapshotRef.Version)
 }
 
 func (e *GatewayEngine) validate() error {

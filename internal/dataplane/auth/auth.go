@@ -33,14 +33,24 @@ func (CredentialExtractor) Extract(header http.Header) (string, error) {
 
 // SnapshotAuthenticator authenticates API keys against the pinned snapshot.
 type SnapshotAuthenticator struct {
-	extractor CredentialExtractor
+	extractor  CredentialExtractor
+	revocation RevocationChecker
 }
 
-func NewSnapshotAuthenticator() *SnapshotAuthenticator {
-	return &SnapshotAuthenticator{extractor: CredentialExtractor{}}
+// RevocationChecker checks fast API key revocation state.
+type RevocationChecker interface {
+	IsRevoked(ctx context.Context, keyHash string) (bool, error)
 }
 
-func (a *SnapshotAuthenticator) Authenticate(_ context.Context, state *engine.RequestState) error {
+func NewSnapshotAuthenticator(revocation ...RevocationChecker) *SnapshotAuthenticator {
+	auth := &SnapshotAuthenticator{extractor: CredentialExtractor{}}
+	if len(revocation) > 0 {
+		auth.revocation = revocation[0]
+	}
+	return auth
+}
+
+func (a *SnapshotAuthenticator) Authenticate(ctx context.Context, state *engine.RequestState) error {
 	if state.Snapshot == nil {
 		return apperr.ConfigUnavailable("runtime snapshot is unavailable")
 	}
@@ -48,7 +58,20 @@ func (a *SnapshotAuthenticator) Authenticate(_ context.Context, state *engine.Re
 	if err != nil {
 		return err
 	}
-	apiKey, ok := state.Snapshot.LookupAPIKeyHash(HashAPIKey(credential))
+	keyHash := HashAPIKey(credential)
+	if state.Snapshot.IsAPIKeyRevoked(keyHash) {
+		return apperr.Unauthorized("api key is revoked")
+	}
+	if a.revocation != nil {
+		revoked, err := a.revocation.IsRevoked(ctx, keyHash)
+		if err != nil {
+			return err
+		}
+		if revoked {
+			return apperr.Unauthorized("api key is revoked")
+		}
+	}
+	apiKey, ok := state.Snapshot.LookupAPIKeyHash(keyHash)
 	if !ok || !apiKey.Enabled {
 		return apperr.Unauthorized("invalid api key")
 	}

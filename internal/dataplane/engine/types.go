@@ -105,6 +105,9 @@ type SnapshotView interface {
 	LookupModel(publicModel string) (ModelView, bool)
 	LookupRoute(publicModel string) (RoutePolicyView, bool)
 	LookupChannel(channelID string) (ChannelView, bool)
+	LookupPrice(publicModel string) (PriceRuleView, bool)
+	LookupLimit(publicModel string) (LimitRuleView, bool)
+	IsAPIKeyRevoked(hash string) bool
 }
 
 // APIKeyView is the indexed API key view used by authentication.
@@ -128,13 +131,15 @@ type ModelView struct {
 
 // ChannelView is the indexed provider channel view used by dispatch.
 type ChannelView struct {
-	ID           string
-	ProviderType string
-	BaseURL      string
-	APIKey       string
-	Enabled      bool
-	Timeout      time.Duration
-	Models       map[string]string
+	ID              string
+	ProviderType    string
+	BaseURL         string
+	APIKey          string
+	CredentialRef   string
+	EncryptedAPIKey string
+	Enabled         bool
+	Timeout         time.Duration
+	Models          map[string]string
 }
 
 // RoutePolicyView is the indexed route policy view used by routing.
@@ -150,6 +155,25 @@ type RouteCandidateView struct {
 	ChannelID string
 	Priority  int
 	Weight    int
+}
+
+// PriceRuleView is the pinned customer-facing model price.
+type PriceRuleView struct {
+	PublicModel           string
+	Currency              string
+	InputMicrosPerToken   int64
+	OutputMicrosPerToken  int64
+	EstimatedOutputTokens int64
+	Enabled               bool
+}
+
+// LimitRuleView is the pinned model-level limit config.
+type LimitRuleView struct {
+	PublicModel string
+	QPS         int64
+	TPM         int64
+	Concurrency int64
+	Enabled     bool
 }
 
 // Principal is the authenticated caller identity.

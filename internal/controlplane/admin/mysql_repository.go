@@ -1,0 +1,485 @@
+package admin
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"time"
+)
+
+// MySQLRepository persists control-plane configuration in MySQL.
+type MySQLRepository struct {
+	db *sql.DB
+}
+
+// NewMySQLRepository returns a MySQL control-plane repository.
+func NewMySQLRepository(db *sql.DB) *MySQLRepository {
+	return &MySQLRepository{db: db}
+}
+
+func (r *MySQLRepository) UpsertTenant(ctx context.Context, tenant Tenant) (*Tenant, error) {
+	if tenant.ID == "" {
+		tenant.ID = newID("tenant")
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_tenants (id, name, enabled) VALUES (?, ?, ?)
+ON DUPLICATE KEY UPDATE name = VALUES(name), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		tenant.ID, tenant.Name, tenant.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	return r.getTenant(ctx, tenant.ID)
+}
+
+func (r *MySQLRepository) UpsertProject(ctx context.Context, project Project) (*Project, error) {
+	if project.ID == "" {
+		project.ID = newID("project")
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_projects (id, tenant_id, name, enabled) VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), name = VALUES(name), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		project.ID, project.TenantID, project.Name, project.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	return r.getProject(ctx, project.ID)
+}
+
+func (r *MySQLRepository) CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error) {
+	if key.ID == "" {
+		key.ID = newID("key")
+	}
+	allowed, _ := json.Marshal(key.AllowedModels)
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_api_keys (id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json)
+VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		key.ID, key.TenantID, key.ProjectID, key.Name, key.KeyHash, key.Enabled, allowed)
+	if err != nil {
+		return nil, err
+	}
+	return r.getAPIKey(ctx, key.ID)
+}
+
+func (r *MySQLRepository) ListAPIKeys(ctx context.Context, tenantID, projectID string) ([]APIKey, error) {
+	query := `SELECT id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, revoked_at, created_at, updated_at FROM cp_api_keys WHERE 1=1`
+	var args []any
+	if tenantID != "" {
+		query += ` AND tenant_id = ?`
+		args = append(args, tenantID)
+	}
+	if projectID != "" {
+		query += ` AND project_id = ?`
+		args = append(args, projectID)
+	}
+	query += ` ORDER BY created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var keys []APIKey
+	for rows.Next() {
+		key, err := scanAPIKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, *key)
+	}
+	return keys, rows.Err()
+}
+
+func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revokedAt *time.Time) (*APIKey, error) {
+	_, err := r.db.ExecContext(ctx, `UPDATE cp_api_keys SET enabled = FALSE, revoked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, revokedAt, keyID)
+	if err != nil {
+		return nil, err
+	}
+	return r.getAPIKey(ctx, keyID)
+}
+
+func (r *MySQLRepository) UpsertModel(ctx context.Context, model ModelConfig) (*ModelConfig, error) {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_models (public_model, protocol, capability, enabled) VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE protocol = VALUES(protocol), capability = VALUES(capability), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		model.PublicModel, model.Protocol, model.Capability, model.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	return &model, nil
+}
+
+func (r *MySQLRepository) UpsertChannel(ctx context.Context, channel ChannelConfig) (*ChannelConfig, error) {
+	if channel.ID == "" {
+		channel.ID = newID("channel")
+	}
+	if channel.TimeoutMillis == 0 && channel.Timeout > 0 {
+		channel.TimeoutMillis = channel.Timeout.Milliseconds()
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO cp_channels (id, provider_type, base_url, credential_ref, encrypted_api_key, enabled, timeout_millis)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE provider_type = VALUES(provider_type), base_url = VALUES(base_url), credential_ref = VALUES(credential_ref),
+  encrypted_api_key = VALUES(encrypted_api_key), enabled = VALUES(enabled), timeout_millis = VALUES(timeout_millis), updated_at = CURRENT_TIMESTAMP`,
+		channel.ID, channel.ProviderType, channel.BaseURL, channel.CredentialRef, channel.EncryptedAPIKey, channel.Enabled, channel.TimeoutMillis); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM cp_channel_models WHERE channel_id = ?`, channel.ID); err != nil {
+		return nil, err
+	}
+	for _, model := range channel.Models {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO cp_channel_models (channel_id, public_model, upstream_model) VALUES (?, ?, ?)`,
+			channel.ID, model.PublicModel, model.UpstreamModel); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &channel, nil
+}
+
+func (r *MySQLRepository) UpsertRoute(ctx context.Context, route RoutePolicyConfig) (*RoutePolicyConfig, error) {
+	if route.ID == "" {
+		route.ID = "route_" + route.PublicModel
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO cp_route_policies (id, public_model, strategy, enabled) VALUES (?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE public_model = VALUES(public_model), strategy = VALUES(strategy), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		route.ID, route.PublicModel, route.Strategy, route.Enabled); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM cp_route_candidates WHERE route_id = ?`, route.ID); err != nil {
+		return nil, err
+	}
+	for _, candidate := range route.Candidates {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO cp_route_candidates (route_id, channel_id, priority, weight) VALUES (?, ?, ?, ?)`,
+			route.ID, candidate.ChannelID, candidate.Priority, candidate.Weight); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &route, nil
+}
+
+func (r *MySQLRepository) UpsertPrice(ctx context.Context, price PriceRuleConfig) (*PriceRuleConfig, error) {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_price_rules (public_model, currency, input_micros_per_token, output_micros_per_token, estimated_output_tokens, enabled)
+VALUES (?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE currency = VALUES(currency), input_micros_per_token = VALUES(input_micros_per_token),
+  output_micros_per_token = VALUES(output_micros_per_token), estimated_output_tokens = VALUES(estimated_output_tokens),
+  enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		price.PublicModel, price.Currency, price.InputMicrosPerToken, price.OutputMicrosPerToken, price.EstimatedOutputTokens, price.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	return &price, nil
+}
+
+func (r *MySQLRepository) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error) {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_limit_rules (public_model, qps, tpm, concurrency, enabled) VALUES (?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE qps = VALUES(qps), tpm = VALUES(tpm), concurrency = VALUES(concurrency), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		limit.PublicModel, limit.QPS, limit.TPM, limit.Concurrency, limit.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	return &limit, nil
+}
+
+func (r *MySQLRepository) LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error) {
+	cfg := &SnapshotConfig{}
+	keys, err := r.ListAPIKeys(ctx, "", "")
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range keys {
+		if key.Enabled {
+			cfg.APIKeys = append(cfg.APIKeys, key)
+		}
+		if key.RevokedAt != nil {
+			cfg.RevokedKeys = append(cfg.RevokedKeys, key)
+		}
+	}
+	if cfg.Models, err = r.listModels(ctx); err != nil {
+		return nil, err
+	}
+	if cfg.Channels, err = r.listChannels(ctx); err != nil {
+		return nil, err
+	}
+	if cfg.Routes, err = r.listRoutes(ctx); err != nil {
+		return nil, err
+	}
+	if cfg.Prices, err = r.listPrices(ctx); err != nil {
+		return nil, err
+	}
+	if cfg.Limits, err = r.listLimits(ctx); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func (r *MySQLRepository) SaveSnapshot(ctx context.Context, record SnapshotRecord) (*SnapshotRecord, error) {
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_runtime_snapshots (version, checksum, status, payload_json, error, created_at, active_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE checksum = VALUES(checksum), status = VALUES(status), payload_json = VALUES(payload_json), error = VALUES(error), active_at = VALUES(active_at)`,
+		record.Version, record.Checksum, record.Status, record.Payload, record.Error, record.CreatedAt, record.ActiveAt)
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
+func (r *MySQLRepository) ActiveSnapshot(ctx context.Context) (*SnapshotRecord, bool, error) {
+	return r.snapshotByStatus(ctx, SnapshotStatusActive)
+}
+
+func (r *MySQLRepository) PreviousSnapshot(ctx context.Context) (*SnapshotRecord, bool, error) {
+	record, err := scanSnapshot(r.db.QueryRowContext(ctx, `
+SELECT version, checksum, status, payload_json, error, created_at, active_at
+FROM cp_runtime_snapshots
+WHERE status = ?
+ORDER BY active_at DESC, created_at DESC
+LIMIT 1`, SnapshotStatusInactive))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return record, true, nil
+}
+
+func (r *MySQLRepository) ActivateSnapshot(ctx context.Context, version string) (*SnapshotRecord, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `UPDATE cp_runtime_snapshots SET status = ? WHERE status = ?`, SnapshotStatusInactive, SnapshotStatusActive); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE cp_runtime_snapshots SET status = ?, active_at = ? WHERE version = ?`, SnapshotStatusActive, time.Now().UTC(), version); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	record, ok, err := r.ActiveSnapshot(ctx)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return record, nil
+}
+
+func (r *MySQLRepository) getTenant(ctx context.Context, id string) (*Tenant, error) {
+	var tenant Tenant
+	err := r.db.QueryRowContext(ctx, `SELECT id, name, enabled, created_at, updated_at FROM cp_tenants WHERE id = ?`, id).
+		Scan(&tenant.ID, &tenant.Name, &tenant.Enabled, &tenant.CreatedAt, &tenant.UpdatedAt)
+	return &tenant, err
+}
+
+func (r *MySQLRepository) getProject(ctx context.Context, id string) (*Project, error) {
+	var project Project
+	err := r.db.QueryRowContext(ctx, `SELECT id, tenant_id, name, enabled, created_at, updated_at FROM cp_projects WHERE id = ?`, id).
+		Scan(&project.ID, &project.TenantID, &project.Name, &project.Enabled, &project.CreatedAt, &project.UpdatedAt)
+	return &project, err
+}
+
+func (r *MySQLRepository) getAPIKey(ctx context.Context, id string) (*APIKey, error) {
+	return scanAPIKey(r.db.QueryRowContext(ctx, `SELECT id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, revoked_at, created_at, updated_at FROM cp_api_keys WHERE id = ?`, id))
+}
+
+func (r *MySQLRepository) listModels(ctx context.Context) ([]ModelConfig, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT public_model, protocol, capability, enabled FROM cp_models ORDER BY public_model`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var models []ModelConfig
+	for rows.Next() {
+		var model ModelConfig
+		if err := rows.Scan(&model.PublicModel, &model.Protocol, &model.Capability, &model.Enabled); err != nil {
+			return nil, err
+		}
+		models = append(models, model)
+	}
+	return models, rows.Err()
+}
+
+func (r *MySQLRepository) listChannels(ctx context.Context) ([]ChannelConfig, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, provider_type, base_url, credential_ref, encrypted_api_key, enabled, timeout_millis FROM cp_channels ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var channels []ChannelConfig
+	for rows.Next() {
+		var channel ChannelConfig
+		if err := rows.Scan(&channel.ID, &channel.ProviderType, &channel.BaseURL, &channel.CredentialRef, &channel.EncryptedAPIKey, &channel.Enabled, &channel.TimeoutMillis); err != nil {
+			return nil, err
+		}
+		channel.Timeout = time.Duration(channel.TimeoutMillis) * time.Millisecond
+		models, err := r.channelModels(ctx, channel.ID)
+		if err != nil {
+			return nil, err
+		}
+		channel.Models = models
+		channels = append(channels, channel)
+	}
+	return channels, rows.Err()
+}
+
+func (r *MySQLRepository) channelModels(ctx context.Context, channelID string) ([]ChannelModel, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT public_model, upstream_model FROM cp_channel_models WHERE channel_id = ? ORDER BY public_model`, channelID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var models []ChannelModel
+	for rows.Next() {
+		var model ChannelModel
+		if err := rows.Scan(&model.PublicModel, &model.UpstreamModel); err != nil {
+			return nil, err
+		}
+		models = append(models, model)
+	}
+	return models, rows.Err()
+}
+
+func (r *MySQLRepository) listRoutes(ctx context.Context) ([]RoutePolicyConfig, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, public_model, strategy, enabled FROM cp_route_policies ORDER BY public_model`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var routes []RoutePolicyConfig
+	for rows.Next() {
+		var route RoutePolicyConfig
+		if err := rows.Scan(&route.ID, &route.PublicModel, &route.Strategy, &route.Enabled); err != nil {
+			return nil, err
+		}
+		candidates, err := r.routeCandidates(ctx, route.ID)
+		if err != nil {
+			return nil, err
+		}
+		route.Candidates = candidates
+		routes = append(routes, route)
+	}
+	return routes, rows.Err()
+}
+
+func (r *MySQLRepository) routeCandidates(ctx context.Context, routeID string) ([]RouteCandidate, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT channel_id, priority, weight FROM cp_route_candidates WHERE route_id = ? ORDER BY priority, channel_id`, routeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var candidates []RouteCandidate
+	for rows.Next() {
+		var candidate RouteCandidate
+		if err := rows.Scan(&candidate.ChannelID, &candidate.Priority, &candidate.Weight); err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, candidate)
+	}
+	return candidates, rows.Err()
+}
+
+func (r *MySQLRepository) listPrices(ctx context.Context) ([]PriceRuleConfig, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT public_model, currency, input_micros_per_token, output_micros_per_token, estimated_output_tokens, enabled FROM cp_price_rules`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var prices []PriceRuleConfig
+	for rows.Next() {
+		var price PriceRuleConfig
+		if err := rows.Scan(&price.PublicModel, &price.Currency, &price.InputMicrosPerToken, &price.OutputMicrosPerToken, &price.EstimatedOutputTokens, &price.Enabled); err != nil {
+			return nil, err
+		}
+		prices = append(prices, price)
+	}
+	return prices, rows.Err()
+}
+
+func (r *MySQLRepository) listLimits(ctx context.Context) ([]LimitRuleConfig, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT public_model, qps, tpm, concurrency, enabled FROM cp_limit_rules`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var limits []LimitRuleConfig
+	for rows.Next() {
+		var limit LimitRuleConfig
+		if err := rows.Scan(&limit.PublicModel, &limit.QPS, &limit.TPM, &limit.Concurrency, &limit.Enabled); err != nil {
+			return nil, err
+		}
+		limits = append(limits, limit)
+	}
+	return limits, rows.Err()
+}
+
+func (r *MySQLRepository) snapshotByStatus(ctx context.Context, status string) (*SnapshotRecord, bool, error) {
+	record, err := scanSnapshot(r.db.QueryRowContext(ctx, `
+SELECT version, checksum, status, payload_json, error, created_at, active_at
+FROM cp_runtime_snapshots
+WHERE status = ?
+ORDER BY active_at DESC, created_at DESC
+LIMIT 1`, status))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return record, true, nil
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanAPIKey(row rowScanner) (*APIKey, error) {
+	var key APIKey
+	var allowed []byte
+	var revokedAt sql.NullTime
+	err := row.Scan(&key.ID, &key.TenantID, &key.ProjectID, &key.Name, &key.KeyHash, &key.Enabled, &allowed, &revokedAt, &key.CreatedAt, &key.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if len(allowed) > 0 {
+		_ = json.Unmarshal(allowed, &key.AllowedModels)
+	}
+	if revokedAt.Valid {
+		key.RevokedAt = &revokedAt.Time
+	}
+	return &key, nil
+}
+
+func scanSnapshot(row rowScanner) (*SnapshotRecord, error) {
+	var record SnapshotRecord
+	var activeAt sql.NullTime
+	err := row.Scan(&record.Version, &record.Checksum, &record.Status, &record.Payload, &record.Error, &record.CreatedAt, &activeAt)
+	if err != nil {
+		return nil, err
+	}
+	if activeAt.Valid {
+		record.ActiveAt = &activeAt.Time
+	}
+	return &record, nil
+}
