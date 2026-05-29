@@ -1,6 +1,9 @@
 package billing
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	metricnames "github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // Metrics records billing health signals.
 type Metrics struct {
@@ -11,11 +14,11 @@ type Metrics struct {
 func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	m := &Metrics{
 		settlementFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "token_gateway_settlement_failures_total",
+			Name: metricnames.MetricSettlementFailuresTotal,
 			Help: "Total settlement failures by safe reason class.",
 		}, []string{"reason"}),
 		failedBacklog: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "token_gateway_failed_settlement_backlog",
+			Name: metricnames.MetricFailedSettlementBacklog,
 			Help: "Current failed settlement backlog.",
 		}),
 	}
@@ -46,4 +49,18 @@ func (m *Metrics) SetFailedBacklog(value int) {
 		return
 	}
 	m.failedBacklog.Set(float64(value))
+}
+
+func (m *Metrics) IncrementFailedBacklog() {
+	if m == nil || m.failedBacklog == nil {
+		return
+	}
+	m.failedBacklog.Inc()
+}
+
+func (m *Metrics) DecrementFailedBacklog() {
+	if m == nil || m.failedBacklog == nil {
+		return
+	}
+	m.failedBacklog.Dec()
 }

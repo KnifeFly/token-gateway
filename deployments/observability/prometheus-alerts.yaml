@@ -1,0 +1,43 @@
+groups:
+  - name: token-gateway-m7
+    rules:
+      - alert: TokenGatewayFailedSettlementBacklog
+        expr: token_gateway_failed_settlement_backlog > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Failed settlement backlog is non-zero.
+          description: Repairable settlement failures have been pending for more than 5 minutes.
+      - alert: TokenGatewaySnapshotStale
+        expr: token_gateway_snapshot_staleness_seconds > 300
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: Runtime snapshot is stale.
+          description: The active data-plane snapshot has not refreshed within the expected window.
+      - alert: TokenGatewayProviderErrorRate
+        expr: sum(rate(token_gateway_provider_attempts_total{outcome="failure"}[5m])) / clamp_min(sum(rate(token_gateway_provider_attempts_total[5m])), 1) > 0.2
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: Provider failure rate is high.
+          description: More than 20 percent of provider attempts are failing.
+      - alert: TokenGatewayProviderRateLimited
+        expr: sum(rate(token_gateway_provider_attempts_total{status_class="4xx",error_code=~".*rate.*|provider_rate_limited"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: Provider rate limiting detected.
+          description: Provider 429 responses are occurring repeatedly.
+      - alert: TokenGatewayCallbackRetries
+        expr: sum(rate(token_gateway_callback_retries_total[10m])) > 0
+        for: 10m
+        labels:
+          severity: warn
+        annotations:
+          summary: Callback delivery is retrying.
+          description: Task callback outbox delivery failures are causing retries.

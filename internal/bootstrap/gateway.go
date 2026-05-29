@@ -139,7 +139,11 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 	if cfg.Database.Enabled && database != nil && database.DB() != nil {
 		taskRepo = tasksvc.NewMySQLRepository(database.DB())
 	}
-	taskService := tasksvc.NewService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration)
+	taskMetrics, err := tasksvc.NewMetrics(tel.Registry)
+	if err != nil {
+		return nil, err
+	}
+	taskService := tasksvc.NewServiceWithMetrics(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, taskMetrics)
 	taskDispatcher := tasksvc.NewMockProviderTaskDispatcher()
 	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher)
 	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration))

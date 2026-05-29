@@ -31,7 +31,7 @@ type Provider struct {
 func New(ctx context.Context, cfg Config) (*Provider, error) {
 	registry := prometheus.NewRegistry()
 	info := prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "token_gateway_info",
+		Name:        MetricInfo,
 		Help:        "Token Gateway build information.",
 		ConstLabels: prometheus.Labels{"service": cfg.ServiceName, "version": cfg.ServiceVersion},
 	})

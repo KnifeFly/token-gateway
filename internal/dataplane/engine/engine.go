@@ -146,36 +146,44 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	var response *GatewayResponse
 	var err error
 	defer func() {
-		_ = e.plugins.Run(ctx, "audit", state)
+		_ = e.runStage(ctx, state, "gateway.audit", func(stageCtx context.Context) error {
+			return e.plugins.Run(stageCtx, "audit", state)
+		})
 		addSnapshotHeader(response, state)
 		e.observe.FinishRequest(ctx, state, response, err)
 	}()
 
-	if err = e.snapshot.Attach(ctx, state); err != nil {
-		response = e.errorResponse(state, err)
-		return response, nil
-	}
-	if err = e.plugins.Run(ctx, "pre_request", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.receive", func(stageCtx context.Context) error {
+		if err := e.snapshot.Attach(stageCtx, state); err != nil {
+			return err
+		}
+		return e.plugins.Run(stageCtx, "pre_request", state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
 
 	// Step 1: classify and parse after pinning the runtime snapshot.
-	if err = e.classifier.Classify(ctx, state); err != nil {
-		response = e.errorResponse(state, err)
-		return response, nil
-	}
-	if err = e.parser.Parse(ctx, state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.classify", func(stageCtx context.Context) error {
+		if err := e.classifier.Classify(stageCtx, state); err != nil {
+			return err
+		}
+		return e.parser.Parse(stageCtx, state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
 
 	// Step 2: authenticate the caller against the pinned snapshot.
-	if err = e.auth.Authenticate(ctx, state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.auth", func(stageCtx context.Context) error {
+		return e.auth.Authenticate(stageCtx, state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
-	if err = e.plugins.Run(ctx, "post_auth", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.policy", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "post_auth", state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
@@ -201,43 +209,50 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 			return response, nil
 		}
 		if hit {
+			state.Internal["idempotency_hit"] = true
 			return response, nil
 		}
 	}
-	if err = e.plugins.Run(ctx, "pre_prompt", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.plugin.pre_prompt", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "pre_prompt", state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
 
 	// Step 3: resolve routing and reserve local limits before provider dispatch.
-	if err = e.plugins.Run(ctx, "pre_route", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.policy", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "pre_route", state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
-	ctx, span := e.observe.StartSpan(ctx, "gateway.route",
-		attribute.String("gateway.request_id", state.RequestID),
-		attribute.String("gateway.model", state.RequestedModel),
-	)
-	if err = e.router.Plan(ctx, state); err != nil {
-		span.RecordError(err)
-		span.End()
+	if err = e.runStage(ctx, state, "gateway.route", func(stageCtx context.Context) error {
+		return e.router.Plan(stageCtx, state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
-	span.End()
-	if err = e.plugins.Run(ctx, "post_route", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.policy", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "post_route", state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
 
-	if err = e.admission.Reserve(ctx, state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.admission", func(stageCtx context.Context) error {
+		return e.admission.Reserve(stageCtx, state)
+	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
-	release, limitErr := e.limiter.Acquire(ctx, state)
-	if limitErr != nil {
-		_ = e.admission.Release(ctx, state, limitErr)
-		err = limitErr
+	var release LimitRelease
+	if err = e.runStage(ctx, state, "gateway.limit", func(stageCtx context.Context) error {
+		var acquireErr error
+		release, acquireErr = e.limiter.Acquire(stageCtx, state)
+		return acquireErr
+	}); err != nil {
+		_ = e.admission.Release(ctx, state, err)
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
@@ -255,7 +270,9 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 
 	// Step 4: dispatch to the selected provider and finalize billing.
-	if err = e.plugins.Run(ctx, "pre_provider", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.plugin.pre_provider", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "pre_provider", state)
+	}); err != nil {
 		_ = e.admission.Release(ctx, state, err)
 		response = e.errorResponse(state, err)
 		return response, nil
@@ -269,23 +286,32 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	state.ProviderResult = result
 	state.ActualUsage = result.Usage
-	if err = e.plugins.Run(ctx, "post_provider", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.plugin.post_provider", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "post_provider", state)
+	}); err != nil {
 		response, err = e.settleBeforePolicyError(ctx, state, err)
 		return response, nil
 	}
 	if result.Response != nil && result.Response.Stream != nil {
-		response, err = e.stream.Wrap(ctx, state, result)
-		if err != nil {
+		if err = e.runStage(ctx, state, "gateway.stream", func(stageCtx context.Context) error {
+			var wrapErr error
+			response, wrapErr = e.stream.Wrap(stageCtx, state, result)
+			return wrapErr
+		}); err != nil {
 			response = e.errorResponse(state, err)
 			return response, nil
 		}
 		return response, nil
 	}
-	if err = e.plugins.Run(ctx, "pre_settlement", state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.plugin.pre_settlement", func(stageCtx context.Context) error {
+		return e.plugins.Run(stageCtx, "pre_settlement", state)
+	}); err != nil {
 		response, err = e.settleBeforePolicyError(ctx, state, err)
 		return response, nil
 	}
-	if err = e.settlement.Settle(ctx, state); err != nil {
+	if err = e.runStage(ctx, state, "gateway.settlement", func(stageCtx context.Context) error {
+		return e.settlement.Settle(stageCtx, state)
+	}); err != nil {
 		recordErr := e.settlement.RecordFailed(ctx, state, err)
 		if recordErr == nil {
 			response = result.Response
@@ -348,6 +374,34 @@ func (e *GatewayEngine) releaseLimits(ctx context.Context, state *RequestState) 
 		}
 		_ = state.LimitReleases[i].Release(ctx)
 	}
+}
+
+func (e *GatewayEngine) runStage(ctx context.Context, state *RequestState, name string, fn func(context.Context) error) error {
+	stageCtx, span := e.observe.StartSpan(ctx, name, stageAttrs(state)...)
+	err := fn(stageCtx)
+	if err != nil {
+		span.RecordError(err)
+	}
+	span.End()
+	return err
+}
+
+func stageAttrs(state *RequestState) []attribute.KeyValue {
+	if state == nil {
+		return nil
+	}
+	return []attribute.KeyValue{
+		attribute.String("gateway.protocol", stringOrUnknown(string(state.ProtocolMode))),
+		attribute.String("gateway.canonical_api", stringOrUnknown(string(state.CanonicalAPI))),
+		attribute.String("gateway.model", stringOrUnknown(state.RequestedModel)),
+	}
+}
+
+func stringOrUnknown(value string) string {
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }
 
 func (e *GatewayEngine) settleBeforePolicyError(ctx context.Context, state *RequestState, policyErr error) (*GatewayResponse, error) {

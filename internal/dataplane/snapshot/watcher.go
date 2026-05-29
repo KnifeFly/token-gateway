@@ -7,6 +7,7 @@ import (
 
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	metricnames "github.com/KnifeFly/token-gateway/internal/infra/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -104,15 +105,15 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	}
 	metrics := &Metrics{
 		versionValue: prometheus.NewGaugeVec(prometheus.GaugeOpts{
-			Name: "token_gateway_snapshot_active",
+			Name: metricnames.MetricSnapshotActive,
 			Help: "Active runtime snapshot version.",
 		}, []string{"version"}),
 		staleness: prometheus.NewGauge(prometheus.GaugeOpts{
-			Name: "token_gateway_snapshot_staleness_seconds",
+			Name: metricnames.MetricSnapshotStalenessSeconds,
 			Help: "Age of the active runtime snapshot.",
 		}),
 		errors: prometheus.NewCounter(prometheus.CounterOpts{
-			Name: "token_gateway_snapshot_publish_errors_total",
+			Name: metricnames.MetricSnapshotPublishErrorsTotal,
 			Help: "Total snapshot load/build/publish errors.",
 		}),
 	}

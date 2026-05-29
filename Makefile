@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 CONFIG ?= configs/local.yaml
 
-.PHONY: help test lint fmt fmt-check vet race build run-gateway migrate-up migrate-down compose-up compose-down
+.PHONY: help test lint fmt fmt-check vet race build run-gateway loadtest failure-drills migrate-up migrate-down compose-up compose-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -34,6 +34,12 @@ build: ## Build all commands
 
 run-gateway: ## Run local gateway
 	go run ./cmd/gateway -config $(CONFIG)
+
+loadtest: ## Run local M7 load test
+	go run ./tools/loadtest
+
+failure-drills: ## Run M7 failure drills against GATEWAY_URL/API_KEY
+	tests/failure/drills.sh
 
 migrate-up: ## Apply MySQL migrations
 	go run ./cmd/migrate -config $(CONFIG) -direction up

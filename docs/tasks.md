@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射。
-- 未开始：M7 observability + performance 和后续能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射；M7 已落地 metrics 命名和安全 label 规范、HTTP/provider/token/cost/retry/fallback/degrade/idempotency/task/callback/snapshot/billing 指标、GatewayEngine 核心阶段 spans、统一 redactor 增强、load test、failure drills、dashboard、alert rules 和性能预算文档。
+- 未开始：M8 realtime reserved extension 和后续能力。
 - 阻塞：无。
-- 下一步建议：进入 M7，先固化 metrics 命名和 label 规范，再补齐 OTel spans、统一 redactor、load test 和 failure drills。
-- 最近验证：M6 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
+- 下一步建议：进入 M8，先定义 RealtimeSession domain 和 create/get session API，再接 WebSocket handler stub。
+- 最近验证：M7 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
 
 ## 使用规则
 
@@ -124,12 +124,12 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | M7/E7-T01/P0 | P0 | 固化 metrics 命名和 label 规范 | `internal/infra/telemetry/metrics.go` | provider、billing、task、snapshot 指标齐全 |
-| [ ] | M7/E7-T02/P0 | P0 | 补齐 OpenTelemetry spans | `internal/dataplane/observe` | 每个关键阶段 span 可见 |
-| [ ] | M7/E7-T03/P0 | P0 | 实现统一 redactor | `pkg/redaction` | api key、provider key、prompt、response 脱敏 |
-| [ ] | M7/E7-T04/P0 | P0 | 编写 load test | `tools/loadtest` | QPS、stream concurrency、Redis 延迟报告 |
-| [ ] | M7/E7-T05/P0 | P0 | 编写 failure drills | `tests/failure` | provider、billing、redis、db、snapshot 场景 |
-| [ ] | M7/E7-T06/P1 | P1 | 建立 dashboard 和 alert rules | `deployments/observability` | failed settlement、snapshot stale、provider 429/5xx 有告警 |
+| [x] | M7/E7-T01/P0 | P0 | 固化 metrics 命名和 label 规范 | `internal/infra/telemetry/metrics.go` | provider、billing、task、snapshot 指标齐全 |
+| [x] | M7/E7-T02/P0 | P0 | 补齐 OpenTelemetry spans | `internal/dataplane/observe` | 每个关键阶段 span 可见 |
+| [x] | M7/E7-T03/P0 | P0 | 实现统一 redactor | `pkg/redaction` | api key、provider key、prompt、response 脱敏 |
+| [x] | M7/E7-T04/P0 | P0 | 编写 load test | `tools/loadtest` | QPS、stream concurrency、Redis 延迟报告 |
+| [x] | M7/E7-T05/P0 | P0 | 编写 failure drills | `tests/failure` | provider、billing、redis、db、snapshot 场景 |
+| [x] | M7/E7-T06/P1 | P1 | 建立 dashboard 和 alert rules | `deployments/observability` | failed settlement、snapshot stale、provider 429/5xx 有告警 |
 
 ## M8 Realtime Reserved Extension
 

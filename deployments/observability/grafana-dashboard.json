@@ -1,0 +1,66 @@
+{
+  "title": "Token Gateway M7",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP QPS",
+      "targets": [
+        { "expr": "sum(rate(token_gateway_http_requests_total[1m]))", "legendFormat": "qps" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP p95 Latency",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(token_gateway_http_request_duration_seconds_bucket[5m])) by (le))", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider Attempts",
+      "targets": [
+        { "expr": "sum(rate(token_gateway_provider_attempts_total[5m])) by (provider, outcome)", "legendFormat": "{{provider}} {{outcome}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider p95 Latency",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(token_gateway_provider_attempt_duration_seconds_bucket[5m])) by (le, provider))", "legendFormat": "{{provider}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Billing Repair Backlog",
+      "targets": [
+        { "expr": "token_gateway_failed_settlement_backlog", "legendFormat": "failed settlements" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Task and Callback Health",
+      "targets": [
+        { "expr": "sum(rate(token_gateway_task_lifecycle_transitions_total[5m])) by (to_state)", "legendFormat": "task {{to_state}}" },
+        { "expr": "sum(rate(token_gateway_callback_retries_total[5m]))", "legendFormat": "callback retries" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Snapshot Staleness",
+      "targets": [
+        { "expr": "token_gateway_snapshot_staleness_seconds", "legendFormat": "seconds" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Fallbacks and Degradations",
+      "targets": [
+        { "expr": "sum(rate(token_gateway_fallbacks_total[5m]))", "legendFormat": "fallbacks" },
+        { "expr": "sum(rate(token_gateway_degradations_total[5m]))", "legendFormat": "degradations" }
+      ]
+    }
+  ]
+}

@@ -154,7 +154,7 @@ func (s *SettlementService) RecordFailed(ctx context.Context, state *engine.Requ
 	if s.metrics != nil {
 		s.metrics.RecordSettlementFailure()
 	}
-	return s.repo.SaveFailedSettlement(ctx, FailedSettlement{
+	err = s.repo.SaveFailedSettlement(ctx, FailedSettlement{
 		RequestID:   state.RequestID,
 		TenantID:    state.TenantID,
 		ProjectID:   state.ProjectID,
@@ -165,15 +165,24 @@ func (s *SettlementService) RecordFailed(ctx context.Context, state *engine.Requ
 		NextRetryAt: time.Now().UTC(),
 		LastError:   cause.Error(),
 	})
+	if err == nil && s.metrics != nil {
+		s.metrics.IncrementFailedBacklog()
+	}
+	return err
 }
 
 // FailedSettlementService replays pending failed settlements.
 type FailedSettlementService struct {
-	repo Repository
+	repo    Repository
+	metrics *Metrics
 }
 
 func NewFailedSettlementService(repo Repository) *FailedSettlementService {
-	return &FailedSettlementService{repo: repo}
+	return NewFailedSettlementServiceWithMetrics(repo, nil)
+}
+
+func NewFailedSettlementServiceWithMetrics(repo Repository, metrics *Metrics) *FailedSettlementService {
+	return &FailedSettlementService{repo: repo, metrics: metrics}
 }
 
 func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) (int, error) {
@@ -206,7 +215,11 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 		if err := s.repo.MarkFailedSettlementReplayed(ctx, failed.ID); err != nil {
 			return replayed, err
 		}
+		s.metrics.DecrementFailedBacklog()
 		replayed++
+	}
+	if s.metrics != nil {
+		s.metrics.SetFailedBacklog(len(pending) - replayed)
 	}
 	return replayed, nil
 }
