@@ -57,12 +57,30 @@ Follow [Go Code Review Comments](https://go.dev/wiki/CodeReviewComments):
 - **Naming**: initialisms (`URL`, `HTTP`, `ID`—not `Url`, `Http`, `Id`)
 - **Receiver names**: 1–2 letters reflecting type (`c` for `Client`, `h` for `Handler`)
 - **Error strings**: Lowercase, no trailing punctuation (`"something failed"` not `"Something failed."`)
+- **Logical spacing**: Use blank lines inside functions to separate meaningful
+  logic groups. Prefer grouping guard clauses, input normalization, core
+  operations, persistence/side effects, and final response construction into
+  readable blocks. Do not write dense functions with no internal spacing, and
+  do not add decorative blank lines that do not separate a real change in
+  intent.
 - **Doc comments**: Full sentences starting with the name being documented
   ```go
   // Handler serves HTTP requests for the file server.
   type Handler struct { ... }
   ```
 - **Empty slices**: `var t []string` (nil slice), not `t := []string{}` (non-nil zero-length)
+
+### Code Logic Comments
+
+- **Exported functions**: Every exported function must have a Go doc comment
+  that starts with the function name and explains the public contract.
+- **Complex function bodies**: If a function has complex branching,
+  multi-stage orchestration, retries, settlement, stream handling, or other
+  non-obvious logic, add short step comments inside the function:
+  `// Step 1: ...`, `// Step 2: ...`, `// Step 3: ...`.
+- **Complex files**: If a package file contains complex coordination logic or
+  is the main implementation file for a subsystem, add a concise file-level
+  comment near the top explaining the file's responsibility and main flow.
 
 ## Commercial Invariants
 
