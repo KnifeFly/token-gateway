@@ -219,6 +219,35 @@ func (s *Service) UpsertPluginBinding(ctx context.Context, binding PluginBinding
 	return s.repo.UpsertPluginBinding(ctx, binding)
 }
 
+// UpsertModelMarketplace creates or updates tenant-visible model catalog rows.
+func (s *Service) UpsertModelMarketplace(ctx context.Context, config ModelMarketplaceConfig) (*ModelMarketplaceConfig, error) {
+	config.TenantID = strings.TrimSpace(config.TenantID)
+	config.ProjectID = strings.TrimSpace(config.ProjectID)
+	config.PublicModel = strings.TrimSpace(config.PublicModel)
+	config.DisplayName = strings.TrimSpace(config.DisplayName)
+	if config.PublicModel == "" {
+		return nil, apperr.InvalidArgument("public_model is required")
+	}
+	if config.DisplayName == "" {
+		config.DisplayName = config.PublicModel
+	}
+	if !config.Enabled {
+		config.Enabled = true
+	}
+	if len(config.Metadata) == 0 {
+		config.Metadata = json.RawMessage(`{}`)
+	}
+	if !json.Valid(config.Metadata) {
+		return nil, apperr.InvalidArgument("metadata must be valid json")
+	}
+	return s.repo.UpsertModelMarketplace(ctx, config)
+}
+
+// ListVisibleModels returns enabled model marketplace rows for a tenant/project.
+func (s *Service) ListVisibleModels(ctx context.Context, tenantID, projectID string) ([]VisibleModel, error) {
+	return s.repo.ListVisibleModels(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(projectID))
+}
+
 func newPlaintextKey() string {
 	var b [24]byte
 	if _, err := rand.Read(b[:]); err != nil {

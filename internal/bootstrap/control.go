@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
@@ -36,13 +37,16 @@ func NewControlAPIApp(ctx context.Context, cfg Config) (*ControlAPIApp, error) {
 		return nil, err
 	}
 	repo := admin.Repository(admin.NewMemoryRepository())
+	reportRepo := reporting.Repository(reporting.NewMemoryRepository())
 	if cfg.Database.Enabled && database.DB() != nil {
 		repo = admin.NewMySQLRepository(database.DB())
+		reportRepo = reporting.NewMySQLRepository(database.DB())
 	}
 	revocations := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
 	adminService := admin.NewService(repo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocations)
+	reportingService := reporting.NewService(reportRepo)
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
-	handler := controlhttp.NewHandler(adminService, publisher, cfg.Control.AdminToken, logger)
+	handler := controlhttp.NewHandler(adminService, publisher, cfg.Control.AdminToken, logger, reportingService)
 	server := httpserver.New(controlServerConfig(cfg), handler, logger)
 	return &ControlAPIApp{server: server, db: database, redis: redisClient, logger: logger}, nil
 }

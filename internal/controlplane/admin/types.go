@@ -118,6 +118,39 @@ type PluginBindingConfig struct {
 	UpdatedAt     time.Time       `json:"updated_at,omitempty"`
 }
 
+// ModelMarketplaceConfig controls which models are visible to a tenant or project.
+type ModelMarketplaceConfig struct {
+	ID          string          `json:"id"`
+	TenantID    string          `json:"tenant_id,omitempty"`
+	ProjectID   string          `json:"project_id,omitempty"`
+	PublicModel string          `json:"public_model"`
+	DisplayName string          `json:"display_name"`
+	Description string          `json:"description,omitempty"`
+	Enabled     bool            `json:"enabled"`
+	SortOrder   int             `json:"sort_order"`
+	Metadata    json.RawMessage `json:"metadata"`
+	CreatedAt   time.Time       `json:"created_at,omitempty"`
+	UpdatedAt   time.Time       `json:"updated_at,omitempty"`
+}
+
+// VisibleModel is a tenant-facing model marketplace row.
+type VisibleModel struct {
+	ID                    string          `json:"id"`
+	TenantID              string          `json:"tenant_id,omitempty"`
+	ProjectID             string          `json:"project_id,omitempty"`
+	PublicModel           string          `json:"public_model"`
+	DisplayName           string          `json:"display_name"`
+	Description           string          `json:"description,omitempty"`
+	Protocol              string          `json:"protocol"`
+	Capability            string          `json:"capability"`
+	Currency              string          `json:"currency,omitempty"`
+	InputMicrosPerToken   int64           `json:"input_micros_per_token,omitempty"`
+	OutputMicrosPerToken  int64           `json:"output_micros_per_token,omitempty"`
+	EstimatedOutputTokens int64           `json:"estimated_output_tokens,omitempty"`
+	SortOrder             int             `json:"sort_order"`
+	Metadata              json.RawMessage `json:"metadata"`
+}
+
 // SnapshotRecord stores one published runtime snapshot payload.
 type SnapshotRecord struct {
 	Version   string     `json:"version"`

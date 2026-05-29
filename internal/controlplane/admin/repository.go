@@ -24,6 +24,8 @@ type Repository interface {
 	UpsertPrice(ctx context.Context, price PriceRuleConfig) (*PriceRuleConfig, error)
 	UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error)
 	UpsertPluginBinding(ctx context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error)
+	UpsertModelMarketplace(ctx context.Context, config ModelMarketplaceConfig) (*ModelMarketplaceConfig, error)
+	ListVisibleModels(ctx context.Context, tenantID, projectID string) ([]VisibleModel, error)
 	LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error)
 	SaveSnapshot(ctx context.Context, record SnapshotRecord) (*SnapshotRecord, error)
 	ActiveSnapshot(ctx context.Context) (*SnapshotRecord, bool, error)

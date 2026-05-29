@@ -217,6 +217,66 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), phase = VALUES(phase), tenant_id = 
 	return r.getPluginBinding(ctx, binding.ID)
 }
 
+func (r *MySQLRepository) UpsertModelMarketplace(ctx context.Context, config ModelMarketplaceConfig) (*ModelMarketplaceConfig, error) {
+	if config.ID == "" {
+		config.ID = marketplaceID(config)
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_model_marketplace (
+  id, tenant_id, project_id, public_model, display_name, description,
+  enabled, sort_order, metadata_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  display_name = VALUES(display_name),
+  description = VALUES(description),
+  enabled = VALUES(enabled),
+  sort_order = VALUES(sort_order),
+  metadata_json = VALUES(metadata_json),
+  updated_at = CURRENT_TIMESTAMP`,
+		config.ID, config.TenantID, config.ProjectID, config.PublicModel, config.DisplayName,
+		config.Description, config.Enabled, config.SortOrder, []byte(config.Metadata),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r.getModelMarketplace(ctx, config.ID)
+}
+
+func (r *MySQLRepository) ListVisibleModels(ctx context.Context, tenantID, projectID string) ([]VisibleModel, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT
+  market.id, market.tenant_id, market.project_id, market.public_model,
+  market.display_name, market.description, model.protocol, model.capability,
+  COALESCE(price.currency, ''), COALESCE(price.input_micros_per_token, 0),
+  COALESCE(price.output_micros_per_token, 0), COALESCE(price.estimated_output_tokens, 0),
+  market.sort_order, market.metadata_json
+FROM cp_model_marketplace market
+JOIN cp_models model ON model.public_model = market.public_model AND model.enabled = TRUE
+LEFT JOIN cp_price_rules price ON price.public_model = market.public_model AND price.enabled = TRUE
+WHERE market.enabled = TRUE
+  AND (market.tenant_id = '' OR market.tenant_id = ?)
+  AND (market.project_id = '' OR market.project_id = ?)
+ORDER BY market.sort_order, market.public_model, market.tenant_id DESC, market.project_id DESC`, tenantID, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []VisibleModel
+	for rows.Next() {
+		var model VisibleModel
+		if err := rows.Scan(
+			&model.ID, &model.TenantID, &model.ProjectID, &model.PublicModel,
+			&model.DisplayName, &model.Description, &model.Protocol, &model.Capability,
+			&model.Currency, &model.InputMicrosPerToken, &model.OutputMicrosPerToken,
+			&model.EstimatedOutputTokens, &model.SortOrder, &model.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, model)
+	}
+	return out, rows.Err()
+}
+
 func (r *MySQLRepository) LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error) {
 	cfg := &SnapshotConfig{}
 	keys, err := r.ListAPIKeys(ctx, "", "")
@@ -328,6 +388,14 @@ func (r *MySQLRepository) getPluginBinding(ctx context.Context, id string) (*Plu
 	return scanPluginBinding(r.db.QueryRowContext(ctx, `
 SELECT id, name, phase, tenant_id, project_id, model, priority, enabled, failure_policy, config_json, created_at, updated_at
 FROM cp_plugin_bindings
+WHERE id = ?`, id))
+}
+
+func (r *MySQLRepository) getModelMarketplace(ctx context.Context, id string) (*ModelMarketplaceConfig, error) {
+	return scanModelMarketplace(r.db.QueryRowContext(ctx, `
+SELECT id, tenant_id, project_id, public_model, display_name, description,
+       enabled, sort_order, metadata_json, created_at, updated_at
+FROM cp_model_marketplace
 WHERE id = ?`, id))
 }
 
@@ -544,4 +612,22 @@ func scanPluginBinding(row rowScanner) (*PluginBindingConfig, error) {
 	}
 	binding.Config = json.RawMessage(config)
 	return &binding, nil
+}
+
+func scanModelMarketplace(row rowScanner) (*ModelMarketplaceConfig, error) {
+	var config ModelMarketplaceConfig
+	var metadata []byte
+	err := row.Scan(
+		&config.ID, &config.TenantID, &config.ProjectID, &config.PublicModel,
+		&config.DisplayName, &config.Description, &config.Enabled, &config.SortOrder,
+		&metadata, &config.CreatedAt, &config.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(metadata) == 0 {
+		metadata = []byte(`{}`)
+	}
+	config.Metadata = json.RawMessage(metadata)
+	return &config, nil
 }

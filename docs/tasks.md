@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射；M7 已落地 metrics 命名和安全 label 规范、HTTP/provider/token/cost/retry/fallback/degrade/idempotency/task/callback/snapshot/billing 指标、GatewayEngine 核心阶段 spans、统一 redactor 增强、load test、failure drills、dashboard、alert rules 和性能预算文档；M8 已落地 RealtimeSession domain、RealtimeEngine/DisabledEngine、`/v1/realtime/sessions` create/get handler、`/v1/realtime` WebSocket stub、API key auth/model permission、audit log、trace 和 realtime metrics 接入点，未启用时返回 501/`feature_not_enabled`。
-- 未开始：M9 commercial operations 和后续能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射；M7 已落地 metrics 命名和安全 label 规范、HTTP/provider/token/cost/retry/fallback/degrade/idempotency/task/callback/snapshot/billing 指标、GatewayEngine 核心阶段 spans、统一 redactor 增强、load test、failure drills、dashboard、alert rules 和性能预算文档；M8 已落地 RealtimeSession domain、RealtimeEngine/DisabledEngine、`/v1/realtime/sessions` create/get handler、`/v1/realtime` WebSocket stub、API key auth/model permission、audit log、trace 和 realtime metrics 接入点，未启用时返回 501/`feature_not_enabled`；M9 已落地商用运营报表服务、客户余额/用量/ledger report、provider cost/profit report、reconciliation report、idempotent manual adjustment、模型市场配置、Agent workflow/scene/shot metadata report、M9 migration、OpenAPI 管理接口和 backup/restore runbook。
+- 未开始：M9 之后的后续能力。
 - 阻塞：无。
-- 下一步建议：进入 M9，先做客户余额和用量报表，再接 provider cost/profit reporting 与 reconciliation report。
-- 最近验证：M8 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
+- 下一步建议：后续可进入真实环境 smoke：执行 migration、启动 control-api/gateway/worker，验证 admin report 和 manual adjustment 与真实 MySQL ledger 行为。
+- 最近验证：M9 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
 
 ## 使用规则
 
@@ -144,13 +144,13 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | M9/E9-T01/P1 | P1 | 实现客户余额和用量报表 | `internal/controlplane/admin` | 客户可查余额、用量和扣费流水 |
-| [ ] | M9/E9-T02/P1 | P1 | 实现 provider cost 和利润报表 | `internal/billing/reporting` | 运营可查渠道成本和模型利润 |
-| [ ] | M9/E9-T03/P1 | P1 | 实现 reconciliation report | `internal/billing/reconciliation.go` | 每日对账能发现差异 |
-| [ ] | M9/E9-T04/P1 | P1 | 实现 manual adjustment | `internal/billing` | 人工调账幂等且有强审计 |
-| [ ] | M9/E9-T05/P2 | P2 | 实现模型市场配置 | control API | 租户可见模型可配置 |
-| [ ] | M9/E9-T06/P2 | P2 | 实现 Agent metadata 报表 | reporting 或 analytics | workflow、scene、shot 维度可分析 |
-| [ ] | M9/E9-T07/P2 | P2 | 建立 backup/restore runbook | `docs/runbook` | 恢复演练通过 |
+| [x] | M9/E9-T01/P1 | P1 | 实现客户余额和用量报表 | `internal/controlplane/admin` | 客户可查余额、用量和扣费流水 |
+| [x] | M9/E9-T02/P1 | P1 | 实现 provider cost 和利润报表 | `internal/billing/reporting` | 运营可查渠道成本和模型利润 |
+| [x] | M9/E9-T03/P1 | P1 | 实现 reconciliation report | `internal/billing/reconciliation.go` | 每日对账能发现差异 |
+| [x] | M9/E9-T04/P1 | P1 | 实现 manual adjustment | `internal/billing` | 人工调账幂等且有强审计 |
+| [x] | M9/E9-T05/P2 | P2 | 实现模型市场配置 | control API | 租户可见模型可配置 |
+| [x] | M9/E9-T06/P2 | P2 | 实现 Agent metadata 报表 | reporting 或 analytics | workflow、scene、shot 维度可分析 |
+| [x] | M9/E9-T07/P2 | P2 | 建立 backup/restore runbook | `docs/runbook` | 恢复演练通过 |
 
 ## 阶段验收总览
 

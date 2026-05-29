@@ -747,6 +747,181 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
       security:
       - bearerAuth: []
+  /admin/reports/tenant-usage:
+    get:
+      tags:
+      - Admin
+      summary: Get tenant balance, usage, and ledger report
+      operationId: adminGetTenantUsageReport
+      parameters:
+      - name: tenant_id
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: project_id
+        in: query
+        schema:
+          type: string
+      - name: from
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: Tenant usage report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTenantUsageReport'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /admin/reports/provider-profit:
+    get:
+      tags:
+      - Admin
+      summary: Get provider cost and profit report
+      operationId: adminGetProviderProfitReport
+      responses:
+        '200':
+          description: Provider profit report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProviderProfitReport'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /admin/reports/reconciliation:
+    get:
+      tags:
+      - Admin
+      summary: Get reconciliation report
+      operationId: adminGetReconciliationReport
+      responses:
+        '200':
+          description: Reconciliation report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReconciliationReport'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /admin/reports/agent-metadata:
+    get:
+      tags:
+      - Admin
+      summary: Get Agent workflow, scene, and shot report
+      operationId: adminGetAgentMetadataReport
+      responses:
+        '200':
+          description: Agent metadata report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAgentMetadataReport'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /admin/provider-cost-profiles:
+    post:
+      tags:
+      - Admin
+      summary: Upsert provider cost profile
+      operationId: adminUpsertProviderCostProfile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminProviderCostProfile'
+      responses:
+        '200':
+          description: Provider cost profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProviderCostProfile'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /admin/billing/adjustments:
+    post:
+      tags:
+      - Admin
+      summary: Create idempotent manual balance adjustment
+      operationId: adminCreateManualAdjustment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminManualAdjustmentRequest'
+      responses:
+        '200':
+          description: Manual adjustment audit row
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminManualAdjustment'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /admin/model-marketplace:
+    get:
+      tags:
+      - Admin
+      summary: List tenant-visible models
+      operationId: adminListVisibleModels
+      responses:
+        '200':
+          description: Visible models
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminVisibleModel'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+    post:
+      tags:
+      - Admin
+      summary: Upsert model marketplace config
+      operationId: adminUpsertModelMarketplace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminModelMarketplaceConfig'
+      responses:
+        '200':
+          description: Model marketplace config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModelMarketplaceConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
 components:
   securitySchemes:
     bearerAuth:
@@ -918,6 +1093,208 @@ components:
         currency:
           type: string
           example: CNY
+    AdminTenantUsageReport:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        balances:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        usage:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        ledger:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        totals:
+          type: object
+          additionalProperties: true
+    AdminProviderProfitReport:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              provider_type:
+                type: string
+              channel_id:
+                type: string
+              model:
+                type: string
+              revenue_micros:
+                type: integer
+                format: int64
+              provider_cost_micros:
+                type: integer
+                format: int64
+              profit_micros:
+                type: integer
+                format: int64
+              cost_profile_missing:
+                type: boolean
+        totals:
+          type: object
+          additionalProperties: true
+    AdminReconciliationReport:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        failed_settlements:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AdminAgentMetadataReport:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              workflow:
+                type: string
+              scene:
+                type: string
+              shot:
+                type: string
+              tasks:
+                type: integer
+                format: int64
+              amount_micros:
+                type: integer
+                format: int64
+    AdminProviderCostProfile:
+      type: object
+      required:
+      - provider_type
+      - public_model
+      - currency
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        public_model:
+          type: string
+        currency:
+          type: string
+        input_micros_per_token:
+          type: integer
+          format: int64
+        output_micros_per_token:
+          type: integer
+          format: int64
+        fixed_micros_per_request:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+    AdminManualAdjustmentRequest:
+      type: object
+      required:
+      - idempotency_key
+      - tenant_id
+      - project_id
+      - currency
+      - amount_micros
+      - reason
+      properties:
+        idempotency_key:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        currency:
+          type: string
+        amount_micros:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        operator_id:
+          type: string
+    AdminManualAdjustment:
+      allOf:
+      - $ref: '#/components/schemas/AdminManualAdjustmentRequest'
+      - type: object
+        properties:
+          id:
+            type: string
+          account_id:
+            type: string
+          ledger_entry_id:
+            type: string
+          created_at:
+            type: string
+            format: date-time
+    AdminModelMarketplaceConfig:
+      type: object
+      required:
+      - public_model
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        public_model:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        enabled:
+          type: boolean
+        sort_order:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminVisibleModel:
+      allOf:
+      - $ref: '#/components/schemas/AdminModelMarketplaceConfig'
+      - type: object
+        properties:
+          protocol:
+            type: string
+          capability:
+            type: string
+          currency:
+            type: string
+          input_micros_per_token:
+            type: integer
+            format: int64
+          output_micros_per_token:
+            type: integer
+            format: int64
     Base64FileUploadRequest:
       type: object
       required:

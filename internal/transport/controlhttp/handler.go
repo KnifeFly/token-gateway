@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -13,18 +16,22 @@ import (
 
 // Handler serves M5 control-plane admin APIs.
 type Handler struct {
-	admin     *admin.Service
-	publisher *cpsnapshot.Publisher
-	token     string
-	logger    *slog.Logger
+	admin      *admin.Service
+	publisher  *cpsnapshot.Publisher
+	commercial *reporting.Service
+	token      string
+	logger     *slog.Logger
 }
 
 // NewHandler returns a control-plane HTTP handler.
-func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger) http.Handler {
+func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, commercial ...*reporting.Service) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	h := &Handler{admin: adminService, publisher: publisher, token: token, logger: logger}
+	if len(commercial) > 0 {
+		h.commercial = commercial[0]
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -40,6 +47,14 @@ func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, to
 	mux.HandleFunc("POST /admin/prices", h.requireAdmin(h.upsertPrice))
 	mux.HandleFunc("POST /admin/limits", h.requireAdmin(h.upsertLimit))
 	mux.HandleFunc("POST /admin/plugin-bindings", h.requireAdmin(h.upsertPluginBinding))
+	mux.HandleFunc("POST /admin/model-marketplace", h.requireAdmin(h.upsertModelMarketplace))
+	mux.HandleFunc("GET /admin/model-marketplace", h.requireAdmin(h.listVisibleModels))
+	mux.HandleFunc("GET /admin/reports/tenant-usage", h.requireAdmin(h.tenantUsageReport))
+	mux.HandleFunc("GET /admin/reports/provider-profit", h.requireAdmin(h.providerProfitReport))
+	mux.HandleFunc("GET /admin/reports/reconciliation", h.requireAdmin(h.reconciliationReport))
+	mux.HandleFunc("GET /admin/reports/agent-metadata", h.requireAdmin(h.agentMetadataReport))
+	mux.HandleFunc("POST /admin/provider-cost-profiles", h.requireAdmin(h.upsertProviderCostProfile))
+	mux.HandleFunc("POST /admin/billing/adjustments", h.requireAdmin(h.createManualAdjustment))
 	mux.HandleFunc("POST /admin/snapshots/publish", h.requireAdmin(h.publishSnapshot))
 	mux.HandleFunc("POST /admin/snapshots/rollback", h.requireAdmin(h.rollbackSnapshot))
 	return mux
@@ -156,6 +171,115 @@ func (h *Handler) upsertPluginBinding(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, result, err)
 }
 
+func (h *Handler) upsertModelMarketplace(w http.ResponseWriter, r *http.Request) {
+	var request admin.ModelMarketplaceConfig
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.admin.UpsertModelMarketplace(r.Context(), request)
+	writeResult(w, result, err)
+}
+
+func (h *Handler) listVisibleModels(w http.ResponseWriter, r *http.Request) {
+	result, err := h.admin.ListVisibleModels(r.Context(), r.URL.Query().Get("tenant_id"), r.URL.Query().Get("project_id"))
+	writeResult(w, result, err)
+}
+
+func (h *Handler) tenantUsageReport(w http.ResponseWriter, r *http.Request) {
+	if h.commercial == nil {
+		writeError(w, apperr.ConfigUnavailable("commercial reporting is unavailable"))
+		return
+	}
+	from, to, ok := parseTimeRange(w, r)
+	if !ok {
+		return
+	}
+	limit, ok := parseLimit(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.commercial.TenantUsageReport(r.Context(), reporting.TenantUsageFilter{
+		TenantID:  r.URL.Query().Get("tenant_id"),
+		ProjectID: r.URL.Query().Get("project_id"),
+		Currency:  r.URL.Query().Get("currency"),
+		From:      from,
+		To:        to,
+		Limit:     limit,
+	})
+	writeResult(w, result, err)
+}
+
+func (h *Handler) providerProfitReport(w http.ResponseWriter, r *http.Request) {
+	if h.commercial == nil {
+		writeError(w, apperr.ConfigUnavailable("commercial reporting is unavailable"))
+		return
+	}
+	from, to, ok := parseTimeRange(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.commercial.ProviderProfitReport(r.Context(), reporting.ProviderProfitFilter{
+		TenantID:  r.URL.Query().Get("tenant_id"),
+		ProjectID: r.URL.Query().Get("project_id"),
+		From:      from,
+		To:        to,
+	})
+	writeResult(w, result, err)
+}
+
+func (h *Handler) reconciliationReport(w http.ResponseWriter, r *http.Request) {
+	if h.commercial == nil {
+		writeError(w, apperr.ConfigUnavailable("commercial reporting is unavailable"))
+		return
+	}
+	result, err := h.commercial.ReconciliationReport(r.Context())
+	writeResult(w, result, err)
+}
+
+func (h *Handler) agentMetadataReport(w http.ResponseWriter, r *http.Request) {
+	if h.commercial == nil {
+		writeError(w, apperr.ConfigUnavailable("commercial reporting is unavailable"))
+		return
+	}
+	from, to, ok := parseTimeRange(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.commercial.AgentMetadataReport(r.Context(), reporting.AgentMetadataFilter{
+		TenantID:  r.URL.Query().Get("tenant_id"),
+		ProjectID: r.URL.Query().Get("project_id"),
+		From:      from,
+		To:        to,
+	})
+	writeResult(w, result, err)
+}
+
+func (h *Handler) upsertProviderCostProfile(w http.ResponseWriter, r *http.Request) {
+	if h.commercial == nil {
+		writeError(w, apperr.ConfigUnavailable("commercial reporting is unavailable"))
+		return
+	}
+	var request reporting.ProviderCostProfile
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.commercial.UpsertProviderCostProfile(r.Context(), request)
+	writeResult(w, result, err)
+}
+
+func (h *Handler) createManualAdjustment(w http.ResponseWriter, r *http.Request) {
+	if h.commercial == nil {
+		writeError(w, apperr.ConfigUnavailable("commercial reporting is unavailable"))
+		return
+	}
+	var request reporting.ManualAdjustmentRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.commercial.CreateManualAdjustment(r.Context(), request)
+	writeResult(w, result, err)
+}
+
 func (h *Handler) publishSnapshot(w http.ResponseWriter, r *http.Request) {
 	result, err := h.publisher.Publish(r.Context())
 	writeResult(w, result, err)
@@ -183,6 +307,44 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 		return false
 	}
 	return true
+}
+
+func parseTimeRange(w http.ResponseWriter, r *http.Request) (time.Time, time.Time, bool) {
+	from, ok := parseTimeQuery(w, r, "from")
+	if !ok {
+		return time.Time{}, time.Time{}, false
+	}
+	to, ok := parseTimeQuery(w, r, "to")
+	if !ok {
+		return time.Time{}, time.Time{}, false
+	}
+	return from, to, true
+}
+
+func parseTimeQuery(w http.ResponseWriter, r *http.Request, name string) (time.Time, bool) {
+	value := strings.TrimSpace(r.URL.Query().Get(name))
+	if value == "" {
+		return time.Time{}, true
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		writeError(w, apperr.InvalidArgument(name+" must be RFC3339"))
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+func parseLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
+	value := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if value == "" {
+		return 0, true
+	}
+	limit, err := strconv.Atoi(value)
+	if err != nil {
+		writeError(w, apperr.InvalidArgument("limit must be an integer"))
+		return 0, false
+	}
+	return limit, true
 }
 
 func writeResult[T any](w http.ResponseWriter, value T, err error) {

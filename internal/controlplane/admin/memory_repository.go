@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 )
@@ -19,6 +20,7 @@ type MemoryRepository struct {
 	prices    map[string]PriceRuleConfig
 	limits    map[string]LimitRuleConfig
 	plugins   map[string]PluginBindingConfig
+	market    map[string]ModelMarketplaceConfig
 	snapshots map[string]SnapshotRecord
 	active    string
 	previous  string
@@ -36,6 +38,7 @@ func NewMemoryRepository() *MemoryRepository {
 		prices:    map[string]PriceRuleConfig{},
 		limits:    map[string]LimitRuleConfig{},
 		plugins:   map[string]PluginBindingConfig{},
+		market:    map[string]ModelMarketplaceConfig{},
 		snapshots: map[string]SnapshotRecord{},
 	}
 }
@@ -167,6 +170,56 @@ func (r *MemoryRepository) UpsertPluginBinding(_ context.Context, binding Plugin
 	return clone(binding), nil
 }
 
+func (r *MemoryRepository) UpsertModelMarketplace(_ context.Context, config ModelMarketplaceConfig) (*ModelMarketplaceConfig, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now().UTC()
+	if config.ID == "" {
+		config.ID = marketplaceID(config)
+	}
+	if existing, ok := r.market[config.ID]; ok {
+		config.CreatedAt = existing.CreatedAt
+	} else {
+		config.CreatedAt = now
+	}
+	config.UpdatedAt = now
+	r.market[config.ID] = config
+	return clone(config), nil
+}
+
+func (r *MemoryRepository) ListVisibleModels(_ context.Context, tenantID, projectID string) ([]VisibleModel, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []VisibleModel
+	for _, config := range r.market {
+		if !config.Enabled || !marketplaceScopeMatches(config, tenantID, projectID) {
+			continue
+		}
+		model := r.models[config.PublicModel]
+		if !model.Enabled {
+			continue
+		}
+		price := r.prices[config.PublicModel]
+		out = append(out, VisibleModel{
+			ID:                    config.ID,
+			TenantID:              config.TenantID,
+			ProjectID:             config.ProjectID,
+			PublicModel:           config.PublicModel,
+			DisplayName:           config.DisplayName,
+			Description:           config.Description,
+			Protocol:              model.Protocol,
+			Capability:            model.Capability,
+			Currency:              price.Currency,
+			InputMicrosPerToken:   price.InputMicrosPerToken,
+			OutputMicrosPerToken:  price.OutputMicrosPerToken,
+			EstimatedOutputTokens: price.EstimatedOutputTokens,
+			SortOrder:             config.SortOrder,
+			Metadata:              append([]byte(nil), config.Metadata...),
+		})
+	}
+	return out, nil
+}
+
 func (r *MemoryRepository) LoadSnapshotConfig(context.Context) (*SnapshotConfig, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -247,4 +300,19 @@ func clone[T any](value T) *T {
 	var out T
 	_ = json.Unmarshal(content, &out)
 	return &out
+}
+
+func marketplaceID(config ModelMarketplaceConfig) string {
+	base := "market_" + config.TenantID + "_" + config.ProjectID + "_" + config.PublicModel
+	return strings.Trim(pluginBindingIDRe.ReplaceAllString(base, "_"), "_")
+}
+
+func marketplaceScopeMatches(config ModelMarketplaceConfig, tenantID, projectID string) bool {
+	if config.TenantID != "" && config.TenantID != tenantID {
+		return false
+	}
+	if config.ProjectID != "" && config.ProjectID != projectID {
+		return false
+	}
+	return true
 }
