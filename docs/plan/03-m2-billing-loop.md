@@ -49,7 +49,7 @@
 
 ## 设计来源
 
-- [实施计划 M2](../design/ai_gateway_implementation_plan_v2.md)
-- [系统设计计费能力](../design/ai_gateway_system_design_v2.md)
-- [架构设计账务架构](../design/ai_gateway_architecture_design_v2.md)
-- [任务清单 Epic 8-9](../design/ai_gateway_task_list_v2.md)
+- [实施计划 M2](../design/ai_gateway_implementation_plan.md)
+- [系统设计计费能力](../design/ai_gateway_system_design.md)
+- [架构设计账务架构](../design/ai_gateway_architecture_design.md)
+- [任务清单 M2](../tasks.md)

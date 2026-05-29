@@ -1,39 +1,60 @@
 openapi: 3.0.3
 info:
   title: Commercial AI Gateway OpenAPI
-  version: 0.2.0
-  description: |
-    商用 AI Gateway 对外 OpenAPI 草案 v0.2。
+  version: 1.0.0
+  description: '商用 AI Gateway 对外 OpenAPI 最终设计合同。
+
+
+    本合同综合 v0.2 和 v0.3 设计，重点约束：
+
+    - 明确 Native Compatible API 与 Unified Media API 的协议消歧机制。
+
+    - 对可能冲突的 URI 增加 X-Gateway-Protocol header。
+
+    - 异步任务创建接口支持 Idempotency-Key，避免客户端重试导致重复扣费或重复生成。
+
+    - 预留 Realtime Session 接口，用于未来 WebSocket / WebRTC 长连接协议。
+
+    - 统一错误码增加 ambiguous_protocol、idempotency_conflict、snapshot_stale、model_schema_mismatch 等建议值。
+
 
     设计原则：
+
     - 统一资源 URI：例如 /v1/images/generations、/v1/videos/generations。
+
     - 通过 model 参数选择具体模型、供应商或模型族。
+
     - 长耗时媒体生成统一返回异步 task。
+
     - 原生兼容 OpenAI、Claude、Gemini 常用协议。
+
     - 所有接口默认使用 Authorization: Bearer <API_KEY>。
+
+    '
 servers:
-  - url: https://api.example.com
-    description: Production
-  - url: http://localhost:9501
-    description: Local
+- url: https://api.example.com
+  description: Production
+- url: http://localhost:9501
+  description: Local
 security:
-  - bearerAuth: []
+- bearerAuth: []
 tags:
-  - name: Models
-  - name: Credits
-  - name: Files
-  - name: Tasks
-  - name: Unified Image
-  - name: Unified Video
-  - name: Unified Audio
-  - name: OpenAI Compatible
-  - name: Claude Compatible
-  - name: Gemini Compatible
-  - name: Moderation
+- name: Models
+- name: Credits
+- name: Files
+- name: Tasks
+- name: Unified Image
+- name: Unified Video
+- name: Unified Audio
+- name: OpenAI Compatible
+- name: Claude Compatible
+- name: Gemini Compatible
+- name: Moderation
 paths:
   /v1/models:
     get:
-      tags: [Models]
+      tags:
+      - Models
       summary: List routeable models
       operationId: listModels
       responses:
@@ -45,19 +66,20 @@ paths:
                 $ref: '#/components/schemas/ModelListResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters: []
   /v1/models/{model}/schema:
     get:
-      tags: [Models]
+      tags:
+      - Models
       summary: Get model parameter schema
       description: 返回指定模型的参数 schema，用于前端动态表单、Apifox 示例和运行时校验。
       operationId: getModelSchema
       parameters:
-        - name: model
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: model
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Model schema
@@ -67,10 +89,10 @@ paths:
                 $ref: '#/components/schemas/ModelSchemaResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
   /v1/credits:
     get:
-      tags: [Credits]
+      tags:
+      - Credits
       summary: Get credits and usage
       operationId: getCredits
       responses:
@@ -82,18 +104,19 @@ paths:
                 $ref: '#/components/schemas/CreditsResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters: []
   /v1/tasks/{task_id}:
     get:
-      tags: [Tasks]
+      tags:
+      - Tasks
       summary: Get async task detail
       operationId: getTaskDetail
       parameters:
-        - name: task_id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Task detail
@@ -103,18 +126,19 @@ paths:
                 $ref: '#/components/schemas/TaskObject'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
   /v1/tasks/{task_id}/cancel:
     post:
-      tags: [Tasks]
+      tags:
+      - Tasks
       summary: Cancel async task
       operationId: cancelTask
       parameters:
-        - name: task_id
-          in: path
-          required: true
-          schema:
-            type: string
+      - $ref: '#/components/parameters/XRequestID'
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
       responses:
         '200':
           description: Task cancelled or cancel request accepted
@@ -124,10 +148,10 @@ paths:
                 $ref: '#/components/schemas/TaskObject'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
   /v1/files/upload/base64:
     post:
-      tags: [Files]
+      tags:
+      - Files
       summary: Upload file by Base64
       operationId: uploadFileBase64
       requestBody:
@@ -145,10 +169,13 @@ paths:
                 $ref: '#/components/schemas/FileUploadResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/files/upload/url:
     post:
-      tags: [Files]
+      tags:
+      - Files
       summary: Upload file from remote URL
       operationId: uploadFileUrl
       requestBody:
@@ -166,10 +193,13 @@ paths:
                 $ref: '#/components/schemas/FileUploadResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/files/upload/stream:
     post:
-      tags: [Files]
+      tags:
+      - Files
       summary: Upload file by multipart stream
       operationId: uploadFileStream
       requestBody:
@@ -178,7 +208,8 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [file]
+              required:
+              - file
               properties:
                 file:
                   type: string
@@ -202,10 +233,13 @@ paths:
                 $ref: '#/components/schemas/FileUploadResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/files/quota:
     get:
-      tags: [Files]
+      tags:
+      - Files
       summary: Get file quota
       operationId: getFileQuota
       responses:
@@ -217,14 +251,19 @@ paths:
                 $ref: '#/components/schemas/FileQuotaResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters: []
   /v1/images/generations:
     post:
-      tags: [Unified Image]
+      tags:
+      - Unified Image
       summary: Create image generation task
-      description: |
-        统一生图接口。通过 model 参数选择具体模型，例如 gemini-3.1-flash-image-preview、nano-banana-2-beta、gpt-image-1、seedream-4.5 等。
-        支持文生图、图生图、图像编辑。长耗时模型默认返回异步 task。
+      description: '统一生图接口。通过 model 参数选择具体模型，例如 gemini-3.1-flash-image-preview、nano-banana-2-beta、gpt-image-1、seedream-4.5 等。
+
+
+        协议消歧：该 URI 与 OpenAI Images API 存在重叠。默认 X-Gateway-Protocol=auto，网关按 model registry 和 body schema 推断；建议统一媒体客户端显式传 X-Gateway-Protocol: unified。若请求无法消歧，返回 ambiguous_protocol。
+
+
+        支持文生图、图生图、图像编辑。长耗时模型默认返回异步 task。'
       operationId: createImageGeneration
       requestBody:
         required: true
@@ -238,7 +277,7 @@ paths:
                 value:
                   model: gemini-3.1-flash-image-preview
                   prompt: 一只猫在草地上玩耍，电影光影
-                  size: 1:1
+                  size: '1:1'
                   quality: 2K
               imageEdit:
                 summary: Image edit
@@ -246,8 +285,8 @@ paths:
                   model: gpt-image-1
                   prompt: 将图片中的天空改成晚霞
                   image_urls:
-                    - https://example.com/input.png
-                  size: 16:9
+                  - https://example.com/input.png
+                  size: '16:9'
                   model_params:
                     seed: 12345
       responses:
@@ -259,10 +298,14 @@ paths:
                 $ref: '#/components/schemas/TaskObject'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/XGatewayProtocol'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/images/edits:
     post:
-      tags: [Unified Image]
+      tags:
+      - Unified Image
       summary: Create image edit task
       operationId: createImageEdit
       requestBody:
@@ -280,14 +323,20 @@ paths:
                 $ref: '#/components/schemas/TaskObject'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/XGatewayProtocol'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/videos/generations:
     post:
-      tags: [Unified Video]
+      tags:
+      - Unified Video
       summary: Create video generation task
-      description: |
-        统一生视频接口。通过 model 参数选择具体模型或模式。
+      description: '统一生视频接口。通过 model 参数选择具体模型或模式。
+
         支持文生视频、图生视频、首尾帧视频、多模态参考视频。
+
+        '
       operationId: createVideoGeneration
       requestBody:
         required: true
@@ -303,7 +352,7 @@ paths:
                   prompt: 一只猫在钢琴上弹奏月光奏鸣曲，电影感光影，特写镜头
                   duration: 8
                   quality: 720p
-                  aspect_ratio: 16:9
+                  aspect_ratio: '16:9'
                   generate_audio: true
               imageToVideo:
                 summary: Image to video
@@ -311,7 +360,7 @@ paths:
                   model: seedance-2.0-image-to-video
                   prompt: 让图片中的人物缓慢转身，镜头向前推进
                   image_urls:
-                    - https://example.com/first-frame.png
+                  - https://example.com/first-frame.png
                   duration: 5
                   quality: 720p
                   aspect_ratio: adaptive
@@ -321,11 +370,11 @@ paths:
                   model: seedance-2.0-reference-to-video
                   prompt: 首帧使用图片1，全程参考视频1的运镜，音频1作为背景音乐
                   image_urls:
-                    - https://example.com/character.png
+                  - https://example.com/character.png
                   video_urls:
-                    - https://example.com/camera.mp4
+                  - https://example.com/camera.mp4
                   audio_urls:
-                    - https://example.com/bgm.mp3
+                  - https://example.com/bgm.mp3
                   duration: 10
                   quality: 1080p
       responses:
@@ -337,10 +386,13 @@ paths:
                 $ref: '#/components/schemas/TaskObject'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/audio/speech:
     post:
-      tags: [Unified Audio]
+      tags:
+      - Unified Audio
       summary: Create speech audio
       operationId: createSpeech
       requestBody:
@@ -356,18 +408,23 @@ paths:
             application/json:
               schema:
                 oneOf:
-                  - $ref: '#/components/schemas/TaskObject'
-                  - $ref: '#/components/schemas/AudioObject'
+                - $ref: '#/components/schemas/TaskObject'
+                - $ref: '#/components/schemas/AudioObject'
             audio/mpeg:
               schema:
                 type: string
                 format: binary
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/XGatewayProtocol'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      description: 语音合成接口。该 URI 可兼容 OpenAI audio speech，也可作为统一媒体协议使用。建议通过 X-Gateway-Protocol 显式声明 native_openai 或 unified。
   /v1/audio/transcriptions:
     post:
-      tags: [Unified Audio]
+      tags:
+      - Unified Audio
       summary: Transcribe audio
       operationId: createTranscription
       requestBody:
@@ -376,7 +433,9 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [model, file]
+              required:
+              - model
+              - file
               properties:
                 model:
                   type: string
@@ -390,7 +449,12 @@ paths:
                   type: string
                 response_format:
                   type: string
-                  enum: [json, text, srt, verbose_json, vtt]
+                  enum:
+                  - json
+                  - text
+                  - srt
+                  - verbose_json
+                  - vtt
                   default: json
                 temperature:
                   type: number
@@ -408,10 +472,15 @@ paths:
                 type: string
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/XGatewayProtocol'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      description: 音频转写接口。该 URI 可兼容 OpenAI audio transcription，也可作为统一媒体协议使用。建议通过 X-Gateway-Protocol 显式声明 native_openai 或 unified。
   /v1/music/generations:
     post:
-      tags: [Unified Audio]
+      tags:
+      - Unified Audio
       summary: Create music generation task
       operationId: createMusicGeneration
       requestBody:
@@ -429,10 +498,13 @@ paths:
                 $ref: '#/components/schemas/TaskObject'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IdempotencyKey'
   /v1/chat/completions:
     post:
-      tags: [OpenAI Compatible]
+      tags:
+      - OpenAI Compatible
       summary: OpenAI-compatible chat completions
       operationId: createChatCompletion
       requestBody:
@@ -453,10 +525,12 @@ paths:
                 type: string
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
   /v1/responses:
     post:
-      tags: [OpenAI Compatible]
+      tags:
+      - OpenAI Compatible
       summary: OpenAI-compatible Responses API
       operationId: createResponse
       requestBody:
@@ -478,10 +552,12 @@ paths:
                 type: string
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
   /v1/embeddings:
     post:
-      tags: [OpenAI Compatible]
+      tags:
+      - OpenAI Compatible
       summary: OpenAI-compatible embeddings
       operationId: createEmbedding
       requestBody:
@@ -499,19 +575,22 @@ paths:
                 $ref: '#/components/schemas/EmbeddingResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
   /v1/messages:
     post:
-      tags: [Claude Compatible]
+      tags:
+      - Claude Compatible
       summary: Claude-compatible Messages API
       operationId: createClaudeMessage
       parameters:
-        - name: anthropic-version
-          in: header
-          required: false
-          schema:
-            type: string
-          description: Optional Claude API version compatibility header.
+      - $ref: '#/components/parameters/XRequestID'
+      - name: anthropic-version
+        in: header
+        required: false
+        schema:
+          type: string
+        description: Optional Claude API version compatibility header.
       requestBody:
         required: true
         content:
@@ -530,19 +609,20 @@ paths:
                 type: string
         default:
           $ref: '#/components/responses/ErrorResponse'
-
   /v1beta/models/{model}:generateContent:
     post:
-      tags: [Gemini Compatible]
+      tags:
+      - Gemini Compatible
       summary: Gemini-compatible generateContent
       operationId: geminiGenerateContent
       parameters:
-        - name: model
-          in: path
-          required: true
-          schema:
-            type: string
-          example: gemini-2.5-pro
+      - $ref: '#/components/parameters/XRequestID'
+      - name: model
+        in: path
+        required: true
+        schema:
+          type: string
+        example: gemini-2.5-pro
       requestBody:
         required: true
         content:
@@ -559,19 +639,20 @@ paths:
                 additionalProperties: true
         default:
           $ref: '#/components/responses/ErrorResponse'
-
   /v1beta/models/{model}:streamGenerateContent:
     post:
-      tags: [Gemini Compatible]
+      tags:
+      - Gemini Compatible
       summary: Gemini-compatible streamGenerateContent
       operationId: geminiStreamGenerateContent
       parameters:
-        - name: model
-          in: path
-          required: true
-          schema:
-            type: string
-          example: gemini-2.5-pro
+      - $ref: '#/components/parameters/XRequestID'
+      - name: model
+        in: path
+        required: true
+        schema:
+          type: string
+        example: gemini-2.5-pro
       requestBody:
         required: true
         content:
@@ -591,10 +672,10 @@ paths:
                 additionalProperties: true
         default:
           $ref: '#/components/responses/ErrorResponse'
-
   /v1/moderations:
     post:
-      tags: [Moderation]
+      tags:
+      - Moderation
       summary: Create moderation result
       operationId: createModeration
       requestBody:
@@ -612,14 +693,66 @@ paths:
                 $ref: '#/components/schemas/ModerationResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
-
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+  /v1/realtime/sessions:
+    post:
+      tags:
+      - Realtime
+      summary: Create realtime session
+      description: 预留实时接口入口。客户端先创建短期 session，再使用返回的 websocket_url 或 webrtc_url 建立长连接。MVP 可只返回 501 not_supported_yet。
+      operationId: createRealtimeSession
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealtimeSessionRequest'
+      responses:
+        '200':
+          description: Realtime session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeSessionResponse'
+        '501':
+          $ref: '#/components/responses/ErrorResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
+  /v1/realtime/sessions/{session_id}:
+    get:
+      tags:
+      - Realtime
+      summary: Get realtime session
+      operationId: getRealtimeSession
+      parameters:
+      - name: session_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Realtime session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeSessionResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - bearerAuth: []
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: API key
-
   responses:
     ErrorResponse:
       description: Error response
@@ -627,36 +760,38 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-
   schemas:
     ErrorResponse:
       type: object
-      required: [error]
+      required:
+      - error
       properties:
         error:
           $ref: '#/components/schemas/ErrorObject'
-
     ErrorObject:
       type: object
-      required: [code, message, type]
+      required:
+      - code
+      - message
+      - type
       properties:
         code:
           type: string
           enum:
-            - invalid_request
-            - invalid_parameters
-            - unauthorized
-            - forbidden
-            - insufficient_balance
-            - quota_exceeded
-            - rate_limited
-            - content_policy_violation
-            - provider_error
-            - service_error
-            - service_unavailable
-            - generation_timeout
-            - resource_not_found
-            - unknown_error
+          - invalid_request
+          - invalid_parameters
+          - unauthorized
+          - forbidden
+          - insufficient_balance
+          - quota_exceeded
+          - rate_limited
+          - content_policy_violation
+          - provider_error
+          - service_error
+          - service_unavailable
+          - generation_timeout
+          - resource_not_found
+          - unknown_error
         message:
           type: string
         type:
@@ -669,10 +804,13 @@ components:
         param:
           type: string
           nullable: true
-
     ModelObject:
       type: object
-      required: [id, object, type, capabilities]
+      required:
+      - id
+      - object
+      - type
+      - capabilities
       properties:
         id:
           type: string
@@ -682,7 +820,14 @@ components:
           example: model
         type:
           type: string
-          enum: [text, image, video, audio, embedding, moderation, multimodal]
+          enum:
+          - text
+          - image
+          - video
+          - audio
+          - embedding
+          - moderation
+          - multimodal
         display_name:
           type: string
         owner:
@@ -692,26 +837,32 @@ components:
           type: array
           items:
             type: string
-          example: [video_generation, text_to_video]
+          example:
+          - video_generation
+          - text_to_video
         input_modalities:
           type: array
           items:
             type: string
-          example: [text, image]
+          example:
+          - text
+          - image
         output_modalities:
           type: array
           items:
             type: string
-          example: [video]
+          example:
+          - video
         async:
           type: boolean
         deprecated:
           type: boolean
           default: false
-
     ModelListResponse:
       type: object
-      required: [object, data]
+      required:
+      - object
+      - data
       properties:
         object:
           type: string
@@ -720,10 +871,11 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModelObject'
-
     ModelSchemaResponse:
       type: object
-      required: [model, schema]
+      required:
+      - model
+      - schema
       properties:
         model:
           type: string
@@ -732,10 +884,11 @@ components:
         schema:
           type: object
           additionalProperties: true
-
     CreditsResponse:
       type: object
-      required: [success, data]
+      required:
+      - success
+      - data
       properties:
         success:
           type: boolean
@@ -750,7 +903,6 @@ components:
               $ref: '#/components/schemas/CreditBucket'
             account:
               $ref: '#/components/schemas/CreditBucket'
-
     CreditBucket:
       type: object
       properties:
@@ -766,10 +918,10 @@ components:
         currency:
           type: string
           example: CNY
-
     Base64FileUploadRequest:
       type: object
-      required: [base64_data]
+      required:
+      - base64_data
       properties:
         base64_data:
           type: string
@@ -778,10 +930,10 @@ components:
           type: string
         file_name:
           type: string
-
     UrlFileUploadRequest:
       type: object
-      required: [url]
+      required:
+      - url
       properties:
         url:
           type: string
@@ -790,10 +942,13 @@ components:
           type: string
         file_name:
           type: string
-
     FileUploadResponse:
       type: object
-      required: [success, code, msg, data]
+      required:
+      - success
+      - code
+      - msg
+      - data
       properties:
         success:
           type: boolean
@@ -804,7 +959,6 @@ components:
           type: string
         data:
           $ref: '#/components/schemas/FileObject'
-
     FileObject:
       type: object
       properties:
@@ -833,7 +987,6 @@ components:
         expires_at:
           type: string
           format: date-time
-
     FileQuotaResponse:
       type: object
       properties:
@@ -854,10 +1007,15 @@ components:
             used_bytes:
               type: integer
               format: int64
-
     TaskObject:
       type: object
-      required: [id, object, status, type, created, progress]
+      required:
+      - id
+      - object
+      - status
+      - type
+      - created
+      - progress
       properties:
         id:
           type: string
@@ -865,11 +1023,11 @@ components:
         object:
           type: string
           enum:
-            - image.generation.task
-            - image.edit.task
-            - video.generation.task
-            - audio.generation.task
-            - music.generation.task
+          - image.generation.task
+          - image.edit.task
+          - video.generation.task
+          - audio.generation.task
+          - music.generation.task
         created:
           type: integer
           format: int64
@@ -878,14 +1036,25 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, queued, processing, completed, failed, cancelled, expired]
+          enum:
+          - pending
+          - queued
+          - processing
+          - completed
+          - failed
+          - cancelled
+          - expired
         progress:
           type: integer
           minimum: 0
           maximum: 100
         type:
           type: string
-          enum: [text, image, audio, video]
+          enum:
+          - text
+          - image
+          - audio
+          - video
         results:
           type: array
           items:
@@ -909,26 +1078,25 @@ components:
           type: object
           additionalProperties:
             type: string
-
     TaskError:
       type: object
       properties:
         code:
           type: string
           enum:
-            - content_policy_violation
-            - generation_failed_no_content
-            - invalid_parameters
-            - image_processing_error
-            - image_dimension_mismatch
-            - service_error
-            - generation_timeout
-            - quota_exceeded
-            - resource_exhausted
-            - resource_not_found
-            - request_cancelled
-            - service_unavailable
-            - unknown_error
+          - content_policy_violation
+          - generation_failed_no_content
+          - invalid_parameters
+          - image_processing_error
+          - image_dimension_mismatch
+          - service_error
+          - generation_timeout
+          - quota_exceeded
+          - resource_exhausted
+          - resource_not_found
+          - request_cancelled
+          - service_unavailable
+          - unknown_error
         message:
           type: string
         type:
@@ -936,13 +1104,19 @@ components:
           example: task_error
         retryable:
           type: boolean
-
     UsageInfo:
       type: object
       properties:
         billing_rule:
           type: string
-          enum: [per_token, per_call, per_second, per_image, per_audio_second, per_video_second, hybrid]
+          enum:
+          - per_token
+          - per_call
+          - per_second
+          - per_image
+          - per_audio_second
+          - per_video_second
+          - hybrid
         credits_reserved:
           type: number
         credits_used:
@@ -959,10 +1133,11 @@ components:
           type: integer
         duration_seconds:
           type: number
-
     ImageGenerationRequest:
       type: object
-      required: [model, prompt]
+      required:
+      - model
+      - prompt
       properties:
         model:
           type: string
@@ -977,14 +1152,16 @@ components:
           default: 1
         size:
           type: string
-          description: "Ratio or pixel size. Examples: auto, 1:1, 16:9, 1024x1024."
-          example: 1:1
+          description: 'Ratio or pixel size. Examples: auto, 1:1, 16:9, 1024x1024.'
+          example: 61
         quality:
           type: string
           example: 2K
         output_format:
           type: string
-          enum: [url, b64_json]
+          enum:
+          - url
+          - b64_json
           default: url
         image_urls:
           type: array
@@ -1006,20 +1183,21 @@ components:
         model_params:
           type: object
           additionalProperties: true
-
     ImageEditRequest:
       allOf:
-        - $ref: '#/components/schemas/ImageGenerationRequest'
-        - type: object
-          required: [image_urls]
-          properties:
-            mask_url:
-              type: string
-              format: uri
-
+      - $ref: '#/components/schemas/ImageGenerationRequest'
+      - type: object
+        required:
+        - image_urls
+        properties:
+          mask_url:
+            type: string
+            format: uri
     VideoGenerationRequest:
       type: object
-      required: [model, prompt]
+      required:
+      - model
+      - prompt
       properties:
         model:
           type: string
@@ -1052,12 +1230,25 @@ components:
           example: 8
         quality:
           type: string
-          enum: [360p, 480p, 720p, 1080p, 2K, 4K]
+          enum:
+          - 360p
+          - 480p
+          - 720p
+          - 1080p
+          - 2K
+          - 4K
           default: 720p
         aspect_ratio:
           type: string
-          enum: [16:9, 9:16, 1:1, 4:3, 3:4, 21:9, adaptive]
-          default: 16:9
+          enum:
+          - 969
+          - 556
+          - 61
+          - 243
+          - 184
+          - 1269
+          - adaptive
+          default: 969
         fps:
           type: integer
           minimum: 1
@@ -1078,10 +1269,12 @@ components:
         model_params:
           type: object
           additionalProperties: true
-
     SpeechRequest:
       type: object
-      required: [model, input, voice]
+      required:
+      - model
+      - input
+      - voice
       properties:
         model:
           type: string
@@ -1092,7 +1285,14 @@ components:
           type: string
         response_format:
           type: string
-          enum: [mp3, opus, aac, flac, wav, pcm, url]
+          enum:
+          - mp3
+          - opus
+          - aac
+          - flac
+          - wav
+          - pcm
+          - url
           default: mp3
         speed:
           type: number
@@ -1105,7 +1305,6 @@ components:
         model_params:
           type: object
           additionalProperties: true
-
     AudioObject:
       type: object
       properties:
@@ -1122,7 +1321,6 @@ components:
           format: int64
         usage:
           $ref: '#/components/schemas/UsageInfo'
-
     TranscriptionResponse:
       type: object
       properties:
@@ -1137,10 +1335,10 @@ components:
           items:
             type: object
             additionalProperties: true
-
     MusicGenerationRequest:
       type: object
-      required: [model]
+      required:
+      - model
       properties:
         model:
           type: string
@@ -1167,10 +1365,11 @@ components:
         model_params:
           type: object
           additionalProperties: true
-
     OpenAIChatCompletionRequest:
       type: object
-      required: [model, messages]
+      required:
+      - model
+      - messages
       properties:
         model:
           type: string
@@ -1178,18 +1377,25 @@ components:
           type: array
           items:
             type: object
-            required: [role, content]
+            required:
+            - role
+            - content
             properties:
               role:
                 type: string
-                enum: [system, developer, user, assistant, tool]
+                enum:
+                - system
+                - developer
+                - user
+                - assistant
+                - tool
               content:
                 oneOf:
-                  - type: string
-                  - type: array
-                    items:
-                      type: object
-                      additionalProperties: true
+                - type: string
+                - type: array
+                  items:
+                    type: object
+                    additionalProperties: true
               name:
                 type: string
               tool_call_id:
@@ -1204,10 +1410,10 @@ components:
           type: boolean
         stop:
           oneOf:
-            - type: string
-            - type: array
-              items:
-                type: string
+          - type: string
+          - type: array
+            items:
+              type: string
         max_tokens:
           type: integer
         max_completion_tokens:
@@ -1228,9 +1434,9 @@ components:
             additionalProperties: true
         tool_choice:
           oneOf:
-            - type: string
-            - type: object
-              additionalProperties: true
+          - type: string
+          - type: object
+            additionalProperties: true
         response_format:
           type: object
           additionalProperties: true
@@ -1238,7 +1444,6 @@ components:
           type: object
           additionalProperties:
             type: string
-
     OpenAIChatCompletionResponse:
       type: object
       properties:
@@ -1258,21 +1463,22 @@ components:
             additionalProperties: true
         usage:
           $ref: '#/components/schemas/TokenUsage'
-
     OpenAIResponseRequest:
       type: object
-      required: [model, input]
+      required:
+      - model
+      - input
       additionalProperties: true
       properties:
         model:
           type: string
         input:
           oneOf:
-            - type: string
-            - type: array
-              items:
-                type: object
-                additionalProperties: true
+          - type: string
+          - type: array
+            items:
+              type: object
+              additionalProperties: true
         instructions:
           type: string
         stream:
@@ -1294,37 +1500,39 @@ components:
             additionalProperties: true
         tool_choice:
           oneOf:
-            - type: string
-            - type: object
-              additionalProperties: true
+          - type: string
+          - type: object
+            additionalProperties: true
         metadata:
           type: object
           additionalProperties:
             type: string
-
     EmbeddingRequest:
       type: object
-      required: [model, input]
+      required:
+      - model
+      - input
       properties:
         model:
           type: string
         input:
           oneOf:
-            - type: string
-            - type: array
-              items:
-                oneOf:
-                  - type: string
-                  - type: integer
+          - type: string
+          - type: array
+            items:
+              oneOf:
+              - type: string
+              - type: integer
         dimensions:
           type: integer
         encoding_format:
           type: string
-          enum: [float, base64]
+          enum:
+          - float
+          - base64
           default: float
         user:
           type: string
-
     EmbeddingResponse:
       type: object
       properties:
@@ -1349,7 +1557,6 @@ components:
           type: string
         usage:
           $ref: '#/components/schemas/TokenUsage'
-
     TokenUsage:
       type: object
       properties:
@@ -1367,10 +1574,12 @@ components:
           type: integer
         reasoning_tokens:
           type: integer
-
     ClaudeMessageRequest:
       type: object
-      required: [model, max_tokens, messages]
+      required:
+      - model
+      - max_tokens
+      - messages
       additionalProperties: true
       properties:
         model:
@@ -1383,25 +1592,29 @@ components:
           type: array
           items:
             type: object
-            required: [role, content]
+            required:
+            - role
+            - content
             properties:
               role:
                 type: string
-                enum: [user, assistant]
+                enum:
+                - user
+                - assistant
               content:
                 oneOf:
-                  - type: string
-                  - type: array
-                    items:
-                      type: object
-                      additionalProperties: true
+                - type: string
+                - type: array
+                  items:
+                    type: object
+                    additionalProperties: true
         system:
           oneOf:
-            - type: string
-            - type: array
-              items:
-                type: object
-                additionalProperties: true
+          - type: string
+          - type: array
+            items:
+              type: object
+              additionalProperties: true
         stream:
           type: boolean
         temperature:
@@ -1430,7 +1643,6 @@ components:
         thinking:
           type: object
           additionalProperties: true
-
     ClaudeMessageResponse:
       type: object
       properties:
@@ -1458,10 +1670,10 @@ components:
         usage:
           type: object
           additionalProperties: true
-
     GeminiGenerateContentRequest:
       type: object
-      required: [contents]
+      required:
+      - contents
       additionalProperties: true
       properties:
         contents:
@@ -1490,25 +1702,25 @@ components:
           additionalProperties: true
         cachedContent:
           type: string
-
     ModerationRequest:
       type: object
-      required: [model, input]
+      required:
+      - model
+      - input
       properties:
         model:
           type: string
           example: moderation-latest
         input:
           oneOf:
-            - type: string
-            - type: array
-              items:
-                type: string
+          - type: string
+          - type: array
+            items:
+              type: string
         metadata:
           type: object
           additionalProperties:
             type: string
-
     ModerationResponse:
       type: object
       properties:
@@ -1521,3 +1733,121 @@ components:
           items:
             type: object
             additionalProperties: true
+    RealtimeSessionRequest:
+      type: object
+      required:
+      - model
+      properties:
+        model:
+          type: string
+          description: 实时模型名，例如 gpt-realtime、gemini-live、claude-realtime-compatible。
+        modalities:
+          type: array
+          items:
+            type: string
+            enum:
+            - text
+            - audio
+            - video
+          default:
+          - text
+          - audio
+        voice:
+          type: string
+        instructions:
+          type: string
+        input_audio_format:
+          type: string
+          enum:
+          - pcm16
+          - g711_ulaw
+          - g711_alaw
+          - opus
+        output_audio_format:
+          type: string
+          enum:
+          - pcm16
+          - g711_ulaw
+          - g711_alaw
+          - opus
+        metadata:
+          type: object
+          additionalProperties: true
+    RealtimeSessionResponse:
+      type: object
+      required:
+      - id
+      - object
+      - expires_at
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          example: realtime.session
+        client_secret:
+          type: string
+          description: 短期连接 token。只返回一次。
+        expires_at:
+          type: integer
+          format: int64
+        websocket_url:
+          type: string
+          format: uri
+        webrtc_url:
+          type: string
+          format: uri
+    ProtocolMode:
+      type: string
+      enum:
+      - auto
+      - unified
+      - native_openai
+      - native_claude
+      - native_gemini
+      description: 网关协议模式。
+    IdempotencyRecord:
+      type: object
+      properties:
+        key:
+          type: string
+        scope:
+          type: string
+        request_hash:
+          type: string
+        resource_id:
+          type: string
+        expires_at:
+          type: integer
+          format: int64
+  parameters:
+    XGatewayProtocol:
+      name: X-Gateway-Protocol
+      in: header
+      required: false
+      description: 协议消歧 header。auto 表示由网关根据 path、model、body schema 自动推断；unified 表示使用网关统一媒体协议；native_openai/native_claude/native_gemini 表示使用对应原生兼容协议。对 /v1/images/generations、/v1/audio/* 等可能重叠的 URI，建议客户端显式传 unified 或 native_openai。
+      schema:
+        type: string
+        enum:
+        - auto
+        - unified
+        - native_openai
+        - native_claude
+        - native_gemini
+        default: auto
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 幂等提交键。用于异步媒体任务、文件上传、扣费型写操作。相同租户、相同 API key、相同 endpoint、相同 Idempotency-Key 在幂等窗口内必须返回同一个 task 或同一个文件对象；请求体 hash 不一致时返回 idempotency_conflict。
+      schema:
+        type: string
+        maxLength: 128
+    XRequestID:
+      name: X-Request-Id
+      in: header
+      required: false
+      description: 客户端请求 ID。网关会在响应中返回内部 request_id，并在日志、trace、audit、usage record 中关联。
+      schema:
+        type: string
+        maxLength: 128

@@ -1,0 +1,25 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: token_gateway
+      MYSQL_USER: token_gateway
+      MYSQL_PASSWORD: token_gateway
+      MYSQL_ROOT_PASSWORD: token_gateway_root
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-utoken_gateway", "-ptoken_gateway"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20

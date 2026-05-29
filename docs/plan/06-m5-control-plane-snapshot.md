@@ -1,4 +1,4 @@
-# M5 控制面与快照
+# M5 Control Plane + Snapshot
 
 ## 阶段目标
 
@@ -9,6 +9,7 @@
 - Admin auth、Tenant API、APIKey API、Model API、Provider API、Route API、Price API、Limit API、Snapshot API 和 Audit API。
 - Provider credential encryption 和 rotation 基础能力。
 - Snapshot builder、validator、publisher、watcher、rollback 和 gateway cache 热加载。
+- API key revocation blacklist。
 - snapshot version、staleness、publish errors 相关 metrics。
 
 ## 核心实现顺序
@@ -20,6 +21,7 @@
 5. Snapshot publisher 发布 active version 到 Redis 或 configd。
 6. gateway watcher 热加载并原子替换 IndexedSnapshot。
 7. 支持 rollback 到 previous active snapshot。
+8. API key revoke 写入 Redis blacklist，缩短最终一致性窗口。
 
 ## 关键设计约束
 
@@ -27,6 +29,8 @@
 - 控制面配置变更不能让数据面实时查管理表。
 - provider credential 不以明文进入 snapshot、日志、metrics 或 trace。
 - snapshot 发布必须有 audit 记录和可观察 version。
+- API key revoke 不能只等待下一版 snapshot，必须有短时 blacklist。
+- snapshot stale policy 必须明确 fail open / fail closed 行为。
 
 ## 验收标准
 
@@ -36,6 +40,7 @@
 - 旧请求结算使用请求时 pinned price。
 - 发布坏 snapshot 被 validator 拒绝。
 - snapshot version 出现在 metrics 和诊断 header。
+- API key revoke 在目标 SLA 内生效。
 
 ## 风险与处理
 
@@ -44,10 +49,11 @@
 | 控制面绕过 validator | snapshot 发布只允许从 validator 成功结果进入 active |
 | 配置更新影响进行中请求 | 请求 state pin 住 snapshot version 和 price |
 | credential 泄露 | snapshot 只携带 CredentialRef，解密有审计 |
+| key revoke 最终一致窗口过长 | Redis blacklist 作为快速撤销通道 |
 
 ## 设计来源
 
-- [实施计划 M5](../design/ai_gateway_implementation_plan_v2.md)
-- [架构设计 Snapshot 架构](../design/ai_gateway_architecture_design_v2.md)
-- [系统设计多租户和安全](../design/ai_gateway_system_design_v2.md)
-- [任务清单 Epic 13](../design/ai_gateway_task_list_v2.md)
+- [实施计划 M5](../design/ai_gateway_implementation_plan.md)
+- [架构设计 Snapshot 架构](../design/ai_gateway_architecture_design.md)
+- [系统设计多租户和安全](../design/ai_gateway_system_design.md)
+- [任务清单 M5](../tasks.md)

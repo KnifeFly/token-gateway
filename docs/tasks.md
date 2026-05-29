@@ -1,168 +1,168 @@
 # 商用 AI Gateway 执行任务清单
 
-本文是从 `docs/design` 设计包整理出的执行看板。任务状态默认全部为 `[ ]`，实现时按阶段逐项勾选。
+本文是最终设计包的唯一执行看板，综合了 v0.2 的细粒度商用任务和 v0.3 的架构修订。实现时只维护本文件的任务状态，不再在 `docs/design` 下维护第二份 task list。
+
+## 当前状态
+
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地。
+- 未开始：M1 数据面鉴权、协议分类、路由、provider adapter、snapshot runtime 和后续账务能力。
+- 阻塞：无。
+- 下一步建议：进入 M1，先定义 RequestState、APIClassifier、OpenAI Chat Parser、API key extractor/hash 校验和最小 RuntimeSnapshot。
+- 最近验证：`go test ./...`、`make test`、`make lint`、`make race`、`make build`、`git diff --check` 通过；compose smoke 通过，`migrate-up`、`/healthz`、`/readyz`、`/metrics`、`migrate-down` 均成功。
 
 ## 使用规则
 
-- 任务 ID 采用 `M0/E0-T01/P0` 格式，保持阶段、Epic、原始任务号和优先级稳定。
-- 第一轮优先完成 `E0` 到 `E10` 的 P0 任务，形成最小商用内核。
-- M4-M8 保留可执行的 P1/P2 粗粒度任务，避免在早期过度拆分。
-- 每个任务完成时必须满足阶段通用 Definition of Done：代码、测试、错误码、metrics、trace、日志、审计、配置、OpenAPI、文档和故障场景说明按影响范围更新。
+- 任务 ID 采用 `M{milestone}/E{epic}-T{number}/P{priority}` 格式。
+- 第一轮优先完成 M0-M3 的 P0 任务，形成最小商用内核。
+- M4-M9 只拆到可执行粒度，避免早期过度展开控制面、插件和运营后台。
+- 每个任务完成时必须按影响范围更新代码、测试、迁移、OpenAPI、ADR、metrics、trace、日志、审计、配置、计划和故障说明。
 
-## 第一轮 P0 任务
+## M0 基础工程与文档归一
 
-| 状态 | ID | 阶段 | 优先级 | 任务 | 目标文件或模块 | 依赖 | 验收标准 |
-|---|---|---|---|---|---|---|---|
-| [ ] | M0/E0-T01/P0 | M0 | P0 | 初始化 Go module 和目录结构 | `cmd/`, `internal/`, `pkg/` | 无 | `go test ./...` 可运行 |
-| [ ] | M0/E0-T02/P0 | M0 | P0 | 实现 YAML 配置加载和 ENV override | `internal/infra/conf/config.go` | E0-T01 | 默认配置、文件配置、ENV 覆盖测试通过 |
-| [ ] | M0/E0-T03/P0 | M0 | P0 | 实现统一错误包 | `pkg/apperr/errors.go` | E0-T01 | 支持 code、status、type、retryable、safe |
-| [ ] | M0/E0-T04/P0 | M0 | P0 | 接入结构化日志 | `internal/infra/log/logger.go` | E0-T02 | request_id 和 trace_id 字段可输出 |
-| [ ] | M0/E0-T05/P0 | M0 | P0 | 建立 HTTP server 基础 | `internal/transport/httpserver` | E0-T02,E0-T04 | healthz、readyz、metrics 可访问 |
-| [ ] | M0/E0-T06/P0 | M0 | P0 | 初始化 OpenTelemetry | `internal/infra/tracing` | E0-T02 | trace exporter 可配置关闭和开启 |
-| [ ] | M0/E0-T07/P0 | M0 | P0 | 初始化 Prometheus metrics | `internal/infra/metrics` | E0-T05 | `/metrics` 输出标准格式 |
-| [ ] | M0/E0-T08/P0 | M0 | P0 | 初始化 DB | `internal/infra/db` | E0-T02 | 支持 ping、pool config、close |
-| [ ] | M0/E0-T09/P0 | M0 | P0 | 初始化 Redis | `internal/infra/redis` | E0-T02 | 支持 ping、close、db 选择 |
-| [ ] | M0/E0-T10/P0 | M0 | P0 | 建立 migration 框架 | `migrations/`, `internal/infra/db/migrate.go` | E0-T08 | 本地能 migrate up/down |
-| [ ] | M0/E0-T11/P0 | M0 | P0 | 补齐 Makefile 开发入口 | `Makefile` | E0-T01 | 提供 test、lint、race、build、run |
-| [ ] | M0/E0-T12/P0 | M0 | P0 | 建立 CI | `.github/workflows/ci.yml` | E0-T11 | PR 触发 test、race、lint |
-| [ ] | M0/E1-T01/P0 | M0 | P0 | 实现 Tenant 和 Account 实体 | `internal/domain/tenant` | E0-T01 | Validate 测试通过 |
-| [ ] | M0/E1-T02/P0 | M0 | P0 | 实现 Project 和 APIKey 实体 | `internal/domain/identity` | E1-T01 | key status、expiry、scope 校验通过 |
-| [ ] | M0/E1-T03/P0 | M0 | P0 | 实现 API key hash 工具 | `internal/domain/identity/key_hasher.go` | E1-T02 | 不存明文，可校验 |
-| [ ] | M0/E1-T04/P0 | M0 | P0 | 实现 PublicModel 和 Capability | `internal/domain/modelcatalog` | E0-T01 | 支持 chat、image、video、audio |
-| [ ] | M0/E1-T05/P0 | M0 | P0 | 实现 ModelSchema | `internal/domain/modelcatalog/schema.go` | E1-T04 | JSON schema 可校验 |
-| [ ] | M0/E1-T06/P0 | M0 | P0 | 实现 ProviderChannel | `internal/domain/provider/channel.go` | E0-T01 | status、priority、weight 校验通过 |
-| [ ] | M0/E1-T07/P0 | M0 | P0 | 实现 ProviderCredentialRef | `internal/domain/provider/credential.go` | E1-T06 | 不暴露明文 |
-| [ ] | M0/E1-T08/P0 | M0 | P0 | 实现 ProviderModelMapping | `internal/domain/provider/mapping.go` | E1-T04,E1-T06 | capability 和 stream 校验通过 |
-| [ ] | M0/E1-T09/P0 | M0 | P0 | 实现 RoutePolicy | `internal/domain/routing/policy.go` | E1-T08 | retry、fallback、strategy 校验通过 |
-| [ ] | M0/E1-T10/P0 | M0 | P0 | 实现 PriceRule | `internal/domain/pricing/price_rule.go` | E1-T04 | 金额使用 micros，不用 float |
-| [ ] | M0/E1-T11/P0 | M0 | P0 | 实现 LimitRule | `internal/domain/policy/limit_rule.go` | E1-T02,E1-T04 | scope 和 values 校验通过 |
-| [ ] | M0/E1-T12/P0 | M0 | P0 | 实现 Billing entities | `internal/domain/billing` | E1-T10 | hold、attempt、ledger 状态机测试通过 |
-| [ ] | M0/E1-T13/P0 | M0 | P0 | 实现 Task entities | `internal/domain/task` | E0-T01 | queued、running、succeeded、failed、canceled 状态有效 |
-| [ ] | M0/E1-T14/P0 | M0 | P0 | 实现 Audit entity | `internal/domain/audit` | E1-T01 | actor、action、resource、metadata 可表达 |
-| [ ] | M0/E2-T01/P0 | M0 | P0 | 新增 identity tables migration | `migrations/000001_identity.sql` | E0-T10,E1-T01,E1-T02 | accounts、projects、api_keys 表可迁移 |
-| [ ] | M0/E2-T02/P0 | M0 | P0 | 新增 model catalog tables | `migrations/000002_models.sql` | E0-T10,E1-T04,E1-T05 | models、aliases、schema 表可迁移 |
-| [ ] | M0/E2-T03/P0 | M0 | P0 | 新增 provider tables | `migrations/000003_provider.sql` | E0-T10,E1-T06,E1-T08 | channels、credentials、mappings 表可迁移 |
-| [ ] | M0/E2-T04/P0 | M0 | P0 | 新增 routing tables | `migrations/000004_routing.sql` | E0-T10,E1-T09 | policies 和 channels 绑定可迁移 |
-| [ ] | M0/E2-T05/P0 | M0 | P0 | 新增 pricing、limit、plugin tables | `migrations/000005_policy.sql` | E0-T10,E1-T10,E1-T11 | price_rules、limit_rules、plugin_bindings 表可迁移 |
-| [ ] | M0/E2-T06/P0 | M0 | P0 | 新增 billing tables | `migrations/000006_billing.sql` | E0-T10,E1-T12 | balances、holds、attempts、records、ledger 表可迁移 |
-| [ ] | M0/E2-T07/P0 | M0 | P0 | 新增 task 和 file tables | `migrations/000007_tasks_files.sql` | E0-T10,E1-T13 | tasks、files、callback_outbox 表可迁移 |
-| [ ] | M0/E2-T08/P0 | M0 | P0 | 新增 audit 和 outbox tables | `migrations/000008_audit_outbox.sql` | E0-T10,E1-T14 | audit_events、outbox_events 表可迁移 |
-| [ ] | M0/E2-T09/P0 | M0 | P0 | 实现 Identity repository | `internal/infra/store/sql/identity_repository.go` | E2-T01 | CRUD 和 repository tests 通过 |
-| [ ] | M0/E2-T10/P0 | M0 | P0 | 实现 Model repository | `internal/infra/store/sql/model_repository.go` | E2-T02 | 可 list active models |
-| [ ] | M0/E2-T11/P0 | M0 | P0 | 实现 Provider repository | `internal/infra/store/sql/provider_repository.go` | E2-T03 | 返回 encrypted credential ref |
-| [ ] | M0/E2-T12/P0 | M0 | P0 | 实现 Routing repository | `internal/infra/store/sql/routing_repository.go` | E2-T04,E2-T05 | 可读取 policies 和 bindings |
-| [ ] | M0/E2-T13/P0 | M0 | P0 | 实现 Billing repository | `internal/infra/store/sql/billing_repository.go` | E2-T06 | transaction tests 通过 |
-| [ ] | M1/E3-T01/P0 | M1 | P0 | 定义 RequestState | `internal/dataplane/engine/state.go` | E1 全部 P0 | 字段覆盖同步、stream、任务和结算生命周期 |
-| [ ] | M1/E3-T02/P0 | M1 | P0 | 定义 GatewayEngine 结构体 | `internal/dataplane/engine/engine.go` | E3-T01 | 可注入 snapshot、parser、auth、router、dispatcher 等依赖 |
-| [ ] | M1/E3-T03/P0 | M1 | P0 | 实现 APIClassifier | `internal/dataplane/classifier` | E3-T02 | method/path 映射到 canonical API |
-| [ ] | M1/E3-T04/P0 | M1 | P0 | 实现 BodyStore | `internal/dataplane/parser/body_store.go` | E3-T03 | 小 body 进内存，大 body 进临时文件 |
-| [ ] | M1/E3-T05/P0 | M1 | P0 | 实现 OpenAI chat parser | `internal/dataplane/parser/openai_parser.go` | E3-T04 | 解析 model、messages、stream、usage estimate |
-| [ ] | M1/E3-T06/P0 | M1 | P0 | 实现 CredentialExtractor | `internal/dataplane/auth/credential.go` | E3-T03 | Bearer、x-api-key、query key 冲突检测 |
-| [ ] | M1/E3-T07/P0 | M1 | P0 | 实现 Authenticator | `internal/dataplane/auth/authenticator.go` | E1-T03,E3-T06,E4-T04 | API key hash 校验通过 |
-| [ ] | M1/E3-T08/P0 | M1 | P0 | 实现 PolicyEvaluator | `internal/dataplane/policy/evaluator.go` | E3-T07 | IP、model、scope 校验通过 |
-| [ ] | M1/E3-T09/P0 | M1 | P0 | 实现 Engine Handle 主流程 | `internal/dataplane/engine/handle.go` | E3-T02 至 E3-T08 | happy path 单测通过 |
-| [ ] | M1/E3-T10/P0 | M1 | P0 | 实现 ErrorMapper | `internal/dataplane/errors/mapper.go` | E0-T03,E3-T03 | OpenAI、Claude、Gemini 错误格式可输出 |
-| [ ] | M1/E4-T01/P0 | M1 | P0 | 定义 RuntimeSnapshot struct | `internal/controlplane/snapshot/types.go` | E1 全部 P0 | 包含 api_keys、models、channels、policies |
-| [ ] | M1/E4-T02/P0 | M1 | P0 | 实现 Snapshot codec | `internal/controlplane/snapshot/codec.go` | E4-T01 | JSON marshal 和 checksum 测试通过 |
-| [ ] | M1/E4-T03/P0 | M1 | P0 | 实现 Snapshot validator | `internal/controlplane/snapshot/validator.go` | E4-T01 | 坏配置被拒绝 |
-| [ ] | M1/E4-T04/P0 | M1 | P0 | 实现 IndexedSnapshot | `internal/dataplane/snapshot/index.go` | E4-T01,E4-T03 | key、model、route、price 索引可用 |
-| [ ] | M1/E4-T05/P0 | M1 | P0 | 实现 Redis snapshot store | `internal/infra/snapshotstore/redis.go` | E0-T09,E4-T02 | publish、load、watch 可用 |
-| [ ] | M1/E4-T06/P0 | M1 | P0 | 实现 Gateway snapshot cache | `internal/dataplane/snapshot/cache.go` | E4-T04,E4-T05 | local atomic pointer 热更新 |
-| [ ] | M1/E5-T01/P0 | M1 | P0 | 实现 RoutePlanner | `internal/dataplane/routing/planner.go` | E4-T04 | Plan 输出 RouteDecision |
-| [ ] | M1/E5-T02/P0 | M1 | P0 | 实现 PolicyResolver | `internal/dataplane/routing/policy_resolver.go` | E5-T01 | project > account > tenant > global |
-| [ ] | M1/E5-T03/P0 | M1 | P0 | 实现 ModelResolver | `internal/dataplane/routing/model_resolver.go` | E4-T04 | alias 可解析到 model |
-| [ ] | M1/E5-T04/P0 | M1 | P0 | 实现 CandidateResolver | `internal/dataplane/routing/candidate_resolver.go` | E5-T02,E5-T03 | 过滤 disabled、capability、stream 不匹配候选 |
-| [ ] | M1/E5-T05/P0 | M1 | P0 | 实现 StrategyRegistry | `internal/dataplane/routing/strategy_registry.go` | E5-T01 | selector 可注册和查找 |
-| [ ] | M1/E5-T06/P0 | M1 | P0 | 实现 PrioritySelector | `internal/dataplane/routing/selectors/priority.go` | E5-T05 | priority stable sort |
-| [ ] | M1/E5-T07/P0 | M1 | P0 | 实现 WeightedRandomSelector | `internal/dataplane/routing/selectors/weighted_random.go` | E5-T05 | 无 key 随机，有 key 粘性 |
-| [ ] | M1/E6-T01/P0 | M1 | P0 | 定义 Provider relay types | `internal/provider/relay/types.go` | E3-T01 | Request、Response、Stream、Error 类型可表达 |
-| [ ] | M1/E6-T02/P0 | M1 | P0 | 实现 Provider registry | `internal/provider/registry.go` | E6-T01 | register 和 get capabilities 可用 |
-| [ ] | M1/E6-T03/P0 | M1 | P0 | 实现 OpenAI-compatible adapter | `internal/provider/openai` | E6-T01,E6-T02 | chat completions 可调用 |
-| [ ] | M1/E6-T04/P0 | M1 | P0 | 实现带超时 HTTP client | `internal/provider/internal/httpclient` | E6-T03 | non-stream 和 stream timeout 可配置 |
-| [ ] | M1/E6-T05/P0 | M1 | P0 | 实现 Provider error mapping | `internal/provider/openai/errors.go` | E6-T03 | 429、5xx、401、400 分类正确 |
-| [ ] | M1/E6-T06/P0 | M1 | P0 | 实现 Usage parser | `internal/provider/openai/usage.go` | E6-T03 | input/output tokens 可解析 |
-| [ ] | M1/E7-T01/P0 | M1 | P0 | 实现 ProviderDispatcher | `internal/dataplane/dispatch/dispatcher.go` | E5-T01,E6-T02 | 可遍历 candidate |
-| [ ] | M1/E7-T02/P0 | M1 | P0 | 实现 AttemptExecutor | `internal/dataplane/dispatch/attempt.go` | E7-T01 | 单次 provider 调用记录 attempt |
-| [ ] | M1/E7-T03/P0 | M1 | P0 | 实现 ErrorClassifier | `internal/dataplane/dispatch/error_classifier.go` | E6-T05 | retryable、fallbackable、health_penalty 分类正确 |
-| [ ] | M1/E7-T04/P0 | M1 | P0 | 实现 RetryController | `internal/dataplane/dispatch/retry.go` | E7-T03 | max、backoff、jitter 生效 |
-| [ ] | M1/E7-T05/P0 | M1 | P0 | 实现 FallbackController | `internal/dataplane/dispatch/fallback.go` | E7-T03 | 按错误类型 fallback |
-| [ ] | M2/E8-T01/P0 | M2 | P0 | 实现 PriceEstimator | `internal/dataplane/admission/price_estimator.go` | E1-T10,E4-T04 | 可计算预估费用 |
-| [ ] | M2/E8-T02/P0 | M2 | P0 | 实现 AdmissionController | `internal/dataplane/admission/controller.go` | E8-T01,E8-T03 | 可创建 balance_hold |
-| [ ] | M2/E8-T03/P0 | M2 | P0 | 实现 Balance service | `internal/billing/balance_service.go` | E2-T13 | 可检查可用余额 |
-| [ ] | M2/E8-T04/P0 | M2 | P0 | 实现 Redis token bucket | `internal/dataplane/limit/redis_token_bucket.go` | E0-T09 | QPS 和 TPM 限流可用 |
-| [ ] | M2/E8-T05/P0 | M2 | P0 | 实现 Redis concurrency lease | `internal/dataplane/limit/redis_concurrency.go` | E0-T09 | 多副本并发准确 |
-| [ ] | M2/E8-T06/P0 | M2 | P0 | 实现 Limit rule matcher | `internal/dataplane/limit/rule_matcher.go` | E4-T04 | 支持 tenant、project、key、model、channel |
-| [ ] | M2/E9-T01/P0 | M2 | P0 | 实现 Settlement planner | `internal/billing/settlement_planner.go` | E8-T02 | success、failure、stream plan 可生成 |
-| [ ] | M2/E9-T02/P0 | M2 | P0 | 实现 Settlement executor | `internal/billing/settlement_executor.go` | E2-T13,E9-T01 | 事务扣费正确 |
-| [ ] | M2/E9-T03/P0 | M2 | P0 | 实现 UsageAttempt writer | `internal/billing/usage_attempt_service.go` | E7-T02,E2-T13 | 每次 provider attempt 有记录 |
-| [ ] | M2/E9-T04/P0 | M2 | P0 | 实现 UsageRecord writer | `internal/billing/usage_record_service.go` | E9-T01,E2-T13 | 最终客户用量可记录 |
-| [ ] | M2/E9-T05/P0 | M2 | P0 | 实现 Ledger service | `internal/billing/ledger_service.go` | E9-T02 | ledger entry 幂等 |
-| [ ] | M2/E9-T06/P0 | M2 | P0 | 实现 FailedSettlement service | `internal/billing/failed_settlement_service.go` | E9-T02 | 失败 settlement 可修复 |
-| [ ] | M2/E9-T07/P0 | M2 | P0 | 实现 Settlement replay job | `internal/worker/jobs/failed_settlement_replayer.go` | E9-T06 | 故障后可恢复扣费 |
-| [ ] | M3/E10-T01/P0 | M3 | P0 | 定义 ProviderStream interface | `internal/provider/relay/stream.go` | E6-T01 | Read、Close、Usage 可表达 |
-| [ ] | M3/E10-T02/P0 | M3 | P0 | 实现 Stream writer | `internal/transport/gatewayhttp/stream_writer.go` | E10-T01 | SSE 和 chunk 写出可用 |
-| [ ] | M3/E10-T03/P0 | M3 | P0 | 实现 StreamFinalizer | `internal/dataplane/stream/finalizer.go` | E9-T01,E10-T01,E10-T02 | close-time settlement 可执行 |
-| [ ] | M3/E10-T04/P0 | M3 | P0 | 实现 Downstream error report | `internal/dataplane/stream/downstream.go` | E10-T02 | client disconnect 可识别 |
-| [ ] | M3/E10-T05/P0 | M3 | P0 | 记录 First token latency | `internal/dataplane/stream/metrics.go` | E10-T02 | first_token_ms 可观测 |
-| [ ] | M3/E10-T06/P0 | M3 | P0 | 补充 Stream tests | `internal/dataplane/stream/finalizer_test.go` | E10-T03 至 E10-T05 | 正常、中断、客户端断开测试通过 |
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [x] | M0/E0-T01/P0 | P0 | 初始化 Go module 和最小目录 | repo root, `cmd/`, `internal/`, `pkg/` | `go test ./...` 可运行 |
+| [x] | M0/E0-T02/P0 | P0 | 建立 Makefile | `Makefile` | test、lint、race、build、run 目标可用 |
+| [x] | M0/E0-T03/P0 | P0 | 建立配置加载 | `internal/bootstrap/config.go` | default、yaml、env、normalize、validate 支持 |
+| [x] | M0/E0-T04/P0 | P0 | 建立统一错误包 | `pkg/apperr` | code、status、type、retryable、safe 可表达 |
+| [x] | M0/E0-T05/P0 | P0 | 建立结构化日志 | `internal/infra/log` | request_id、trace_id 可输出 |
+| [x] | M0/E0-T06/P0 | P0 | 建立 HTTP server 基础 | `internal/transport/httpserver` | `/healthz`、`/readyz`、`/metrics` 可访问 |
+| [x] | M0/E0-T07/P0 | P0 | 初始化 Prometheus 和 OTel | `internal/infra/telemetry` | metrics 和 trace exporter 可配置 |
+| [x] | M0/E0-T08/P0 | P0 | 初始化 DB、Redis 和 migration | `internal/infra/db`, `internal/infra/redis`, `migrations/` | ping、close、migrate up/down 可用 |
+| [x] | M0/E0-T09/P1 | P1 | 建立 CI | `.github/workflows` | PR 触发 test、vet/lint、race |
+| [x] | M0/E0-T10/P1 | P1 | 固化文档入口 | `docs/design`, `docs/plan`, `docs/tasks.md` | 无旧 v2/v3 设计入口，OpenAPI 可导入 |
 
-## 后续阶段任务
+## M1 最小非流式数据面
 
-| 状态 | ID | 阶段 | 优先级 | 任务 | 目标文件或模块 | 依赖 | 验收标准 |
-|---|---|---|---|---|---|---|---|
-| [ ] | M3/E6-T07/P1 | M3 | P1 | 实现 OpenAI Responses adapter | `internal/provider/openai/responses.go` | E6-T03 | `/v1/responses` 可用 |
-| [ ] | M3/E6-T08/P1 | M3 | P1 | 实现 Anthropic adapter | `internal/provider/anthropic` | E6-T01 | `/v1/messages` 可用 |
-| [ ] | M3/E6-T09/P1 | M3 | P1 | 实现 Gemini adapter | `internal/provider/gemini` | E6-T01 | generateContent 和 stream 可用 |
-| [ ] | M4/E11-T01/P1 | M4 | P1 | 实现 Task entity 和 service | `internal/task` | M2 完成 | create、get、cancel 可用 |
-| [ ] | M4/E11-T02/P1 | M4 | P1 | 实现 Media request parser | `internal/dataplane/parser/media_parser.go` | E3-T04,E1-T05 | image、video、audio、music 请求可解析 |
-| [ ] | M4/E11-T03/P1 | M4 | P1 | 实现 Model schema validation | `internal/dataplane/parser/schema_validator.go` | E1-T05 | `model_params` 校验通过 |
-| [ ] | M4/E11-T04/P1 | M4 | P1 | 实现 File service | `internal/fileasset` | E2-T07 | base64、stream、url upload 可用 |
-| [ ] | M4/E11-T05/P1 | M4 | P1 | 实现 ProviderTaskDispatcher | `internal/task/provider_dispatcher.go` | E11-T01 | 可提交 external task |
-| [ ] | M4/E11-T06/P1 | M4 | P1 | 实现 ProviderTaskPoller job | `internal/worker/jobs/provider_task_poller.go` | E11-T05 | 可轮询 provider task 状态 |
-| [ ] | M4/E11-T07/P1 | M4 | P1 | 实现 Result normalizer | `internal/task/result_normalizer.go` | E11-T06 | provider result 可转统一 assets |
-| [ ] | M4/E11-T08/P1 | M4 | P1 | 实现 CallbackOutbox | `internal/task/callback_outbox.go` | E11-T01 | callback 失败可重试 |
-| [ ] | M4/E11-T09/P1 | M4 | P1 | 实现 Task settlement | `internal/task/settlement.go` | E9-T02,E11-T01 | 任务最终扣费 |
-| [ ] | M5/E13-T01/P1 | M5 | P1 | 实现 Admin auth | `internal/transport/controlhttp/middleware_auth.go` | M2 完成 | admin token 或 RBAC 可用 |
-| [ ] | M5/E13-T02/P1 | M5 | P1 | 实现 Tenant API | `internal/transport/controlhttp/handler_tenant.go` | E13-T01 | Tenant CRUD 可用 |
-| [ ] | M5/E13-T03/P1 | M5 | P1 | 实现 APIKey API | `internal/transport/controlhttp/handler_api_key.go` | E13-T01 | create、disable、list 可用 |
-| [ ] | M5/E13-T04/P1 | M5 | P1 | 实现 Model API | `internal/transport/controlhttp/handler_model.go` | E13-T01 | model、schema、alias 可管理 |
-| [ ] | M5/E13-T05/P1 | M5 | P1 | 实现 Provider API | `internal/transport/controlhttp/handler_provider.go` | E13-T01 | channel、credential、mapping 可管理 |
-| [ ] | M5/E13-T06/P1 | M5 | P1 | 实现 Route API | `internal/transport/controlhttp/handler_route.go` | E13-T01 | route policy 和 binding 可管理 |
-| [ ] | M5/E13-T07/P1 | M5 | P1 | 实现 Price API | `internal/transport/controlhttp/handler_price.go` | E13-T01 | price rules 可管理 |
-| [ ] | M5/E13-T08/P1 | M5 | P1 | 实现 Limit API | `internal/transport/controlhttp/handler_limit.go` | E13-T01 | limit rules 可管理 |
-| [ ] | M5/E13-T10/P1 | M5 | P1 | 实现 Snapshot API | `internal/transport/controlhttp/handler_snapshot.go` | E4-T01 至 E4-T06 | build、publish、rollback 可用 |
-| [ ] | M5/E13-T11/P1 | M5 | P1 | 实现 Audit API | `internal/transport/controlhttp/handler_audit.go` | E1-T14,E2-T08 | audit list 和 search 可用 |
-| [ ] | M6/E12-T01/P1 | M6 | P1 | 定义 Plugin interface | `internal/dataplane/plugin/plugin.go` | M3 完成 | Name、Phases、Execute 可用 |
-| [ ] | M6/E12-T02/P1 | M6 | P1 | 实现 PluginManager | `internal/dataplane/plugin/manager.go` | E12-T01 | phase 执行可用 |
-| [ ] | M6/E12-T03/P1 | M6 | P1 | 实现 PluginBinding resolver | `internal/dataplane/plugin/binding_resolver.go` | E12-T02,E4-T04 | scope 和 priority 排序正确 |
-| [ ] | M6/E12-T04/P1 | M6 | P1 | 实现 RequestSizePlugin | `internal/dataplane/plugin/builtin/request_size.go` | E12-T02 | 超大请求被拒绝 |
-| [ ] | M6/E12-T05/P1 | M6 | P1 | 实现 PromptTokenLimitPlugin | `internal/dataplane/plugin/builtin/prompt_token_limit.go` | E12-T02 | prompt token 超限被拒绝 |
-| [ ] | M6/E12-T06/P1 | M6 | P1 | 实现 PiiRedactionPlugin | `internal/dataplane/plugin/builtin/pii_redaction.go` | E12-T02 | 日志和审计脱敏 |
-| [ ] | M6/E12-T07/P2 | M6 | P2 | 实现 PromptGuardPlugin | `internal/dataplane/plugin/builtin/prompt_guard.go` | E12-T02 | prompt policy deny 可用 |
-| [ ] | M6/E12-T08/P2 | M6 | P2 | 实现 ResponseGuardPlugin | `internal/dataplane/plugin/builtin/response_guard.go` | E12-T02 | response safety 可用 |
-| [ ] | M7/E14-T01/P1 | M7 | P1 | 强化 Access log middleware | `internal/transport/httpserver/middleware_access_log.go` | M3 完成 | 日志不含敏感字段 |
-| [ ] | M7/E14-T02/P1 | M7 | P1 | 固化 Metrics names | `internal/infra/metrics` | M3 完成 | gateway、provider、billing、task 指标齐全 |
-| [ ] | M7/E14-T03/P1 | M7 | P1 | 补齐 Tracing spans | `internal/dataplane/observe` | M3 完成 | 每阶段 span 可见 |
-| [ ] | M7/E14-T04/P1 | M7 | P1 | 实现 Redactor | `pkg/redaction` | M3 完成 | api key、prompt、provider key 脱敏 |
-| [ ] | M7/E15-T03/P1 | M7 | P1 | 补充 OpenAI e2e | `test/e2e/openai_chat_test.go` | M1 完成 | mock provider e2e 通过 |
-| [ ] | M7/E15-T04/P1 | M7 | P1 | 补充 Stream disconnect test | `test/e2e/stream_disconnect_test.go` | M3 完成 | 不误计 provider failure |
-| [ ] | M7/E15-T05/P1 | M7 | P1 | 补充 Settlement failure test | `test/e2e/settlement_replay_test.go` | M2 完成 | failed 到 replay success 通过 |
-| [ ] | M8/OPS-T01/P2 | M8 | P2 | 实现客户余额和用量报表 | reporting 或 control API | M2 完成 | 客户可查余额和用量 |
-| [ ] | M8/OPS-T02/P2 | M8 | P2 | 实现渠道成本和利润报表 | reporting 或 control API | M2 完成 | 运营可查渠道利润 |
-| [ ] | M8/OPS-T03/P2 | M8 | P2 | 实现财务对账报表 | `internal/billing/reconciliation_service.go` | E9-T08 | 财务可对账并定位差异 |
-| [ ] | M8/OPS-T04/P2 | M8 | P2 | 实现模型市场配置 | control API | M5 完成 | 租户可见模型可配置 |
-| [ ] | M8/OPS-T05/P2 | M8 | P2 | 实现 Agent metadata 报表 | reporting 或 analytics | M4 完成 | workflow、scene、shot 维度可分析 |
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M1/E1-T01/P0 | P0 | 定义 RequestState | `internal/dataplane/engine/state.go` | 覆盖 protocol、principal、snapshot、route、billing、observe |
+| [ ] | M1/E1-T02/P0 | P0 | 实现 APIClassifier | `internal/dataplane/classifier` | OpenAI chat 可分类，冲突路径有测试骨架 |
+| [ ] | M1/E1-T03/P0 | P0 | 实现 BodyStore 和 OpenAI Chat Parser | `internal/dataplane/parser` | model、messages、stream flag、usage estimate 可解析 |
+| [ ] | M1/E1-T04/P0 | P0 | 实现 API key extractor 和 hash 校验 | `internal/dataplane/auth` | Bearer/x-api-key 支持，明文 key 不落日志 |
+| [ ] | M1/E1-T05/P0 | P0 | 定义最小 RuntimeSnapshot 和 IndexedSnapshot | `internal/controlplane/snapshot`, `internal/dataplane/snapshot` | api key、model、channel、route 索引可用 |
+| [ ] | M1/E1-T06/P0 | P0 | 实现 RoutePlanner 和 priority selector | `internal/dataplane/router` | 可选中 mock channel，无路由返回标准错误 |
+| [ ] | M1/E1-T07/P0 | P0 | 实现 Provider relay types 和 registry | `internal/provider/relay`, `internal/provider` | adapter 能注册和按 capability 获取 |
+| [ ] | M1/E1-T08/P0 | P0 | 实现 OpenAI-compatible adapter | `internal/provider/openai` | 非流式 chat 可调用 mock/真实上游 |
+| [ ] | M1/E1-T09/P0 | P0 | 实现 ProviderDispatcher 和 attempt 记录 | `internal/dataplane/dispatch` | provider 5xx、429、401 分类正确 |
+| [ ] | M1/E1-T10/P0 | P0 | 实现 GatewayEngine.Handle 非流式主链路 | `internal/dataplane/engine` | curl `/v1/chat/completions` 成功 |
+| [ ] | M1/E1-T11/P1 | P1 | 接入基础观测 | `internal/dataplane/observe` | access log、provider attempt metrics、route span 可见 |
+
+## M2 账务闭环
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M2/E2-T01/P0 | P0 | 建立账务表 migration | `migrations/` | balances、holds、attempts、records、ledger、failed_settlements 可迁移 |
+| [ ] | M2/E2-T02/P0 | P0 | 实现金额和价格类型 | `pkg/money`, `internal/domain/pricing` | 金额使用 micros，不用 float |
+| [ ] | M2/E2-T03/P0 | P0 | 实现 PriceQuoter / PriceEstimator | `internal/dataplane/admission` | input/output token 可报价 |
+| [ ] | M2/E2-T04/P0 | P0 | 实现 Balance service 和 hold | `internal/billing` | 余额不足不调用 provider |
+| [ ] | M2/E2-T05/P0 | P0 | 实现 AdmissionController.Reserve | `internal/dataplane/admission` | request_id 幂等创建 hold |
+| [ ] | M2/E2-T06/P0 | P0 | 实现 usage attempt writer | `internal/billing` | 每次 provider attempt 有记录 |
+| [ ] | M2/E2-T07/P0 | P0 | 实现 Settlement planner/executor | `internal/billing` | provider 成功后扣费并 release hold |
+| [ ] | M2/E2-T08/P0 | P0 | 实现 Ledger service | `internal/billing` | ledger entry 幂等且可对账 |
+| [ ] | M2/E2-T09/P0 | P0 | 实现 failed settlement replay worker | `internal/worker/jobs` | 结算失败可重放且不重复扣费 |
+| [ ] | M2/E2-T10/P1 | P1 | 实现 Redis token bucket 和 concurrency lease | `internal/dataplane/limit` | 多副本 QPS/TPM/concurrency 准确 |
+| [ ] | M2/E2-T11/P1 | P1 | 实现初版 reconciliation query | `internal/billing/reconciliation.go` | 可发现 ledger 与 balance 差异 |
+
+## M3 Streaming + Native Compatible
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M3/E3-T01/P0 | P0 | 实现 SSE writer | `internal/transport/gatewayhttp/sse_writer.go` | OpenAI stream 可输出 |
+| [ ] | M3/E3-T02/P0 | P0 | 定义 ProviderStream / AccountingStream | `internal/provider/relay`, `internal/dataplane/stream` | close-time settlement 入口唯一 |
+| [ ] | M3/E3-T03/P0 | P0 | 实现 StreamFinalizer | `internal/dataplane/stream/finalizer.go` | stream close 后完成 settlement |
+| [ ] | M3/E3-T04/P0 | P0 | 分类 client disconnect | `internal/dataplane/stream` | 不误罚 provider health |
+| [ ] | M3/E3-T05/P0 | P0 | 实现 Claude Messages parser/adapter | `internal/provider/claude` | `/v1/messages` 可用 |
+| [ ] | M3/E3-T06/P0 | P0 | 实现 Gemini GenerateContent parser/adapter | `internal/provider/gemini` | `/v1beta/...` 可用 |
+| [ ] | M3/E3-T07/P1 | P1 | 实现 OpenAI Responses / Embeddings | `internal/provider/openai` | OpenAI SDK 可调用 |
+| [ ] | M3/E3-T08/P1 | P1 | 补齐协议消歧测试 | `tests/e2e` | `X-Gateway-Protocol`、model registry、body schema 和 `ambiguous_protocol` 覆盖 |
+
+## M4 Unified Media Async Task
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M4/E4-T01/P0 | P0 | 实现 Task domain 和状态机 | `internal/task` | queued、running、succeeded、failed、canceled 有效 |
+| [ ] | M4/E4-T02/P0 | P0 | 实现 IdempotencyStore | `internal/task/idempotency.go` | 同 key 同 body 返回同 task，同 key 不同 body 返回 409 |
+| [ ] | M4/E4-T03/P0 | P0 | 实现 Unified media parser | `internal/dataplane/parser/unified_media_parser.go` | image、video、audio、music 和 `model_params` 可解析 |
+| [ ] | M4/E4-T04/P0 | P0 | 实现 File service | `internal/task/file_service.go` | base64、url、stream upload 可用 |
+| [ ] | M4/E4-T05/P0 | P0 | 实现 TaskBridge | `internal/dataplane/engine/task_bridge.go` | 创建 internal task 并返回 task object |
+| [ ] | M4/E4-T06/P0 | P0 | 实现 ProviderTaskDispatcher | `internal/task/provider_dispatcher.go` | external_task_id 落库 |
+| [ ] | M4/E4-T07/P0 | P0 | 实现 provider task poller | `internal/worker/jobs/provider_task_poller.go` | task 状态推进 |
+| [ ] | M4/E4-T08/P0 | P0 | 实现 callback outbox/dispatcher | `internal/worker/jobs/callback_dispatcher.go` | callback 失败可重试 |
+| [ ] | M4/E4-T09/P1 | P1 | 实现 task settlement | `internal/task/settlement.go` | 任务成功后最终扣费 |
+
+## M5 Control Plane + Snapshot
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M5/E5-T01/P0 | P0 | 实现 admin auth | `internal/transport/controlhttp` | admin token 或 RBAC 可用 |
+| [ ] | M5/E5-T02/P0 | P0 | 实现 tenant/project/api key CRUD | `internal/controlplane/admin` | key create、disable、list 可用 |
+| [ ] | M5/E5-T03/P0 | P0 | 实现 model/schema/alias CRUD | `internal/controlplane/admin` | 新增模型无需重启 gateway |
+| [ ] | M5/E5-T04/P0 | P0 | 实现 provider/channel/credential CRUD | `internal/controlplane/admin` | credential 加密，不进 snapshot 明文 |
+| [ ] | M5/E5-T05/P0 | P0 | 实现 route/price/limit CRUD | `internal/controlplane/admin` | route、price、limit 可配置 |
+| [ ] | M5/E5-T06/P0 | P0 | 实现 snapshot builder/validator | `internal/controlplane/snapshot` | 坏配置拒绝发布 |
+| [ ] | M5/E5-T07/P0 | P0 | 实现 snapshot publisher/watcher | `internal/controlplane/snapshot`, `internal/dataplane/snapshot` | gateway 原子切换 snapshot |
+| [ ] | M5/E5-T08/P0 | P0 | 实现 request-level pinning | `internal/dataplane/engine` | 已开始请求 pin 住 snapshot、price、route |
+| [ ] | M5/E5-T09/P0 | P0 | 实现 API key revocation blacklist | `internal/infra/redis/revocation.go` | revoke 在目标 SLA 内生效 |
+| [ ] | M5/E5-T10/P1 | P1 | 实现 rollback 和 staleness metrics | `internal/controlplane/snapshot` | snapshot version/staleness 可观测 |
+
+## M6 Plugins + Security
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M6/E6-T01/P0 | P0 | 定义 MVP 9 phase enum | `internal/dataplane/plugin/phase.go` | phase 与 ADR 一致 |
+| [ ] | M6/E6-T02/P0 | P0 | 实现 PluginManager | `internal/dataplane/plugin/manager.go` | 无绑定 phase O(1) skip |
+| [ ] | M6/E6-T03/P0 | P0 | 实现 PluginBinding resolver | `internal/dataplane/plugin/binding_resolver.go` | scope specificity、priority、name 排序正确 |
+| [ ] | M6/E6-T04/P0 | P0 | 实现 RequestSizePlugin | `plugin/builtin/request_size.go` | 超限拒绝 |
+| [ ] | M6/E6-T05/P0 | P0 | 实现 PromptTokenLimitPlugin | `plugin/builtin/prompt_token_limit.go` | prompt token 超限拒绝 |
+| [ ] | M6/E6-T06/P0 | P0 | 实现 PIIRedactionPlugin | `plugin/builtin/pii_redaction.go` | 日志和审计脱敏 |
+| [ ] | M6/E6-T07/P0 | P0 | 实现 PromptGuardPlugin | `plugin/builtin/prompt_guard.go` | 命中返回 `policy_denied` |
+| [ ] | M6/E6-T08/P1 | P1 | 实现 ResponseGuardPlugin / CostGuardPlugin | `plugin/builtin` | 支持 deny、degrade、audit |
+| [ ] | M6/E6-T09/P1 | P1 | 实现 AuditLogPlugin / LLMMetricPlugin | `plugin/builtin` | 审计和指标不含敏感明文 |
+
+## M7 Observability + Performance
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M7/E7-T01/P0 | P0 | 固化 metrics 命名和 label 规范 | `internal/infra/telemetry/metrics.go` | provider、billing、task、snapshot 指标齐全 |
+| [ ] | M7/E7-T02/P0 | P0 | 补齐 OpenTelemetry spans | `internal/dataplane/observe` | 每个关键阶段 span 可见 |
+| [ ] | M7/E7-T03/P0 | P0 | 实现统一 redactor | `pkg/redaction` | api key、provider key、prompt、response 脱敏 |
+| [ ] | M7/E7-T04/P0 | P0 | 编写 load test | `tools/loadtest` | QPS、stream concurrency、Redis 延迟报告 |
+| [ ] | M7/E7-T05/P0 | P0 | 编写 failure drills | `tests/failure` | provider、billing、redis、db、snapshot 场景 |
+| [ ] | M7/E7-T06/P1 | P1 | 建立 dashboard 和 alert rules | `deployments/observability` | failed settlement、snapshot stale、provider 429/5xx 有告警 |
+
+## M8 Realtime Reserved Extension
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M8/E8-T01/P2 | P2 | 定义 RealtimeSession domain | `internal/dataplane/realtime/session.go` | session 类型、状态、过期时间可表达 |
+| [ ] | M8/E8-T02/P2 | P2 | 实现 create/get session API | `internal/transport/realtimehttp` | 未启用时返回 501/feature_not_enabled |
+| [ ] | M8/E8-T03/P2 | P2 | 定义 RealtimeEngine interface | `internal/dataplane/realtime/engine.go` | 不绑定具体 provider |
+| [ ] | M8/E8-T04/P2 | P2 | 实现 WebSocket handler stub | `internal/transport/realtimehttp` | 可编译，有鉴权、审计、metrics 接入点 |
+
+## M9 Commercial Operations
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | M9/E9-T01/P1 | P1 | 实现客户余额和用量报表 | `internal/controlplane/admin` | 客户可查余额、用量和扣费流水 |
+| [ ] | M9/E9-T02/P1 | P1 | 实现 provider cost 和利润报表 | `internal/billing/reporting` | 运营可查渠道成本和模型利润 |
+| [ ] | M9/E9-T03/P1 | P1 | 实现 reconciliation report | `internal/billing/reconciliation.go` | 每日对账能发现差异 |
+| [ ] | M9/E9-T04/P1 | P1 | 实现 manual adjustment | `internal/billing` | 人工调账幂等且有强审计 |
+| [ ] | M9/E9-T05/P2 | P2 | 实现模型市场配置 | control API | 租户可见模型可配置 |
+| [ ] | M9/E9-T06/P2 | P2 | 实现 Agent metadata 报表 | reporting 或 analytics | workflow、scene、shot 维度可分析 |
+| [ ] | M9/E9-T07/P2 | P2 | 建立 backup/restore runbook | `docs/runbook` | 恢复演练通过 |
 
 ## 阶段验收总览
 
 | 阶段 | 验收标准 |
 |---|---|
-| M0 | `go test ./...`、`make lint`、healthz、readyz、metrics 和基础目录结构通过 |
-| M1 | `/v1/chat/completions` 可认证、路由、调用 provider、返回标准响应并记录基础观测 |
+| M0 | `go test ./...`、`make lint`、healthz、readyz、metrics、OpenAPI、ADR 和文档入口通过 |
+| M1 | `/v1/chat/completions` non-stream 可认证、路由、调用 provider、返回标准响应并记录基础观测 |
 | M2 | provider 成功后的本地结算失败可修复，ledger 与 balance 可对账 |
-| M3 | OpenAI、Claude、Gemini 主协议和 stream close-time accounting 可用 |
-| M4 | 统一媒体任务可创建、查询、轮询、回调和最终结算 |
+| M3 | OpenAI stream、Claude、Gemini 和 stream close-time accounting 可用 |
+| M4 | 统一媒体任务可创建、幂等查询、轮询、回调和最终结算 |
 | M5 | 新增模型、渠道、价格、路由和限流无需重启 gateway |
 | M6 | 插件可按 scope 绑定并执行 deny、redact、audit 和 metrics 行为 |
 | M7 | dashboard、alert、压测和 failure drills 可支撑灰度商用 |
-| M8 | 客户、运营和财务能围绕余额、用量、成本、利润和对账开展运营 |
+| M8 | Realtime session API 和 WebSocket stub 可编译，未启用时明确返回 501 |
+| M9 | 客户、运营和财务能围绕余额、用量、成本、利润、对账和灾备开展运营 |
