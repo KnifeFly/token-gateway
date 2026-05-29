@@ -94,6 +94,7 @@ func (r *Recorder) FinishRequest(_ context.Context, state *engine.RequestState, 
 	if response != nil {
 		status = response.StatusCode
 	}
+	r.recordPluginOutputs(state)
 	if err != nil {
 		r.logger.Warn("gateway_request_failed",
 			"request_id", state.RequestID,
@@ -114,4 +115,30 @@ func (r *Recorder) FinishRequest(_ context.Context, state *engine.RequestState, 
 		"model", state.RequestedModel,
 		"snapshot_version", state.SnapshotRef.Version,
 	)
+}
+
+func (r *Recorder) recordPluginOutputs(state *engine.RequestState) {
+	if state == nil || len(state.Internal) == 0 {
+		return
+	}
+	if events, ok := state.Internal["audit_events"].([]map[string]string); ok {
+		for _, event := range events {
+			r.logger.Info("gateway_audit_event",
+				"request_id", state.RequestID,
+				"trace_id", state.TraceID,
+				"tenant_id", state.TenantID,
+				"project_id", state.ProjectID,
+				"fields", event,
+			)
+		}
+	}
+	if metric, ok := state.Internal["llm_metric"].(map[string]string); ok {
+		r.logger.Info("gateway_llm_metric",
+			"request_id", state.RequestID,
+			"trace_id", state.TraceID,
+			"tenant_id", state.TenantID,
+			"project_id", state.ProjectID,
+			"metric", metric,
+		)
+	}
 }

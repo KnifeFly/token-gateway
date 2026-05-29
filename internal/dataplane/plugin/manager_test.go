@@ -80,6 +80,35 @@ func TestManagerFailOpenRecordsAuditEvent(t *testing.T) {
 	}
 }
 
+func TestManagerAppliesStateMutations(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(mutationPlugin{})
+	manager := NewManager(registry)
+	state := &engine.RequestState{
+		Snapshot: mustPluginSnapshot(t, []cpsnapshot.PluginBindingRuntime{{
+			ID:            "mutation",
+			Name:          "mutation",
+			Phase:         string(PhasePrePrompt),
+			Priority:      1,
+			Enabled:       true,
+			FailurePolicy: string(FailurePolicyFailClosed),
+			Config:        json.RawMessage(`{}`),
+		}}),
+		Metadata: map[string]string{},
+		Internal: map[string]any{},
+	}
+
+	if err := manager.Run(context.Background(), string(PhasePrePrompt), state); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if state.Metadata["plugin.test"] != "metadata" {
+		t.Fatalf("metadata = %#v", state.Metadata)
+	}
+	if state.Internal["plugin.test"] != "internal" {
+		t.Fatalf("internal = %#v", state.Internal)
+	}
+}
+
 func mustPluginSnapshot(t *testing.T, bindings []cpsnapshot.PluginBindingRuntime) *dpsnapshot.IndexedSnapshot {
 	t.Helper()
 	snapshot, err := dpsnapshot.Build(cpsnapshot.RuntimeSnapshot{
@@ -148,4 +177,25 @@ func (denyPlugin) Validate(json.RawMessage) error {
 
 func (denyPlugin) Execute(context.Context, Input) (Result, error) {
 	return Result{Action: ActionDeny, Message: "blocked"}, nil
+}
+
+type mutationPlugin struct{}
+
+func (mutationPlugin) Name() string {
+	return "mutation"
+}
+
+func (mutationPlugin) Phase() Phase {
+	return PhasePrePrompt
+}
+
+func (mutationPlugin) Validate(json.RawMessage) error {
+	return nil
+}
+
+func (mutationPlugin) Execute(context.Context, Input) (Result, error) {
+	return Result{Mutations: []StateMutation{
+		{Target: MutationMetadata, Key: "plugin.test", Value: "metadata"},
+		{Target: MutationInternal, Key: "plugin.test", Value: "internal"},
+	}}, nil
 }

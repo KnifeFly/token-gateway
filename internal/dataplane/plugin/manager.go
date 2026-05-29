@@ -89,6 +89,9 @@ func (m *Manager) handlePluginError(state *engine.RequestState, binding engine.P
 }
 
 func applyResult(state *engine.RequestState, result Result) error {
+	if err := applyMutations(state, result.Mutations); err != nil {
+		return err
+	}
 	if result.Metadata != nil {
 		if state.Metadata == nil {
 			state.Metadata = map[string]string{}
@@ -118,6 +121,40 @@ func applyResult(state *engine.RequestState, result Result) error {
 	default:
 		return apperr.ConfigUnavailable("plugin returned unsupported action", apperr.WithCause(errors.New(string(result.Action))))
 	}
+}
+
+func applyMutations(state *engine.RequestState, mutations []StateMutation) error {
+	if len(mutations) == 0 {
+		return nil
+	}
+	for _, mutation := range mutations {
+		switch mutation.Target {
+		case MutationMetadata:
+			if mutation.Key == "" {
+				return apperr.ConfigUnavailable("plugin metadata mutation key is required")
+			}
+			if state.Metadata == nil {
+				state.Metadata = map[string]string{}
+			}
+			state.Metadata[mutation.Key] = mutation.Value
+		case MutationInternal:
+			if mutation.Key == "" {
+				return apperr.ConfigUnavailable("plugin internal mutation key is required")
+			}
+			if state.Internal == nil {
+				state.Internal = map[string]any{}
+			}
+			state.Internal[mutation.Key] = mutation.Value
+		case MutationRequestedModel:
+			if mutation.Value == "" {
+				return apperr.ConfigUnavailable("plugin requested_model mutation value is required")
+			}
+			state.RequestedModel = mutation.Value
+		default:
+			return apperr.ConfigUnavailable("plugin mutation target is not supported", apperr.WithCause(errors.New(string(mutation.Target))))
+		}
+	}
+	return nil
 }
 
 func appendAuditEvent(state *engine.RequestState, fields map[string]string) {

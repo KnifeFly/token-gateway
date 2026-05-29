@@ -18,6 +18,15 @@ const (
 	ActionDegrade Action = "degrade"
 )
 
+// MutationTarget identifies the request-state surface a plugin may mutate.
+type MutationTarget string
+
+const (
+	MutationMetadata       MutationTarget = "metadata"
+	MutationInternal       MutationTarget = "internal"
+	MutationRequestedModel MutationTarget = "requested_model"
+)
+
 // FailurePolicy controls how plugin execution errors affect the request.
 type FailurePolicy string
 
@@ -48,8 +57,16 @@ type Result struct {
 	ErrorCode      string
 	Message        string
 	SuggestedModel string
+	Mutations      []StateMutation
 	AuditFields    map[string]string
 	Metadata       map[string]string
+}
+
+// StateMutation explicitly records one plugin-requested state mutation.
+type StateMutation struct {
+	Target MutationTarget
+	Key    string
+	Value  string
 }
 
 // Registry stores built-in plugins by name.

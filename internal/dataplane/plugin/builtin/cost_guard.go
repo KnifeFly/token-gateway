@@ -42,6 +42,11 @@ func (CostGuard) Execute(_ context.Context, input plugin.Input) (plugin.Result, 
 		return plugin.Result{
 			Action:         plugin.ActionDegrade,
 			SuggestedModel: cfg.SuggestedModel,
+			Mutations: []plugin.StateMutation{{
+				Target: plugin.MutationMetadata,
+				Key:    "plugin.cost_guard.suggested_model",
+				Value:  cfg.SuggestedModel,
+			}},
 			AuditFields: map[string]string{
 				"plugin":             "cost_guard",
 				"action":             "degrade",
