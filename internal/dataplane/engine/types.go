@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"time"
@@ -107,6 +108,7 @@ type SnapshotView interface {
 	LookupChannel(channelID string) (ChannelView, bool)
 	LookupPrice(publicModel string) (PriceRuleView, bool)
 	LookupLimit(publicModel string) (LimitRuleView, bool)
+	LookupPluginBindings(phase string) []PluginBindingView
 	IsAPIKeyRevoked(hash string) bool
 }
 
@@ -174,6 +176,20 @@ type LimitRuleView struct {
 	TPM         int64
 	Concurrency int64
 	Enabled     bool
+}
+
+// PluginBindingView is a runtime plugin binding compiled from control-plane config.
+type PluginBindingView struct {
+	ID            string
+	Name          string
+	Phase         string
+	TenantID      string
+	ProjectID     string
+	Model         string
+	Priority      int
+	Enabled       bool
+	FailurePolicy string
+	Config        json.RawMessage
 }
 
 // Principal is the authenticated caller identity.
@@ -372,4 +388,9 @@ type ObserveRecorder interface {
 	StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span)
 	RecordProviderAttempt(ctx context.Context, state *RequestState, attempt ProviderAttempt)
 	FinishRequest(ctx context.Context, state *RequestState, response *GatewayResponse, err error)
+}
+
+// PluginManager executes configured data-plane plugins for a lifecycle phase.
+type PluginManager interface {
+	Run(ctx context.Context, phase string, state *RequestState) error
 }

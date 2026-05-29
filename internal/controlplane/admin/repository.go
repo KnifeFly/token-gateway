@@ -23,6 +23,7 @@ type Repository interface {
 	UpsertRoute(ctx context.Context, route RoutePolicyConfig) (*RoutePolicyConfig, error)
 	UpsertPrice(ctx context.Context, price PriceRuleConfig) (*PriceRuleConfig, error)
 	UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error)
+	UpsertPluginBinding(ctx context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error)
 	LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error)
 	SaveSnapshot(ctx context.Context, record SnapshotRecord) (*SnapshotRecord, error)
 	ActiveSnapshot(ctx context.Context) (*SnapshotRecord, bool, error)

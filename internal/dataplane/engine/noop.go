@@ -76,6 +76,13 @@ func (NoopFileService) HandleFileOperation(context.Context, *RequestState) (*Gat
 	return nil, apperr.ConfigUnavailable("file service is unavailable")
 }
 
+// NoopPluginManager skips all data-plane plugin phases.
+type NoopPluginManager struct{}
+
+func (NoopPluginManager) Run(context.Context, string, *RequestState) error {
+	return nil
+}
+
 // NoopObserveRecorder keeps tests and minimal setups dependency-free.
 type NoopObserveRecorder struct{}
 

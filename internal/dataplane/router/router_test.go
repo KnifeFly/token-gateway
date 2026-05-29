@@ -120,6 +120,10 @@ func (routeSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
 	return engine.LimitRuleView{}, false
 }
 
+func (routeSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
+	return nil
+}
+
 func (routeSnapshot) IsAPIKeyRevoked(string) bool {
 	return false
 }

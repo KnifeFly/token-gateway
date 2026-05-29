@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
@@ -63,6 +64,16 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("UpsertPrice() error = %v", err)
 	}
+	if _, err := service.UpsertPluginBinding(ctx, admin.PluginBindingConfig{
+		Name:          "prompt_guard",
+		Phase:         "pre_prompt",
+		Model:         "gpt-4o-mini",
+		Priority:      10,
+		FailurePolicy: "fail_closed",
+		Config:        json.RawMessage(`{"deny_terms":["blocked"]}`),
+	}); err != nil {
+		t.Fatalf("UpsertPluginBinding() error = %v", err)
+	}
 
 	runtime, err := NewBuilder(repo).Build(ctx)
 	if err != nil {
@@ -73,6 +84,9 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}
 	if runtime.PriceRules[0].InputMicrosPerToken != 10 {
 		t.Fatalf("price = %#v", runtime.PriceRules)
+	}
+	if len(runtime.PluginBindings) != 1 || runtime.PluginBindings[0].Name != "prompt_guard" {
+		t.Fatalf("plugin bindings = %#v", runtime.PluginBindings)
 	}
 }
 

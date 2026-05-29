@@ -39,7 +39,7 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 	}
 	runtime := &RuntimeSnapshot{
 		Version:       fmt.Sprintf("snap-%d", time.Now().UTC().UnixNano()),
-		SchemaVersion: "m5",
+		SchemaVersion: "m6",
 		CreatedAt:     time.Now().UTC(),
 	}
 	for _, key := range cfg.APIKeys {
@@ -119,6 +119,24 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 			Enabled:     limit.Enabled,
 		})
 	}
+	for _, binding := range cfg.Plugins {
+		config := append(json.RawMessage(nil), binding.Config...)
+		if len(config) == 0 {
+			config = json.RawMessage(`{}`)
+		}
+		runtime.PluginBindings = append(runtime.PluginBindings, PluginBindingRuntime{
+			ID:            binding.ID,
+			Name:          binding.Name,
+			Phase:         binding.Phase,
+			TenantID:      binding.TenantID,
+			ProjectID:     binding.ProjectID,
+			Model:         binding.Model,
+			Priority:      binding.Priority,
+			Enabled:       binding.Enabled,
+			FailurePolicy: binding.FailurePolicy,
+			Config:        config,
+		})
+	}
 	for _, key := range cfg.RevokedKeys {
 		if key.KeyHash != "" && key.RevokedAt != nil {
 			runtime.RevokedKeys = append(runtime.RevokedKeys, RevokedKeyRuntime{KeyHash: key.KeyHash, RevokedAt: *key.RevokedAt})
@@ -187,5 +205,31 @@ func Validate(runtime RuntimeSnapshot) error {
 			return apperr.InvalidArgument("limit references unknown model")
 		}
 	}
+	for _, binding := range runtime.PluginBindings {
+		if binding.Name == "" || binding.Phase == "" {
+			return apperr.InvalidArgument("plugin binding name and phase are required")
+		}
+		if !validPhase(binding.Phase) {
+			return apperr.InvalidArgument("plugin binding phase is not supported")
+		}
+		if binding.FailurePolicy != "" && binding.FailurePolicy != "fail_closed" && binding.FailurePolicy != "fail_open" {
+			return apperr.InvalidArgument("plugin binding failure_policy is not supported")
+		}
+		if binding.Model != "" && models[binding.Model].PublicModel == "" {
+			return apperr.InvalidArgument("plugin binding references unknown model")
+		}
+		if len(binding.Config) > 0 && !json.Valid(binding.Config) {
+			return apperr.InvalidArgument("plugin binding config must be valid json")
+		}
+	}
 	return nil
+}
+
+func validPhase(phase string) bool {
+	switch phase {
+	case "pre_request", "post_auth", "pre_prompt", "pre_route", "post_route", "pre_provider", "post_provider", "pre_settlement", "audit":
+		return true
+	default:
+		return false
+	}
 }

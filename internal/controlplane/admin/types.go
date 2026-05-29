@@ -1,6 +1,9 @@
 package admin
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Tenant is a customer account boundary.
 type Tenant struct {
@@ -99,6 +102,22 @@ type LimitRuleConfig struct {
 	Enabled     bool   `json:"enabled"`
 }
 
+// PluginBindingConfig binds one built-in plugin to a runtime phase and scope.
+type PluginBindingConfig struct {
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Phase         string          `json:"phase"`
+	TenantID      string          `json:"tenant_id,omitempty"`
+	ProjectID     string          `json:"project_id,omitempty"`
+	Model         string          `json:"model,omitempty"`
+	Priority      int             `json:"priority"`
+	Enabled       bool            `json:"enabled"`
+	FailurePolicy string          `json:"failure_policy"`
+	Config        json.RawMessage `json:"config"`
+	CreatedAt     time.Time       `json:"created_at,omitempty"`
+	UpdatedAt     time.Time       `json:"updated_at,omitempty"`
+}
+
 // SnapshotRecord stores one published runtime snapshot payload.
 type SnapshotRecord struct {
 	Version   string     `json:"version"`
@@ -118,5 +137,6 @@ type SnapshotConfig struct {
 	Routes      []RoutePolicyConfig
 	Prices      []PriceRuleConfig
 	Limits      []LimitRuleConfig
+	Plugins     []PluginBindingConfig
 	RevokedKeys []APIKey
 }

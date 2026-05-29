@@ -18,6 +18,8 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/dataplane/limit"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/observe"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/parser"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/plugin"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/plugin/builtin"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/router"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/stream"
@@ -176,6 +178,7 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 		})
 	}
 	streamFinalizer := stream.NewFinalizer(settlementService, observeRecorder)
+	pluginManager := plugin.NewManager(builtin.Registry())
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
 	return engine.New(
@@ -191,6 +194,7 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 		engine.WithStreamFinalizer(streamFinalizer),
 		engine.WithTaskBridge(taskBridge),
 		engine.WithFileService(fileBridge),
+		engine.WithPluginManager(pluginManager),
 		engine.WithObserveRecorder(observeRecorder),
 	)
 }

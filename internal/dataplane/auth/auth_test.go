@@ -91,6 +91,10 @@ func (s fakeSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
 	return engine.LimitRuleView{}, false
 }
 
+func (s fakeSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
+	return nil
+}
+
 func (s fakeSnapshot) IsAPIKeyRevoked(string) bool {
 	return false
 }

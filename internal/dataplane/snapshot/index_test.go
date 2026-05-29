@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -42,6 +43,16 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 				Weight:    100,
 			}},
 		}},
+		PluginBindings: []cpsnapshot.PluginBindingRuntime{{
+			ID:            "guard",
+			Name:          "prompt_guard",
+			Phase:         "pre_prompt",
+			Model:         "gpt-4o-mini",
+			Priority:      1,
+			Enabled:       true,
+			FailurePolicy: "fail_closed",
+			Config:        json.RawMessage(`{"deny_terms":["blocked"]}`),
+		}},
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -54,5 +65,9 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 	}
 	if channel, ok := indexed.LookupChannel("channel_1"); !ok || channel.Models["gpt-4o-mini"] != "gpt-4o-mini" {
 		t.Fatalf("channel = %#v, ok = %v", channel, ok)
+	}
+	bindings := indexed.LookupPluginBindings("pre_prompt")
+	if len(bindings) != 1 || bindings[0].Name != "prompt_guard" {
+		t.Fatalf("plugin bindings = %#v", bindings)
 	}
 }

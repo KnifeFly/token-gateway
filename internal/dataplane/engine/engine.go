@@ -25,6 +25,7 @@ type GatewayEngine struct {
 	tasks      TaskBridge
 	files      FileService
 	settlement SettlementService
+	plugins    PluginManager
 	observe    ObserveRecorder
 }
 
@@ -91,6 +92,11 @@ func WithFileService(files FileService) Option {
 	return func(e *GatewayEngine) { e.files = files }
 }
 
+// WithPluginManager configures data-plane plugins.
+func WithPluginManager(plugins PluginManager) Option {
+	return func(e *GatewayEngine) { e.plugins = plugins }
+}
+
 // WithObserveRecorder configures metrics, traces, and logs.
 func WithObserveRecorder(observe ObserveRecorder) Option {
 	return func(e *GatewayEngine) { e.observe = observe }
@@ -120,6 +126,9 @@ func New(opts ...Option) (*GatewayEngine, error) {
 	if e.files == nil {
 		e.files = NoopFileService{}
 	}
+	if e.plugins == nil {
+		e.plugins = NoopPluginManager{}
+	}
 	if e.observe == nil {
 		e.observe = NoopObserveRecorder{}
 	}
@@ -137,11 +146,21 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	var response *GatewayResponse
 	var err error
 	defer func() {
+		_ = e.plugins.Run(ctx, "audit", state)
 		addSnapshotHeader(response, state)
 		e.observe.FinishRequest(ctx, state, response, err)
 	}()
 
-	// Step 1: classify and parse before attaching the runtime snapshot.
+	if err = e.snapshot.Attach(ctx, state); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
+	if err = e.plugins.Run(ctx, "pre_request", state); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
+
+	// Step 1: classify and parse after pinning the runtime snapshot.
 	if err = e.classifier.Classify(ctx, state); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
@@ -151,12 +170,12 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		return response, nil
 	}
 
-	// Step 2: attach snapshot state and authenticate the caller.
-	if err = e.snapshot.Attach(ctx, state); err != nil {
+	// Step 2: authenticate the caller against the pinned snapshot.
+	if err = e.auth.Authenticate(ctx, state); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
-	if err = e.auth.Authenticate(ctx, state); err != nil {
+	if err = e.plugins.Run(ctx, "post_auth", state); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
@@ -185,8 +204,16 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 			return response, nil
 		}
 	}
+	if err = e.plugins.Run(ctx, "pre_prompt", state); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
 
 	// Step 3: resolve routing and reserve local limits before provider dispatch.
+	if err = e.plugins.Run(ctx, "pre_route", state); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
 	ctx, span := e.observe.StartSpan(ctx, "gateway.route",
 		attribute.String("gateway.request_id", state.RequestID),
 		attribute.String("gateway.model", state.RequestedModel),
@@ -198,6 +225,10 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		return response, nil
 	}
 	span.End()
+	if err = e.plugins.Run(ctx, "post_route", state); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
 
 	if err = e.admission.Reserve(ctx, state); err != nil {
 		response = e.errorResponse(state, err)
@@ -224,6 +255,11 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 
 	// Step 4: dispatch to the selected provider and finalize billing.
+	if err = e.plugins.Run(ctx, "pre_provider", state); err != nil {
+		_ = e.admission.Release(ctx, state, err)
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
 	result, dispatchErr := e.dispatcher.Dispatch(ctx, state)
 	if dispatchErr != nil {
 		_ = e.admission.Release(ctx, state, dispatchErr)
@@ -233,12 +269,20 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	state.ProviderResult = result
 	state.ActualUsage = result.Usage
+	if err = e.plugins.Run(ctx, "post_provider", state); err != nil {
+		response, err = e.settleBeforePolicyError(ctx, state, err)
+		return response, nil
+	}
 	if result.Response != nil && result.Response.Stream != nil {
 		response, err = e.stream.Wrap(ctx, state, result)
 		if err != nil {
 			response = e.errorResponse(state, err)
 			return response, nil
 		}
+		return response, nil
+	}
+	if err = e.plugins.Run(ctx, "pre_settlement", state); err != nil {
+		response, err = e.settleBeforePolicyError(ctx, state, err)
 		return response, nil
 	}
 	if err = e.settlement.Settle(ctx, state); err != nil {
@@ -306,6 +350,17 @@ func (e *GatewayEngine) releaseLimits(ctx context.Context, state *RequestState) 
 	}
 }
 
+func (e *GatewayEngine) settleBeforePolicyError(ctx context.Context, state *RequestState, policyErr error) (*GatewayResponse, error) {
+	if settleErr := e.settlement.Settle(ctx, state); settleErr != nil {
+		recordErr := e.settlement.RecordFailed(ctx, state, settleErr)
+		if recordErr != nil {
+			err := errors.Join(policyErr, settleErr, recordErr)
+			return e.errorResponse(state, err), err
+		}
+	}
+	return e.errorResponse(state, policyErr), policyErr
+}
+
 func (e *GatewayEngine) errorResponse(state *RequestState, err error) *GatewayResponse {
 	status := http.StatusInternalServerError
 	code := "service_error"
@@ -359,7 +414,7 @@ func externalType(code apperr.Code) string {
 	switch code {
 	case apperr.CodeUnauthorized:
 		return "authentication_error"
-	case apperr.CodeForbidden:
+	case apperr.CodeForbidden, apperr.CodePolicyDenied:
 		return "permission_error"
 	case apperr.CodeProviderError:
 		return "provider_error"

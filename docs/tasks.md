@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header。
-- 未开始：M6 plugins + security 和后续能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric 和 `policy_denied` 映射。
+- 未开始：M7 observability + performance 和后续能力。
 - 阻塞：无。
-- 下一步建议：进入 M6，先实现 plugin phase enum、PluginManager、binding resolver，再接 RequestSize、PromptTokenLimit、PIIRedaction、PromptGuard、ResponseGuard 和 audit/metrics plugins。
-- 最近验证：M5 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
+- 下一步建议：进入 M7，先固化 metrics 命名和 label 规范，再补齐 OTel spans、统一 redactor、load test 和 failure drills。
+- 最近验证：M6 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
 
 ## 使用规则
 
@@ -110,15 +110,15 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | M6/E6-T01/P0 | P0 | 定义 MVP 9 phase enum | `internal/dataplane/plugin/phase.go` | phase 与 ADR 一致 |
-| [ ] | M6/E6-T02/P0 | P0 | 实现 PluginManager | `internal/dataplane/plugin/manager.go` | 无绑定 phase O(1) skip |
-| [ ] | M6/E6-T03/P0 | P0 | 实现 PluginBinding resolver | `internal/dataplane/plugin/binding_resolver.go` | scope specificity、priority、name 排序正确 |
-| [ ] | M6/E6-T04/P0 | P0 | 实现 RequestSizePlugin | `plugin/builtin/request_size.go` | 超限拒绝 |
-| [ ] | M6/E6-T05/P0 | P0 | 实现 PromptTokenLimitPlugin | `plugin/builtin/prompt_token_limit.go` | prompt token 超限拒绝 |
-| [ ] | M6/E6-T06/P0 | P0 | 实现 PIIRedactionPlugin | `plugin/builtin/pii_redaction.go` | 日志和审计脱敏 |
-| [ ] | M6/E6-T07/P0 | P0 | 实现 PromptGuardPlugin | `plugin/builtin/prompt_guard.go` | 命中返回 `policy_denied` |
-| [ ] | M6/E6-T08/P1 | P1 | 实现 ResponseGuardPlugin / CostGuardPlugin | `plugin/builtin` | 支持 deny、degrade、audit |
-| [ ] | M6/E6-T09/P1 | P1 | 实现 AuditLogPlugin / LLMMetricPlugin | `plugin/builtin` | 审计和指标不含敏感明文 |
+| [x] | M6/E6-T01/P0 | P0 | 定义 MVP 9 phase enum | `internal/dataplane/plugin/phase.go` | phase 与 ADR 一致 |
+| [x] | M6/E6-T02/P0 | P0 | 实现 PluginManager | `internal/dataplane/plugin/manager.go` | 无绑定 phase O(1) skip |
+| [x] | M6/E6-T03/P0 | P0 | 实现 PluginBinding resolver | `internal/dataplane/plugin/binding_resolver.go` | scope specificity、priority、name 排序正确 |
+| [x] | M6/E6-T04/P0 | P0 | 实现 RequestSizePlugin | `plugin/builtin/request_size.go` | 超限拒绝 |
+| [x] | M6/E6-T05/P0 | P0 | 实现 PromptTokenLimitPlugin | `plugin/builtin/prompt_token_limit.go` | prompt token 超限拒绝 |
+| [x] | M6/E6-T06/P0 | P0 | 实现 PIIRedactionPlugin | `plugin/builtin/pii_redaction.go` | 日志和审计脱敏 |
+| [x] | M6/E6-T07/P0 | P0 | 实现 PromptGuardPlugin | `plugin/builtin/prompt_guard.go` | 命中返回 `policy_denied` |
+| [x] | M6/E6-T08/P1 | P1 | 实现 ResponseGuardPlugin / CostGuardPlugin | `plugin/builtin` | 支持 deny、degrade、audit |
+| [x] | M6/E6-T09/P1 | P1 | 实现 AuditLogPlugin / LLMMetricPlugin | `plugin/builtin` | 审计和指标不含敏感明文 |
 
 ## M7 Observability + Performance
 

@@ -39,6 +39,7 @@ func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, to
 	mux.HandleFunc("POST /admin/routes", h.requireAdmin(h.upsertRoute))
 	mux.HandleFunc("POST /admin/prices", h.requireAdmin(h.upsertPrice))
 	mux.HandleFunc("POST /admin/limits", h.requireAdmin(h.upsertLimit))
+	mux.HandleFunc("POST /admin/plugin-bindings", h.requireAdmin(h.upsertPluginBinding))
 	mux.HandleFunc("POST /admin/snapshots/publish", h.requireAdmin(h.publishSnapshot))
 	mux.HandleFunc("POST /admin/snapshots/rollback", h.requireAdmin(h.rollbackSnapshot))
 	return mux
@@ -143,6 +144,15 @@ func (h *Handler) upsertLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.admin.UpsertLimit(r.Context(), request)
+	writeResult(w, result, err)
+}
+
+func (h *Handler) upsertPluginBinding(w http.ResponseWriter, r *http.Request) {
+	var request admin.PluginBindingConfig
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.admin.UpsertPluginBinding(r.Context(), request)
 	writeResult(w, result, err)
 }
 

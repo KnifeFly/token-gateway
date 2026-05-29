@@ -149,6 +149,10 @@ func (dispatchSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
 	return engine.LimitRuleView{}, false
 }
 
+func (dispatchSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
+	return nil
+}
+
 func (dispatchSnapshot) IsAPIKeyRevoked(string) bool {
 	return false
 }

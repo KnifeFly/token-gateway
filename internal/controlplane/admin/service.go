@@ -4,6 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -11,6 +14,13 @@ import (
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
+
+const (
+	failurePolicyFailClosed = "fail_closed"
+	failurePolicyFailOpen   = "fail_open"
+)
+
+var pluginBindingIDRe = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
 // Service validates and writes control-plane admin configuration.
 type Service struct {
@@ -175,10 +185,58 @@ func (s *Service) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*Limi
 	return s.repo.UpsertLimit(ctx, limit)
 }
 
+// UpsertPluginBinding creates or updates a built-in plugin binding.
+func (s *Service) UpsertPluginBinding(ctx context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error) {
+	binding.Name = strings.TrimSpace(binding.Name)
+	binding.Phase = strings.TrimSpace(binding.Phase)
+	if binding.Name == "" || binding.Phase == "" {
+		return nil, apperr.InvalidArgument("plugin name and phase are required")
+	}
+	if !validPluginPhase(binding.Phase) {
+		return nil, apperr.InvalidArgument("plugin phase is not supported")
+	}
+	if binding.ID == "" {
+		binding.ID = pluginBindingID(binding)
+		if !binding.Enabled {
+			binding.Enabled = true
+		}
+	}
+	if binding.Priority == 0 {
+		binding.Priority = 100
+	}
+	if binding.FailurePolicy == "" {
+		binding.FailurePolicy = failurePolicyFailClosed
+	}
+	if binding.FailurePolicy != failurePolicyFailClosed && binding.FailurePolicy != failurePolicyFailOpen {
+		return nil, apperr.InvalidArgument("plugin failure_policy is not supported")
+	}
+	if len(binding.Config) == 0 {
+		binding.Config = json.RawMessage(`{}`)
+	}
+	if !json.Valid(binding.Config) {
+		return nil, apperr.InvalidArgument("plugin config must be valid json")
+	}
+	return s.repo.UpsertPluginBinding(ctx, binding)
+}
+
 func newPlaintextKey() string {
 	var b [24]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "tg_" + newID("key")
 	}
 	return "tg_" + base64.RawURLEncoding.EncodeToString(b[:])
+}
+
+func validPluginPhase(phase string) bool {
+	switch phase {
+	case "pre_request", "post_auth", "pre_prompt", "pre_route", "post_route", "pre_provider", "post_provider", "pre_settlement", "audit":
+		return true
+	default:
+		return false
+	}
+}
+
+func pluginBindingID(binding PluginBindingConfig) string {
+	base := fmt.Sprintf("plugin_%s_%s_%s_%s_%s", binding.Phase, binding.Name, binding.TenantID, binding.ProjectID, binding.Model)
+	return strings.Trim(pluginBindingIDRe.ReplaceAllString(base, "_"), "_")
 }

@@ -200,6 +200,23 @@ ON DUPLICATE KEY UPDATE qps = VALUES(qps), tpm = VALUES(tpm), concurrency = VALU
 	return &limit, nil
 }
 
+func (r *MySQLRepository) UpsertPluginBinding(ctx context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error) {
+	if binding.ID == "" {
+		binding.ID = newID("plugin")
+	}
+	_, err := r.db.ExecContext(ctx, `
+INSERT INTO cp_plugin_bindings (id, name, phase, tenant_id, project_id, model, priority, enabled, failure_policy, config_json)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE name = VALUES(name), phase = VALUES(phase), tenant_id = VALUES(tenant_id),
+  project_id = VALUES(project_id), model = VALUES(model), priority = VALUES(priority), enabled = VALUES(enabled),
+  failure_policy = VALUES(failure_policy), config_json = VALUES(config_json), updated_at = CURRENT_TIMESTAMP`,
+		binding.ID, binding.Name, binding.Phase, binding.TenantID, binding.ProjectID, binding.Model, binding.Priority, binding.Enabled, binding.FailurePolicy, []byte(binding.Config))
+	if err != nil {
+		return nil, err
+	}
+	return r.getPluginBinding(ctx, binding.ID)
+}
+
 func (r *MySQLRepository) LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error) {
 	cfg := &SnapshotConfig{}
 	keys, err := r.ListAPIKeys(ctx, "", "")
@@ -227,6 +244,9 @@ func (r *MySQLRepository) LoadSnapshotConfig(ctx context.Context) (*SnapshotConf
 		return nil, err
 	}
 	if cfg.Limits, err = r.listLimits(ctx); err != nil {
+		return nil, err
+	}
+	if cfg.Plugins, err = r.listPluginBindings(ctx); err != nil {
 		return nil, err
 	}
 	return cfg, nil
@@ -302,6 +322,13 @@ func (r *MySQLRepository) getProject(ctx context.Context, id string) (*Project, 
 
 func (r *MySQLRepository) getAPIKey(ctx context.Context, id string) (*APIKey, error) {
 	return scanAPIKey(r.db.QueryRowContext(ctx, `SELECT id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, revoked_at, created_at, updated_at FROM cp_api_keys WHERE id = ?`, id))
+}
+
+func (r *MySQLRepository) getPluginBinding(ctx context.Context, id string) (*PluginBindingConfig, error) {
+	return scanPluginBinding(r.db.QueryRowContext(ctx, `
+SELECT id, name, phase, tenant_id, project_id, model, priority, enabled, failure_policy, config_json, created_at, updated_at
+FROM cp_plugin_bindings
+WHERE id = ?`, id))
 }
 
 func (r *MySQLRepository) listModels(ctx context.Context) ([]ModelConfig, error) {
@@ -434,6 +461,26 @@ func (r *MySQLRepository) listLimits(ctx context.Context) ([]LimitRuleConfig, er
 	return limits, rows.Err()
 }
 
+func (r *MySQLRepository) listPluginBindings(ctx context.Context) ([]PluginBindingConfig, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, name, phase, tenant_id, project_id, model, priority, enabled, failure_policy, config_json, created_at, updated_at
+FROM cp_plugin_bindings
+ORDER BY phase, priority, name, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var bindings []PluginBindingConfig
+	for rows.Next() {
+		binding, err := scanPluginBinding(rows)
+		if err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, *binding)
+	}
+	return bindings, rows.Err()
+}
+
 func (r *MySQLRepository) snapshotByStatus(ctx context.Context, status string) (*SnapshotRecord, bool, error) {
 	record, err := scanSnapshot(r.db.QueryRowContext(ctx, `
 SELECT version, checksum, status, payload_json, error, created_at, active_at
@@ -482,4 +529,19 @@ func scanSnapshot(row rowScanner) (*SnapshotRecord, error) {
 		record.ActiveAt = &activeAt.Time
 	}
 	return &record, nil
+}
+
+func scanPluginBinding(row rowScanner) (*PluginBindingConfig, error) {
+	var binding PluginBindingConfig
+	var config []byte
+	err := row.Scan(&binding.ID, &binding.Name, &binding.Phase, &binding.TenantID, &binding.ProjectID, &binding.Model,
+		&binding.Priority, &binding.Enabled, &binding.FailurePolicy, &config, &binding.CreatedAt, &binding.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	if len(config) == 0 {
+		config = []byte(`{}`)
+	}
+	binding.Config = json.RawMessage(config)
+	return &binding, nil
 }

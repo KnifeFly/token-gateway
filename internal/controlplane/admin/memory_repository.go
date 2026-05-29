@@ -18,6 +18,7 @@ type MemoryRepository struct {
 	routes    map[string]RoutePolicyConfig
 	prices    map[string]PriceRuleConfig
 	limits    map[string]LimitRuleConfig
+	plugins   map[string]PluginBindingConfig
 	snapshots map[string]SnapshotRecord
 	active    string
 	previous  string
@@ -34,6 +35,7 @@ func NewMemoryRepository() *MemoryRepository {
 		routes:    map[string]RoutePolicyConfig{},
 		prices:    map[string]PriceRuleConfig{},
 		limits:    map[string]LimitRuleConfig{},
+		plugins:   map[string]PluginBindingConfig{},
 		snapshots: map[string]SnapshotRecord{},
 	}
 }
@@ -148,6 +150,23 @@ func (r *MemoryRepository) UpsertLimit(_ context.Context, limit LimitRuleConfig)
 	return clone(limit), nil
 }
 
+func (r *MemoryRepository) UpsertPluginBinding(_ context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := time.Now().UTC()
+	if binding.ID == "" {
+		binding.ID = newID("plugin")
+	}
+	if existing, ok := r.plugins[binding.ID]; ok {
+		binding.CreatedAt = existing.CreatedAt
+	} else {
+		binding.CreatedAt = now
+	}
+	binding.UpdatedAt = now
+	r.plugins[binding.ID] = binding
+	return clone(binding), nil
+}
+
 func (r *MemoryRepository) LoadSnapshotConfig(context.Context) (*SnapshotConfig, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -174,6 +193,9 @@ func (r *MemoryRepository) LoadSnapshotConfig(context.Context) (*SnapshotConfig,
 	}
 	for _, limit := range r.limits {
 		cfg.Limits = append(cfg.Limits, limit)
+	}
+	for _, binding := range r.plugins {
+		cfg.Plugins = append(cfg.Plugins, binding)
 	}
 	return cfg, nil
 }

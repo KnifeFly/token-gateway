@@ -14,14 +14,15 @@ import (
 
 // IndexedSnapshot is the data-plane hot-path view of a runtime snapshot.
 type IndexedSnapshot struct {
-	ref           engine.SnapshotRef
-	apiKeysByHash map[string]engine.APIKeyView
-	modelsByName  map[string]engine.ModelView
-	channelsByID  map[string]engine.ChannelView
-	routesByModel map[string]engine.RoutePolicyView
-	pricesByModel map[string]engine.PriceRuleView
-	limitsByModel map[string]engine.LimitRuleView
-	revokedHashes map[string]struct{}
+	ref            engine.SnapshotRef
+	apiKeysByHash  map[string]engine.APIKeyView
+	modelsByName   map[string]engine.ModelView
+	channelsByID   map[string]engine.ChannelView
+	routesByModel  map[string]engine.RoutePolicyView
+	pricesByModel  map[string]engine.PriceRuleView
+	limitsByModel  map[string]engine.LimitRuleView
+	pluginsByPhase map[string][]engine.PluginBindingView
+	revokedHashes  map[string]struct{}
 }
 
 // Build validates and indexes a control-plane RuntimeSnapshot.
@@ -37,13 +38,14 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			Version:   runtime.Version,
 			CreatedAt: runtime.CreatedAt,
 		},
-		apiKeysByHash: make(map[string]engine.APIKeyView, len(runtime.APIKeys)),
-		modelsByName:  make(map[string]engine.ModelView, len(runtime.Models)),
-		channelsByID:  make(map[string]engine.ChannelView, len(runtime.Channels)),
-		routesByModel: make(map[string]engine.RoutePolicyView, len(runtime.RoutePolicies)),
-		pricesByModel: make(map[string]engine.PriceRuleView, len(runtime.PriceRules)),
-		limitsByModel: make(map[string]engine.LimitRuleView, len(runtime.LimitRules)),
-		revokedHashes: make(map[string]struct{}, len(runtime.RevokedKeys)),
+		apiKeysByHash:  make(map[string]engine.APIKeyView, len(runtime.APIKeys)),
+		modelsByName:   make(map[string]engine.ModelView, len(runtime.Models)),
+		channelsByID:   make(map[string]engine.ChannelView, len(runtime.Channels)),
+		routesByModel:  make(map[string]engine.RoutePolicyView, len(runtime.RoutePolicies)),
+		pricesByModel:  make(map[string]engine.PriceRuleView, len(runtime.PriceRules)),
+		limitsByModel:  make(map[string]engine.LimitRuleView, len(runtime.LimitRules)),
+		pluginsByPhase: make(map[string][]engine.PluginBindingView),
+		revokedHashes:  make(map[string]struct{}, len(runtime.RevokedKeys)),
 	}
 	for _, apiKey := range runtime.APIKeys {
 		if apiKey.KeyHash == "" {
@@ -146,6 +148,27 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			Enabled:     limit.Enabled,
 		}
 	}
+	for _, binding := range runtime.PluginBindings {
+		if binding.Name == "" || binding.Phase == "" || !binding.Enabled {
+			continue
+		}
+		config := append([]byte(nil), binding.Config...)
+		if len(config) == 0 {
+			config = []byte(`{}`)
+		}
+		indexed.pluginsByPhase[binding.Phase] = append(indexed.pluginsByPhase[binding.Phase], engine.PluginBindingView{
+			ID:            binding.ID,
+			Name:          binding.Name,
+			Phase:         binding.Phase,
+			TenantID:      binding.TenantID,
+			ProjectID:     binding.ProjectID,
+			Model:         binding.Model,
+			Priority:      binding.Priority,
+			Enabled:       binding.Enabled,
+			FailurePolicy: binding.FailurePolicy,
+			Config:        config,
+		})
+	}
 	for _, revoked := range runtime.RevokedKeys {
 		if revoked.KeyHash != "" {
 			indexed.revokedHashes[revoked.KeyHash] = struct{}{}
@@ -186,6 +209,10 @@ func (s *IndexedSnapshot) LookupPrice(publicModel string) (engine.PriceRuleView,
 func (s *IndexedSnapshot) LookupLimit(publicModel string) (engine.LimitRuleView, bool) {
 	value, ok := s.limitsByModel[publicModel]
 	return value, ok
+}
+
+func (s *IndexedSnapshot) LookupPluginBindings(phase string) []engine.PluginBindingView {
+	return s.pluginsByPhase[phase]
 }
 
 func (s *IndexedSnapshot) IsAPIKeyRevoked(hash string) bool {

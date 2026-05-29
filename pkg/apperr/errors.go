@@ -19,6 +19,7 @@ const (
 	CodeProviderError       Code = "provider_error"
 	CodeAmbiguousProtocol   Code = "ambiguous_protocol"
 	CodeIdempotencyConflict Code = "idempotency_conflict"
+	CodePolicyDenied        Code = "policy_denied"
 	CodeSnapshotStale       Code = "snapshot_stale"
 	CodeConfigUnavailable   Code = "config_unavailable"
 	CodeServiceUnavailable  Code = "service_unavailable"
@@ -145,6 +146,11 @@ func AmbiguousProtocol(message string, opts ...Option) *Error {
 	return New(CodeAmbiguousProtocol, message, http.StatusBadRequest, opts...)
 }
 
+// PolicyDenied returns an error when security policy blocks a request.
+func PolicyDenied(message string, opts ...Option) *Error {
+	return New(CodePolicyDenied, message, http.StatusForbidden, opts...)
+}
+
 func ConfigUnavailable(message string, opts ...Option) *Error {
 	return New(CodeConfigUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
@@ -177,6 +183,8 @@ func defaultMessage(code Code) string {
 		return "ambiguous protocol"
 	case CodeIdempotencyConflict:
 		return "idempotency conflict"
+	case CodePolicyDenied:
+		return "policy denied"
 	case CodeSnapshotStale:
 		return "configuration snapshot is stale"
 	case CodeConfigUnavailable:

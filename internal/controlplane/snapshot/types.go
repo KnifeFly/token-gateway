@@ -1,20 +1,24 @@
 package snapshot
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // RuntimeSnapshot is the control-plane output consumed by data-plane indexes.
 type RuntimeSnapshot struct {
-	Version       string
-	SchemaVersion string
-	Checksum      string
-	CreatedAt     time.Time
-	APIKeys       []APIKeyRuntime
-	Models        []ModelRuntime
-	Channels      []ChannelRuntime
-	RoutePolicies []RoutePolicyRuntime
-	PriceRules    []PriceRuleRuntime
-	LimitRules    []LimitRuleRuntime
-	RevokedKeys   []RevokedKeyRuntime
+	Version        string
+	SchemaVersion  string
+	Checksum       string
+	CreatedAt      time.Time
+	APIKeys        []APIKeyRuntime
+	Models         []ModelRuntime
+	Channels       []ChannelRuntime
+	RoutePolicies  []RoutePolicyRuntime
+	PriceRules     []PriceRuleRuntime
+	LimitRules     []LimitRuleRuntime
+	PluginBindings []PluginBindingRuntime
+	RevokedKeys    []RevokedKeyRuntime
 }
 
 // APIKeyRuntime contains no plaintext API key, only the stable hash.
@@ -87,6 +91,20 @@ type LimitRuleRuntime struct {
 	TPM         int64
 	Concurrency int64
 	Enabled     bool
+}
+
+// PluginBindingRuntime is a validated data-plane plugin binding.
+type PluginBindingRuntime struct {
+	ID            string
+	Name          string
+	Phase         string
+	TenantID      string
+	ProjectID     string
+	Model         string
+	Priority      int
+	Enabled       bool
+	FailurePolicy string
+	Config        json.RawMessage
 }
 
 // RevokedKeyRuntime records fast API key revocations included in snapshots.
