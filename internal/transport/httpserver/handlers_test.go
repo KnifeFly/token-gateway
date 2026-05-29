@@ -55,6 +55,23 @@ func TestMetrics(t *testing.T) {
 	}
 }
 
+func TestExtensionRouteRegistered(t *testing.T) {
+	handler := NewHandlerWithRoutes(
+		func(context.Context) []DependencyStatus { return nil },
+		prometheus.NewRegistry(),
+		nil,
+		[]RouteRegistrar{fakeRoute{}},
+	)
+	req := httptest.NewRequest(http.MethodGet, "/extension", nil)
+	res := httptest.NewRecorder()
+
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("status = %d", res.Code)
+	}
+}
+
 func TestChatCompletionsRouteDelegatesGateway(t *testing.T) {
 	handler := NewHandler(func(context.Context) []DependencyStatus { return nil }, prometheus.NewRegistry(), nil, fakeGateway{})
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(nil))
@@ -89,6 +106,14 @@ func TestStreamRouteWritesSSE(t *testing.T) {
 }
 
 type fakeGateway struct{}
+
+type fakeRoute struct{}
+
+func (fakeRoute) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /extension", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	})
+}
 
 func (fakeGateway) Handle(context.Context, engine.IncomingRequest) (*engine.GatewayResponse, error) {
 	return &engine.GatewayResponse{

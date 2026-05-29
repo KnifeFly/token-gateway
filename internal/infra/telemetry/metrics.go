@@ -23,6 +23,8 @@ const (
 	MetricIdempotencyHitsTotal       = "token_gateway_idempotency_hits_total"
 	MetricTaskLifecycleTransitions   = "token_gateway_task_lifecycle_transitions_total"
 	MetricCallbackRetriesTotal       = "token_gateway_callback_retries_total"
+	MetricRealtimeSessionsTotal      = "token_gateway_realtime_sessions_total"
+	MetricRealtimeConnectionsTotal   = "token_gateway_realtime_connections_total"
 )
 
 // SafeMetricLabels documents allowed low-cardinality metric labels.
@@ -39,4 +41,5 @@ var SafeMetricLabels = []string{
 	"currency",
 	"kind",
 	"state",
+	"operation",
 }

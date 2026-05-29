@@ -26,12 +26,27 @@ type Gateway interface {
 	Handle(context.Context, engine.IncomingRequest) (*engine.GatewayResponse, error)
 }
 
+// RouteRegistrar adds non-gateway routes to the shared HTTP mux.
+type RouteRegistrar interface {
+	Register(*http.ServeMux)
+}
+
 // NewHandler builds gateway routes.
 func NewHandler(readiness ReadinessFunc, registry *prometheus.Registry, logger *slog.Logger, gateways ...Gateway) http.Handler {
+	return NewHandlerWithRoutes(readiness, registry, logger, nil, gateways...)
+}
+
+// NewHandlerWithRoutes builds gateway routes plus optional extension routes.
+func NewHandlerWithRoutes(readiness ReadinessFunc, registry *prometheus.Registry, logger *slog.Logger, extensions []RouteRegistrar, gateways ...Gateway) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz(readiness))
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+	for _, extension := range extensions {
+		if extension != nil {
+			extension.Register(mux)
+		}
+	}
 	if len(gateways) > 0 && gateways[0] != nil {
 		mux.HandleFunc("POST /v1/chat/completions", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1/responses", dataPlane(gateways[0]))

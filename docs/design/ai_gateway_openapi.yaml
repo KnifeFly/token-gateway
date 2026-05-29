@@ -700,7 +700,7 @@ paths:
       tags:
       - Realtime
       summary: Create realtime session
-      description: 预留实时接口入口。客户端先创建短期 session，再使用返回的 websocket_url 或 webrtc_url 建立长连接。MVP 可只返回 501 not_supported_yet。
+      description: 预留实时接口入口。客户端先创建短期 session，再使用返回的 websocket_url 或 webrtc_url 建立长连接。MVP 可只返回 501 feature_not_enabled。
       operationId: createRealtimeSession
       parameters:
       - $ref: '#/components/parameters/XRequestID'

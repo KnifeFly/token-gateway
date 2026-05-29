@@ -21,6 +21,7 @@ const (
 	CodeIdempotencyConflict Code = "idempotency_conflict"
 	CodePolicyDenied        Code = "policy_denied"
 	CodeSnapshotStale       Code = "snapshot_stale"
+	CodeFeatureNotEnabled   Code = "feature_not_enabled"
 	CodeConfigUnavailable   Code = "config_unavailable"
 	CodeServiceUnavailable  Code = "service_unavailable"
 	CodeInternal            Code = "internal_error"
@@ -159,6 +160,11 @@ func ServiceUnavailable(message string, opts ...Option) *Error {
 	return New(CodeServiceUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
 
+// FeatureNotEnabled returns an error for explicitly disabled product capabilities.
+func FeatureNotEnabled(message string, opts ...Option) *Error {
+	return New(CodeFeatureNotEnabled, message, http.StatusNotImplemented, opts...)
+}
+
 func Internal(message string, opts ...Option) *Error {
 	return New(CodeInternal, message, http.StatusInternalServerError, opts...)
 }
@@ -187,6 +193,8 @@ func defaultMessage(code Code) string {
 		return "policy denied"
 	case CodeSnapshotStale:
 		return "configuration snapshot is stale"
+	case CodeFeatureNotEnabled:
+		return "feature is not enabled"
 	case CodeConfigUnavailable:
 		return "configuration unavailable"
 	case CodeServiceUnavailable:

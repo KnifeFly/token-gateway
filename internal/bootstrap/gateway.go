@@ -20,6 +20,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/dataplane/parser"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/plugin"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/plugin/builtin"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/realtime"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/router"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/stream"
@@ -34,6 +35,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/provider/openai"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
+	"github.com/KnifeFly/token-gateway/internal/transport/realtimehttp"
 )
 
 // GatewayApp wires M0 dependencies for the data-plane process.
@@ -66,7 +68,7 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	if err != nil {
 		return nil, err
 	}
-	gatewayEngine, err := newGatewayEngine(ctx, cfg, tel, logger, database, redisClient)
+	gatewayRuntime, err := newGatewayRuntime(ctx, cfg, tel, logger, database, redisClient)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,18 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 			dependencyFromRedis(redisClient.Ping(ctx)),
 		}
 	}
-	handler := httpserver.NewHandler(readiness, tel.Registry, logger, gatewayEngine)
+	realtimeHandler, err := realtimehttp.NewHandler(
+		gatewayRuntime.snapshotProvider,
+		gatewayRuntime.authenticator,
+		realtime.DisabledEngine{},
+		gatewayRuntime.observeRecorder,
+		tel.Registry,
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler}, gatewayRuntime.engine)
 	server := httpserver.New(httpServerConfig(cfg), handler, logger)
 	return &GatewayApp{
 		server:    server,
@@ -90,7 +103,14 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	}, nil
 }
 
-func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*engine.GatewayEngine, error) {
+type gatewayRuntime struct {
+	engine           *engine.GatewayEngine
+	snapshotProvider engine.SnapshotProvider
+	authenticator    engine.Authenticator
+	observeRecorder  engine.ObserveRecorder
+}
+
+func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*gatewayRuntime, error) {
 	indexed, err := buildSeedSnapshot(cfg)
 	if err != nil {
 		return nil, err
@@ -185,11 +205,13 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 	pluginManager := plugin.NewManager(builtin.Registry())
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
-	return engine.New(
-		engine.WithSnapshot(dpsnapshot.NewProvider(snapshotStore)),
+	snapshotProvider := dpsnapshot.NewProvider(snapshotStore)
+	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
+	gatewayEngine, err := engine.New(
+		engine.WithSnapshot(snapshotProvider),
 		engine.WithClassifier(classifier.NewDefault()),
 		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
-		engine.WithAuthenticator(auth.NewSnapshotAuthenticator(revocationStore)),
+		engine.WithAuthenticator(authenticator),
 		engine.WithRoutePlanner(router.NewRoutePlanner(nil)),
 		engine.WithAdmission(admissionController),
 		engine.WithLimitEnforcer(limitEnforcer),
@@ -201,6 +223,23 @@ func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, 
 		engine.WithPluginManager(pluginManager),
 		engine.WithObserveRecorder(observeRecorder),
 	)
+	if err != nil {
+		return nil, err
+	}
+	return &gatewayRuntime{
+		engine:           gatewayEngine,
+		snapshotProvider: snapshotProvider,
+		authenticator:    authenticator,
+		observeRecorder:  observeRecorder,
+	}, nil
+}
+
+func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*engine.GatewayEngine, error) {
+	runtime, err := newGatewayRuntime(ctx, cfg, tel, logger, database, redisClient)
+	if err != nil {
+		return nil, err
+	}
+	return runtime.engine, nil
 }
 
 type providerCredentialResolver struct {

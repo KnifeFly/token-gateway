@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射；M7 已落地 metrics 命名和安全 label 规范、HTTP/provider/token/cost/retry/fallback/degrade/idempotency/task/callback/snapshot/billing 指标、GatewayEngine 核心阶段 spans、统一 redactor 增强、load test、failure drills、dashboard、alert rules 和性能预算文档。
-- 未开始：M8 realtime reserved extension 和后续能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射；M7 已落地 metrics 命名和安全 label 规范、HTTP/provider/token/cost/retry/fallback/degrade/idempotency/task/callback/snapshot/billing 指标、GatewayEngine 核心阶段 spans、统一 redactor 增强、load test、failure drills、dashboard、alert rules 和性能预算文档；M8 已落地 RealtimeSession domain、RealtimeEngine/DisabledEngine、`/v1/realtime/sessions` create/get handler、`/v1/realtime` WebSocket stub、API key auth/model permission、audit log、trace 和 realtime metrics 接入点，未启用时返回 501/`feature_not_enabled`。
+- 未开始：M9 commercial operations 和后续能力。
 - 阻塞：无。
-- 下一步建议：进入 M8，先定义 RealtimeSession domain 和 create/get session API，再接 WebSocket handler stub。
-- 最近验证：M7 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
+- 下一步建议：进入 M9，先做客户余额和用量报表，再接 provider cost/profit reporting 与 reconciliation report。
+- 最近验证：M8 开发后 `go test ./...`、`make lint`、`make build`、`make race`、`git diff --check` 均通过；本轮未重跑 compose smoke。
 
 ## 使用规则
 
@@ -135,10 +135,10 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | M8/E8-T01/P2 | P2 | 定义 RealtimeSession domain | `internal/dataplane/realtime/session.go` | session 类型、状态、过期时间可表达 |
-| [ ] | M8/E8-T02/P2 | P2 | 实现 create/get session API | `internal/transport/realtimehttp` | 未启用时返回 501/feature_not_enabled |
-| [ ] | M8/E8-T03/P2 | P2 | 定义 RealtimeEngine interface | `internal/dataplane/realtime/engine.go` | 不绑定具体 provider |
-| [ ] | M8/E8-T04/P2 | P2 | 实现 WebSocket handler stub | `internal/transport/realtimehttp` | 可编译，有鉴权、审计、metrics 接入点 |
+| [x] | M8/E8-T01/P2 | P2 | 定义 RealtimeSession domain | `internal/dataplane/realtime/session.go` | session 类型、状态、过期时间可表达 |
+| [x] | M8/E8-T02/P2 | P2 | 实现 create/get session API | `internal/transport/realtimehttp` | 未启用时返回 501/feature_not_enabled |
+| [x] | M8/E8-T03/P2 | P2 | 定义 RealtimeEngine interface | `internal/dataplane/realtime/engine.go` | 不绑定具体 provider |
+| [x] | M8/E8-T04/P2 | P2 | 实现 WebSocket handler stub | `internal/transport/realtimehttp` | 可编译，有鉴权、审计、metrics 接入点 |
 
 ## M9 Commercial Operations
 

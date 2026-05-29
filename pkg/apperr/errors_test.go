@@ -31,3 +31,13 @@ func TestAs(t *testing.T) {
 		t.Fatal("cause was not preserved")
 	}
 }
+
+func TestFeatureNotEnabled(t *testing.T) {
+	err := FeatureNotEnabled("realtime sessions are not enabled")
+	if err.Code != CodeFeatureNotEnabled {
+		t.Fatalf("Code = %q", err.Code)
+	}
+	if err.HTTPStatus != http.StatusNotImplemented {
+		t.Fatalf("HTTPStatus = %d", err.HTTPStatus)
+	}
+}
