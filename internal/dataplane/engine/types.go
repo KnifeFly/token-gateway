@@ -31,6 +31,7 @@ const (
 	CanonicalOpenAIChatCompletions CanonicalAPI = "openai.chat_completions"
 	CanonicalOpenAIResponses       CanonicalAPI = "openai.responses"
 	CanonicalOpenAIEmbeddings      CanonicalAPI = "openai.embeddings"
+	CanonicalOpenAIModerations     CanonicalAPI = "openai.moderations"
 	CanonicalClaudeMessages        CanonicalAPI = "claude.messages"
 	CanonicalGeminiGenerateContent CanonicalAPI = "gemini.generate_content"
 	CanonicalImageGeneration       CanonicalAPI = "unified.image_generation"
@@ -102,6 +103,7 @@ type SnapshotRef struct {
 // SnapshotView is the indexed read-only runtime view used by the hot path.
 type SnapshotView interface {
 	Ref() SnapshotRef
+	ListModels() []ModelView
 	LookupAPIKeyHash(hash string) (APIKeyView, bool)
 	LookupModel(publicModel string) (ModelView, bool)
 	LookupRoute(publicModel string) (RoutePolicyView, bool)
@@ -208,6 +210,7 @@ type ParsedRequest struct {
 	OpenAIChat     *OpenAIChatRequest
 	OpenAIResponse *OpenAIResponseRequest
 	Embedding      *EmbeddingRequest
+	Moderation     *ModerationRequest
 	ClaudeMessage  *ClaudeMessageRequest
 	Gemini         *GeminiRequest
 	Media          *UnifiedMediaRequest
@@ -230,6 +233,11 @@ type OpenAIResponseRequest struct {
 
 // EmbeddingRequest contains M3 fields needed from an embeddings request.
 type EmbeddingRequest struct {
+	Model string
+}
+
+// ModerationRequest contains OpenAI-compatible moderation request fields.
+type ModerationRequest struct {
 	Model string
 }
 

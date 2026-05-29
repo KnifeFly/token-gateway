@@ -51,6 +51,7 @@ func NewHandlerWithRoutes(readiness ReadinessFunc, registry *prometheus.Registry
 		mux.HandleFunc("POST /v1/chat/completions", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1/responses", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1/embeddings", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/moderations", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1/messages", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1beta/models/", dataPlane(gateways[0]))
 		mux.HandleFunc("GET /v1/tasks/", dataPlane(gateways[0]))

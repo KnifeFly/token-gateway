@@ -14,16 +14,27 @@ import (
 // RoutePlanner resolves model permissions and ordered provider candidates.
 type RoutePlanner struct {
 	selector *PrioritySelector
+	disable  DisableChecker
 }
 
-func NewRoutePlanner(selector *PrioritySelector) *RoutePlanner {
+// DisableChecker checks emergency provider/channel disables.
+type DisableChecker interface {
+	IsProviderDisabled(ctx context.Context, providerType string) (bool, error)
+	IsChannelDisabled(ctx context.Context, channelID string) (bool, error)
+}
+
+func NewRoutePlanner(selector *PrioritySelector, disable ...DisableChecker) *RoutePlanner {
 	if selector == nil {
 		selector = NewPrioritySelector(nil)
 	}
-	return &RoutePlanner{selector: selector}
+	p := &RoutePlanner{selector: selector}
+	if len(disable) > 0 {
+		p.disable = disable[0]
+	}
+	return p
 }
 
-func (p *RoutePlanner) Plan(_ context.Context, state *engine.RequestState) error {
+func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) error {
 	if state.Snapshot == nil {
 		return apperr.ConfigUnavailable("runtime snapshot is unavailable")
 	}
@@ -48,6 +59,13 @@ func (p *RoutePlanner) Plan(_ context.Context, state *engine.RequestState) error
 	for _, candidate := range route.Candidates {
 		channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
 		if !ok || !channel.Enabled {
+			continue
+		}
+		disabled, err := p.isDisabled(ctx, channel.ProviderType, channel.ID)
+		if err != nil {
+			return err
+		}
+		if disabled {
 			continue
 		}
 		upstreamModel := channel.Models[model.PublicModel]
@@ -79,6 +97,17 @@ func (p *RoutePlanner) Plan(_ context.Context, state *engine.RequestState) error
 		Candidates: p.selector.Order(candidates),
 	}
 	return nil
+}
+
+func (p *RoutePlanner) isDisabled(ctx context.Context, providerType, channelID string) (bool, error) {
+	if p.disable == nil {
+		return false, nil
+	}
+	providerDisabled, err := p.disable.IsProviderDisabled(ctx, providerType)
+	if err != nil || providerDisabled {
+		return providerDisabled, err
+	}
+	return p.disable.IsChannelDisabled(ctx, channelID)
 }
 
 func modelAllowed(allowed []string, model string) bool {

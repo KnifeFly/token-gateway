@@ -46,6 +46,8 @@ func (p *Parser) Parse(_ context.Context, state *engine.RequestState) error {
 		return p.parseOpenAIResponse(state, body)
 	case engine.CanonicalOpenAIEmbeddings:
 		return p.parseEmbedding(state, body)
+	case engine.CanonicalOpenAIModerations:
+		return p.parseModeration(state, body)
 	case engine.CanonicalClaudeMessages:
 		return p.parseClaudeMessage(state, body)
 	case engine.CanonicalGeminiGenerateContent:
@@ -152,6 +154,28 @@ func (p *Parser) parseEmbedding(state *engine.RequestState, body []byte) error {
 	return nil
 }
 
+func (p *Parser) parseModeration(state *engine.RequestState, body []byte) error {
+	var req moderationRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	if req.Model == "" {
+		return apperr.InvalidArgument("model is required")
+	}
+	if len(req.Input) == 0 {
+		return apperr.InvalidArgument("input is required")
+	}
+	state.RequestedModel = req.Model
+	state.Stream = false
+	state.Parsed = engine.ParsedRequest{
+		RawBody:    body,
+		Model:      req.Model,
+		Moderation: &engine.ModerationRequest{Model: req.Model},
+	}
+	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
+	return nil
+}
+
 func (p *Parser) parseClaudeMessage(state *engine.RequestState, body []byte) error {
 	var req modelStreamRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -238,6 +262,11 @@ type openAIChatMessage struct {
 type modelStreamRequest struct {
 	Model  string `json:"model"`
 	Stream bool   `json:"stream"`
+}
+
+type moderationRequest struct {
+	Model string          `json:"model"`
+	Input json.RawMessage `json:"input"`
 }
 
 func geminiModelFromPath(path string) string {

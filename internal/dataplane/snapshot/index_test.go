@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -69,5 +70,54 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 	bindings := indexed.LookupPluginBindings("pre_prompt")
 	if len(bindings) != 1 || bindings[0].Name != "prompt_guard" {
 		t.Fatalf("plugin bindings = %#v", bindings)
+	}
+}
+
+func TestProviderRejectsHardStaleSnapshot(t *testing.T) {
+	indexed, err := Build(cpsnapshot.RuntimeSnapshot{
+		Version:   "old",
+		CreatedAt: time.Now().UTC().Add(-time.Hour),
+		Models: []cpsnapshot.ModelRuntime{{
+			PublicModel: "m",
+			Protocol:    string(engine.ProtocolNativeOpenAI),
+			Enabled:     true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	provider := NewProvider(NewStore(indexed), WithStalePolicy(StalePolicy{
+		SoftTTL: time.Minute,
+		HardTTL: 2 * time.Minute,
+	}))
+	err = provider.Attach(context.Background(), &engine.RequestState{Internal: map[string]any{}})
+	if err == nil {
+		t.Fatal("expected stale error")
+	}
+}
+
+func TestProviderMarksSoftStaleSnapshot(t *testing.T) {
+	indexed, err := Build(cpsnapshot.RuntimeSnapshot{
+		Version:   "soft",
+		CreatedAt: time.Now().UTC().Add(-time.Minute),
+		Models: []cpsnapshot.ModelRuntime{{
+			PublicModel: "m",
+			Protocol:    string(engine.ProtocolNativeOpenAI),
+			Enabled:     true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	provider := NewProvider(NewStore(indexed), WithStalePolicy(StalePolicy{
+		SoftTTL: time.Second,
+		HardTTL: time.Hour,
+	}))
+	state := &engine.RequestState{Internal: map[string]any{}}
+	if err := provider.Attach(context.Background(), state); err != nil {
+		t.Fatalf("Attach() error = %v", err)
+	}
+	if state.Internal["snapshot_stale"] != "soft" {
+		t.Fatalf("stale marker = %#v", state.Internal["snapshot_stale"])
 	}
 }

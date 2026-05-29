@@ -92,6 +92,7 @@ func TestGatewayEngineM3Protocols(t *testing.T) {
 	}{
 		{name: "responses", path: "/v1/responses", body: `{"model":"gpt-4o-mini","input":"hello"}`, want: "M3 mock response"},
 		{name: "embeddings", path: "/v1/embeddings", body: `{"model":"text-embedding-3-small","input":"hello"}`, want: "embedding"},
+		{name: "moderation", path: "/v1/moderations", body: `{"model":"moderation-latest","input":"hello"}`, want: `"flagged":false`},
 		{name: "claude", path: "/v1/messages", body: `{"model":"claude-3-5-sonnet-latest","messages":[{"role":"user","content":"hello"}]}`, want: "M3 Claude mock response"},
 		{name: "gemini", path: "/v1beta/models/gemini-2.5-flash:generateContent", body: `{"contents":[{"parts":[{"text":"hello"}]}]}`, want: "M3 Gemini mock response"},
 	}

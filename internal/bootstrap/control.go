@@ -46,7 +46,8 @@ func NewControlAPIApp(ctx context.Context, cfg Config) (*ControlAPIApp, error) {
 	adminService := admin.NewService(repo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocations)
 	reportingService := reporting.NewService(reportRepo)
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
-	handler := controlhttp.NewHandler(adminService, publisher, cfg.Control.AdminToken, logger, reportingService)
+	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
+	handler := controlhttp.NewHandlerWithEmergency(adminService, publisher, cfg.Control.AdminToken, logger, emergencyDisableStore, reportingService)
 	server := httpserver.New(controlServerConfig(cfg), handler, logger)
 	return &ControlAPIApp{server: server, db: database, redis: redisClient, logger: logger}, nil
 }

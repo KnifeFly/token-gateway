@@ -161,6 +161,8 @@ func endpointURL(base string, canonical string) (string, error) {
 		return appendPath(base, "/v1/responses")
 	case "openai.embeddings":
 		return appendPath(base, "/v1/embeddings")
+	case "openai.moderations":
+		return appendPath(base, "/v1/moderations")
 	default:
 		return "", &relay.ProviderError{
 			StatusCode: http.StatusBadRequest,
@@ -233,6 +235,38 @@ func mockResponse(channel relay.ChannelConfig, request relay.Request) (*relay.Re
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
 			Body:       append(body, '\n'),
 			Usage:      usage,
+		}, nil
+	}
+	if request.CanonicalAPI == "openai.moderations" {
+		body, _ := json.Marshal(map[string]any{
+			"id":    fmt.Sprintf("modr-mock-%d", now),
+			"model": request.PublicModel,
+			"results": []map[string]any{{
+				"flagged": false,
+				"categories": map[string]bool{
+					"violence": false,
+					"hate":     false,
+					"sexual":   false,
+				},
+				"category_scores": map[string]float64{
+					"violence": 0,
+					"hate":     0,
+					"sexual":   0,
+				},
+			}},
+			"usage": map[string]int64{
+				"prompt_tokens": usage.InputTokens,
+				"total_tokens":  usage.InputTokens,
+			},
+		})
+		return &relay.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       append(body, '\n'),
+			Usage: tokenusage.Actual{
+				InputTokens: usage.InputTokens,
+				TotalTokens: usage.InputTokens,
+			},
 		}, nil
 	}
 	if request.CanonicalAPI == "openai.responses" {

@@ -120,6 +120,8 @@ type dispatchSnapshot struct{}
 
 func (dispatchSnapshot) Ref() engine.SnapshotRef { return engine.SnapshotRef{Version: "test"} }
 
+func (dispatchSnapshot) ListModels() []engine.ModelView { return nil }
+
 func (dispatchSnapshot) LookupAPIKeyHash(string) (engine.APIKeyView, bool) {
 	return engine.APIKeyView{}, false
 }

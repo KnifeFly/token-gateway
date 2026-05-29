@@ -82,6 +82,7 @@ func (j *CallbackDispatcher) Run(ctx context.Context) error {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Gateway-Task-ID", event.TaskID)
+		req.Header.Set("X-Gateway-Callback-ID", event.ID)
 		response, err := j.client.Do(req)
 		if err != nil {
 			j.metrics.RecordCallbackRetry("network_error")

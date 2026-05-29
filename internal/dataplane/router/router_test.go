@@ -59,6 +59,20 @@ func TestRoutePlannerRejectsProtocolMismatch(t *testing.T) {
 	}
 }
 
+func TestRoutePlannerSkipsEmergencyDisabledChannel(t *testing.T) {
+	state := &engine.RequestState{
+		RequestedModel: "gpt-4o-mini",
+		Principal:      &engine.Principal{AllowedModels: []string{"gpt-4o-mini"}},
+		Snapshot:       routeSnapshot{},
+	}
+
+	err := NewRoutePlanner(nil, disabledChecker{channelID: "channel_1"}).Plan(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeServiceUnavailable {
+		t.Fatalf("error = %v, want service unavailable", err)
+	}
+}
+
 func TestWeightedRandomDistribution(t *testing.T) {
 	selector := NewWeightedRandomSelector(rand.New(rand.NewSource(9)))
 	candidates := []engine.ProviderCandidate{
@@ -77,6 +91,8 @@ func TestWeightedRandomDistribution(t *testing.T) {
 type routeSnapshot struct{}
 
 func (routeSnapshot) Ref() engine.SnapshotRef { return engine.SnapshotRef{Version: "test"} }
+
+func (routeSnapshot) ListModels() []engine.ModelView { return nil }
 
 func (routeSnapshot) LookupAPIKeyHash(string) (engine.APIKeyView, bool) {
 	return engine.APIKeyView{}, false
@@ -126,4 +142,17 @@ func (routeSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
 
 func (routeSnapshot) IsAPIKeyRevoked(string) bool {
 	return false
+}
+
+type disabledChecker struct {
+	providerType string
+	channelID    string
+}
+
+func (c disabledChecker) IsProviderDisabled(_ context.Context, providerType string) (bool, error) {
+	return c.providerType == providerType, nil
+}
+
+func (c disabledChecker) IsChannelDisabled(_ context.Context, channelID string) (bool, error) {
+	return c.channelID == channelID, nil
 }

@@ -69,6 +69,8 @@ type fakeSnapshot struct {
 
 func (s fakeSnapshot) Ref() engine.SnapshotRef { return engine.SnapshotRef{Version: "test"} }
 
+func (s fakeSnapshot) ListModels() []engine.ModelView { return nil }
+
 func (s fakeSnapshot) LookupAPIKeyHash(hash string) (engine.APIKeyView, bool) {
 	return s.apiKey, s.apiKey.Hash == hash
 }

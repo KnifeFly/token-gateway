@@ -30,6 +30,7 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 		runtime.Models = []cpsnapshot.ModelRuntime{
 			{PublicModel: seed.Model, Protocol: string(engine.ProtocolNativeOpenAI), Capability: "chat", Enabled: true},
 			{PublicModel: "text-embedding-3-small", Protocol: string(engine.ProtocolNativeOpenAI), Capability: "embeddings", Enabled: true},
+			{PublicModel: "moderation-latest", Protocol: string(engine.ProtocolNativeOpenAI), Capability: "moderation", Enabled: true},
 			{PublicModel: "claude-3-5-sonnet-latest", Protocol: string(engine.ProtocolNativeClaude), Capability: "messages", Enabled: true},
 			{PublicModel: "gemini-2.5-flash", Protocol: string(engine.ProtocolNativeGemini), Capability: "generate_content", Enabled: true},
 			{PublicModel: "gemini-3.1-flash-image-preview", Protocol: string(engine.ProtocolUnified), Capability: "image_generation", Enabled: true},
@@ -49,6 +50,7 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 			Models: []cpsnapshot.ChannelModelRuntime{
 				{PublicModel: seed.Model, UpstreamModel: seed.UpstreamModel},
 				{PublicModel: "text-embedding-3-small", UpstreamModel: "text-embedding-3-small"},
+				{PublicModel: "moderation-latest", UpstreamModel: "moderation-latest"},
 			},
 		}, {
 			ID:           "channel_mock_claude",
@@ -86,6 +88,7 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 		runtime.RoutePolicies = []cpsnapshot.RoutePolicyRuntime{
 			seedRoute(seed.Model, seed.ChannelID, seed),
 			seedRoute("text-embedding-3-small", seed.ChannelID, seed),
+			seedRoute("moderation-latest", seed.ChannelID, seed),
 			seedRoute("claude-3-5-sonnet-latest", "channel_mock_claude", seed),
 			seedRoute("gemini-2.5-flash", "channel_mock_gemini", seed),
 			seedRoute("gemini-3.1-flash-image-preview", "channel_mock_media", seed),
