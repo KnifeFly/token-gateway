@@ -132,6 +132,10 @@ func RateLimited(message string, opts ...Option) *Error {
 	return New(CodeRateLimited, message, http.StatusTooManyRequests, opts...)
 }
 
+func InsufficientBalance(message string, opts ...Option) *Error {
+	return New(CodeInsufficientBalance, message, http.StatusPaymentRequired, opts...)
+}
+
 func ProviderError(message string, opts ...Option) *Error {
 	return New(CodeProviderError, message, http.StatusBadGateway, opts...)
 }

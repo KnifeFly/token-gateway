@@ -18,6 +18,8 @@ type GatewayEngine struct {
 	parser     RequestParser
 	auth       Authenticator
 	router     RoutePlanner
+	admission  AdmissionController
+	limiter    LimitEnforcer
 	dispatcher ProviderDispatcher
 	settlement SettlementService
 	observe    ObserveRecorder
@@ -50,6 +52,14 @@ func WithDispatcher(dispatcher ProviderDispatcher) Option {
 	return func(e *GatewayEngine) { e.dispatcher = dispatcher }
 }
 
+func WithAdmission(admission AdmissionController) Option {
+	return func(e *GatewayEngine) { e.admission = admission }
+}
+
+func WithLimitEnforcer(limiter LimitEnforcer) Option {
+	return func(e *GatewayEngine) { e.limiter = limiter }
+}
+
 func WithSettlement(settlement SettlementService) Option {
 	return func(e *GatewayEngine) { e.settlement = settlement }
 }
@@ -66,6 +76,12 @@ func New(opts ...Option) (*GatewayEngine, error) {
 	}
 	if e.settlement == nil {
 		e.settlement = NoopSettlement{}
+	}
+	if e.admission == nil {
+		e.admission = NoopAdmission{}
+	}
+	if e.limiter == nil {
+		e.limiter = NoopLimitEnforcer{}
 	}
 	if e.observe == nil {
 		e.observe = NoopObserveRecorder{}
@@ -115,8 +131,23 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	span.End()
 
+	if err = e.admission.Reserve(ctx, state); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
+	release, limitErr := e.limiter.Acquire(ctx, state)
+	if limitErr != nil {
+		_ = e.admission.Release(ctx, state, limitErr)
+		err = limitErr
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
+	state.AddLimitRelease(release)
+	defer e.releaseLimits(ctx, state)
+
 	result, dispatchErr := e.dispatcher.Dispatch(ctx, state)
 	if dispatchErr != nil {
+		_ = e.admission.Release(ctx, state, dispatchErr)
 		err = dispatchErr
 		response = e.errorResponse(state, err)
 		return response, nil
@@ -124,6 +155,12 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	state.ProviderResult = result
 	state.ActualUsage = result.Usage
 	if err = e.settlement.Settle(ctx, state); err != nil {
+		recordErr := e.settlement.RecordFailed(ctx, state, err)
+		if recordErr == nil {
+			response = result.Response
+			return response, nil
+		}
+		err = errors.Join(err, recordErr)
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
@@ -151,7 +188,22 @@ func (e *GatewayEngine) validate() error {
 	if e.dispatcher == nil {
 		errs = append(errs, errors.New("provider dispatcher is required"))
 	}
+	if e.admission == nil {
+		errs = append(errs, errors.New("admission controller is required"))
+	}
+	if e.limiter == nil {
+		errs = append(errs, errors.New("limit enforcer is required"))
+	}
 	return errors.Join(errs...)
+}
+
+func (e *GatewayEngine) releaseLimits(ctx context.Context, state *RequestState) {
+	for i := len(state.LimitReleases) - 1; i >= 0; i-- {
+		if state.LimitReleases[i] == nil {
+			continue
+		}
+		_ = state.LimitReleases[i].Release(ctx)
+	}
 }
 
 func (e *GatewayEngine) errorResponse(state *RequestState, err error) *GatewayResponse {

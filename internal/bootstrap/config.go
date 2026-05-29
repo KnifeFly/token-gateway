@@ -106,6 +106,8 @@ type GatewayConfig struct {
 	Protocol    ProtocolConfig     `yaml:"protocol"`
 	Idempotency IdempotencyConfig  `yaml:"idempotency"`
 	Seed        SeedSnapshotConfig `yaml:"seed_snapshot"`
+	Billing     BillingConfig      `yaml:"billing"`
+	Limits      LimitsConfig       `yaml:"limits"`
 }
 
 type BodyConfig struct {
@@ -141,6 +143,26 @@ type SeedSnapshotConfig struct {
 	RoutePriority   int      `yaml:"route_priority"`
 	RouteWeight     int      `yaml:"route_weight"`
 	ChannelTimeout  Duration `yaml:"channel_timeout"`
+}
+
+type BillingConfig struct {
+	Enabled                bool     `yaml:"enabled"`
+	Currency               string   `yaml:"currency"`
+	InputMicrosPerToken    int64    `yaml:"input_micros_per_token"`
+	OutputMicrosPerToken   int64    `yaml:"output_micros_per_token"`
+	EstimatedOutputTokens  int64    `yaml:"estimated_output_tokens"`
+	HoldTTL                Duration `yaml:"hold_ttl"`
+	LocalSeedBalanceMicros int64    `yaml:"local_seed_balance_micros"`
+}
+
+type LimitsConfig struct {
+	Enabled     bool     `yaml:"enabled"`
+	QPS         int64    `yaml:"qps"`
+	TPM         int64    `yaml:"tpm"`
+	Concurrency int64    `yaml:"concurrency"`
+	Window      Duration `yaml:"window"`
+	LeaseTTL    Duration `yaml:"lease_ttl"`
+	KeyPrefix   string   `yaml:"key_prefix"`
 }
 
 type WorkerConfig struct {
@@ -216,6 +238,23 @@ func DefaultConfig() Config {
 				RoutePriority:  1,
 				RouteWeight:    100,
 				ChannelTimeout: Duration{30 * time.Second},
+			},
+			Billing: BillingConfig{
+				Enabled:               false,
+				Currency:              "USD",
+				InputMicrosPerToken:   1,
+				OutputMicrosPerToken:  2,
+				EstimatedOutputTokens: 256,
+				HoldTTL:               Duration{10 * time.Minute},
+			},
+			Limits: LimitsConfig{
+				Enabled:     false,
+				QPS:         60,
+				TPM:         60000,
+				Concurrency: 100,
+				Window:      Duration{time.Second},
+				LeaseTTL:    Duration{30 * time.Second},
+				KeyPrefix:   "token-gateway",
 			},
 		},
 	}
@@ -307,6 +346,25 @@ func (c *Config) Normalize() {
 	if c.Gateway.Seed.ChannelTimeout.Duration <= 0 {
 		c.Gateway.Seed.ChannelTimeout = Duration{30 * time.Second}
 	}
+	c.Gateway.Billing.Currency = strings.ToUpper(strings.TrimSpace(c.Gateway.Billing.Currency))
+	if c.Gateway.Billing.Currency == "" {
+		c.Gateway.Billing.Currency = "USD"
+	}
+	if c.Gateway.Billing.HoldTTL.Duration <= 0 {
+		c.Gateway.Billing.HoldTTL = Duration{10 * time.Minute}
+	}
+	if c.Gateway.Billing.EstimatedOutputTokens <= 0 {
+		c.Gateway.Billing.EstimatedOutputTokens = 256
+	}
+	if c.Gateway.Limits.Window.Duration <= 0 {
+		c.Gateway.Limits.Window = Duration{time.Second}
+	}
+	if c.Gateway.Limits.LeaseTTL.Duration <= 0 {
+		c.Gateway.Limits.LeaseTTL = Duration{30 * time.Second}
+	}
+	if c.Gateway.Limits.KeyPrefix == "" {
+		c.Gateway.Limits.KeyPrefix = "token-gateway"
+	}
 }
 
 // Validate checks the minimum viable M0 configuration.
@@ -349,6 +407,15 @@ func (c Config) Validate() error {
 		if c.Gateway.Seed.ProviderBaseURL == "" {
 			errs = append(errs, errors.New("gateway.seed_snapshot.provider_base_url is required when seed snapshot is enabled"))
 		}
+	}
+	if c.Gateway.Billing.Enabled && !c.Database.Enabled {
+		errs = append(errs, errors.New("database must be enabled when gateway.billing is enabled"))
+	}
+	if c.Gateway.Billing.Enabled && c.Gateway.Billing.Currency == "" {
+		errs = append(errs, errors.New("gateway.billing.currency is required when billing is enabled"))
+	}
+	if c.Gateway.Limits.Enabled && !c.Redis.Enabled {
+		errs = append(errs, errors.New("redis must be enabled when gateway.limits is enabled"))
 	}
 	return errors.Join(errs...)
 }
@@ -402,4 +469,7 @@ func applyEnv(cfg *Config) {
 	setString("TOKEN_GATEWAY_SEED_PROVIDER_TYPE", &cfg.Gateway.Seed.ProviderType)
 	setString("TOKEN_GATEWAY_SEED_PROVIDER_BASE_URL", &cfg.Gateway.Seed.ProviderBaseURL)
 	setString("TOKEN_GATEWAY_SEED_PROVIDER_API_KEY", &cfg.Gateway.Seed.ProviderAPIKey)
+	setBool("TOKEN_GATEWAY_BILLING_ENABLED", &cfg.Gateway.Billing.Enabled)
+	setString("TOKEN_GATEWAY_BILLING_CURRENCY", &cfg.Gateway.Billing.Currency)
+	setBool("TOKEN_GATEWAY_LIMITS_ENABLED", &cfg.Gateway.Limits.Enabled)
 }

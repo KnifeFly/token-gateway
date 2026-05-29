@@ -7,14 +7,18 @@ import (
 	"os"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/billing"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/admission"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/classifier"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/dispatch"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/limit"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/observe"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/parser"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/router"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
@@ -54,7 +58,7 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	if err != nil {
 		return nil, err
 	}
-	gatewayEngine, err := newGatewayEngine(cfg, tel, logger)
+	gatewayEngine, err := newGatewayEngine(ctx, cfg, tel, logger, database, redisClient)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +82,7 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	}, nil
 }
 
-func newGatewayEngine(cfg Config, tel *telemetry.Provider, logger *slog.Logger) (*engine.GatewayEngine, error) {
+func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*engine.GatewayEngine, error) {
 	indexed, err := buildSeedSnapshot(cfg)
 	if err != nil {
 		return nil, err
@@ -91,16 +95,69 @@ func newGatewayEngine(cfg Config, tel *telemetry.Provider, logger *slog.Logger) 
 	if err := registry.Register("openai_compatible", openai.NewAdapter(nil)); err != nil {
 		return nil, err
 	}
+	admissionController := engine.AdmissionController(engine.NoopAdmission{})
+	limitEnforcer := engine.LimitEnforcer(engine.NoopLimitEnforcer{})
+	settlementService := engine.SettlementService(engine.NoopSettlement{})
+	var attemptRecorder dispatch.AttemptRecorder
+	if cfg.Gateway.Billing.Enabled {
+		repo := billing.NewMySQLRepository(database.DB())
+		if err := ensureLocalSeedBalance(ctx, cfg, repo); err != nil {
+			return nil, err
+		}
+		billingMetrics, err := billing.NewMetrics(tel.Registry)
+		if err != nil {
+			return nil, err
+		}
+		price := pricing.TokenPrice{
+			Currency:             cfg.Gateway.Billing.Currency,
+			InputMicrosPerToken:  cfg.Gateway.Billing.InputMicrosPerToken,
+			OutputMicrosPerToken: cfg.Gateway.Billing.OutputMicrosPerToken,
+		}
+		admissionController = admission.NewController(
+			billing.NewBalanceService(repo),
+			admission.NewPriceEstimator(price, cfg.Gateway.Billing.EstimatedOutputTokens),
+			cfg.Gateway.Billing.HoldTTL.Duration,
+		)
+		attemptRecorder = billing.NewAttemptWriter(repo)
+		settlementService = billing.NewSettlementService(repo, billing.NewSettlementPlanner(price), billingMetrics)
+	}
+	if cfg.Gateway.Limits.Enabled {
+		limitEnforcer = limit.NewRedisEnforcer(redisClient.Raw(), limit.Config{
+			Enabled:     cfg.Gateway.Limits.Enabled,
+			QPS:         cfg.Gateway.Limits.QPS,
+			TPM:         cfg.Gateway.Limits.TPM,
+			Concurrency: cfg.Gateway.Limits.Concurrency,
+			Window:      cfg.Gateway.Limits.Window.Duration,
+			LeaseTTL:    cfg.Gateway.Limits.LeaseTTL.Duration,
+			KeyPrefix:   cfg.Gateway.Limits.KeyPrefix,
+		})
+	}
 	return engine.New(
 		engine.WithSnapshot(dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed))),
 		engine.WithClassifier(classifier.NewDefault()),
 		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
 		engine.WithAuthenticator(auth.NewSnapshotAuthenticator()),
 		engine.WithRoutePlanner(router.NewRoutePlanner(nil)),
-		engine.WithDispatcher(dispatch.New(registry, observeRecorder, logger)),
-		engine.WithSettlement(engine.NoopSettlement{}),
+		engine.WithAdmission(admissionController),
+		engine.WithLimitEnforcer(limitEnforcer),
+		engine.WithDispatcher(dispatch.New(registry, observeRecorder, attemptRecorder, logger)),
+		engine.WithSettlement(settlementService),
 		engine.WithObserveRecorder(observeRecorder),
 	)
+}
+
+func ensureLocalSeedBalance(ctx context.Context, cfg Config, repo billing.Repository) error {
+	if !cfg.Gateway.Seed.Enabled || cfg.Gateway.Billing.LocalSeedBalanceMicros <= 0 {
+		return nil
+	}
+	return repo.EnsureBalanceAccount(ctx, billing.BalanceAccount{
+		ID:              "acct_local_seed",
+		TenantID:        cfg.Gateway.Seed.TenantID,
+		ProjectID:       cfg.Gateway.Seed.ProjectID,
+		Currency:        cfg.Gateway.Billing.Currency,
+		OpeningMicros:   cfg.Gateway.Billing.LocalSeedBalanceMicros,
+		AvailableMicros: cfg.Gateway.Billing.LocalSeedBalanceMicros,
+	})
 }
 
 // Run starts the HTTP server until ctx is canceled.

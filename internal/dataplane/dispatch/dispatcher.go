@@ -18,17 +18,23 @@ import (
 type Dispatcher struct {
 	registry *provider.Registry
 	observe  engine.ObserveRecorder
+	attempts AttemptRecorder
 	logger   *slog.Logger
 }
 
-func New(registry *provider.Registry, observe engine.ObserveRecorder, logger *slog.Logger) *Dispatcher {
+// AttemptRecorder persists provider attempts.
+type AttemptRecorder interface {
+	RecordProviderAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) error
+}
+
+func New(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, logger *slog.Logger) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if observe == nil {
 		observe = engine.NoopObserveRecorder{}
 	}
-	return &Dispatcher{registry: registry, observe: observe, logger: logger}
+	return &Dispatcher{registry: registry, observe: observe, attempts: attempts, logger: logger}
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (*engine.ProviderResult, error) {
@@ -67,6 +73,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			RequestID:     state.RequestID,
 		})
 		attempt := engine.ProviderAttempt{
+			AttemptIndex: len(state.Attempts) + 1,
 			ChannelID:    candidate.ChannelID,
 			ProviderType: candidate.ProviderType,
 			PublicModel:  candidate.PublicModel,
@@ -79,6 +86,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			attempt.ErrorCode = providerErrorCode(err)
 			attempt.StatusCode = providerStatusCode(err)
 			state.Attempts = append(state.Attempts, attempt)
+			if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
+				span.RecordError(recordErr)
+				span.End()
+				return nil, recordErr
+			}
 			d.observe.RecordProviderAttempt(ctx, state, attempt)
 			span.End()
 			if !providerRetryable(err) {
@@ -88,7 +100,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		}
 		attempt.Success = true
 		attempt.StatusCode = response.StatusCode
+		state.ActualUsage = response.Usage
 		state.Attempts = append(state.Attempts, attempt)
+		if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
+			span.RecordError(recordErr)
+			span.End()
+			return nil, recordErr
+		}
 		d.observe.RecordProviderAttempt(ctx, state, attempt)
 		span.End()
 		return &engine.ProviderResult{
@@ -106,6 +124,13 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		lastErr = apperr.ServiceUnavailable("provider is unavailable", apperr.WithTemporary())
 	}
 	return nil, lastErr
+}
+
+func (d *Dispatcher) recordAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) error {
+	if d.attempts == nil {
+		return nil
+	}
+	return d.attempts.RecordProviderAttempt(ctx, state, attempt)
 }
 
 func mapProviderError(err error) error {

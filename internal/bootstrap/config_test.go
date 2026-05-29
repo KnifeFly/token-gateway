@@ -74,3 +74,13 @@ func TestValidateSeedSnapshotRequiresAPIKey(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestValidateBillingRequiresDatabase(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Gateway.Billing.Enabled = true
+	cfg.Normalize()
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}

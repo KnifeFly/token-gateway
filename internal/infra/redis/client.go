@@ -63,6 +63,14 @@ func (c *Client) Enabled() bool {
 	return c != nil && c.enabled
 }
 
+// Raw returns the underlying go-redis client.
+func (c *Client) Raw() *goredis.Client {
+	if c == nil {
+		return nil
+	}
+	return c.client
+}
+
 // Ping reports readiness.
 func (c *Client) Ping(ctx context.Context) Status {
 	if c == nil || !c.enabled {

@@ -23,7 +23,7 @@ func TestGatewayEngineM1ChatCompletion(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
 
-	gateway, err := newGatewayEngine(cfg, tel, nil)
+	gateway, err := newGatewayEngine(context.Background(), cfg, tel, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("newGatewayEngine() error = %v", err)
 	}
@@ -52,7 +52,7 @@ func TestGatewayEngineM1InvalidAPIKey(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = tel.Shutdown(context.Background()) })
 
-	gateway, err := newGatewayEngine(cfg, tel, nil)
+	gateway, err := newGatewayEngine(context.Background(), cfg, tel, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("newGatewayEngine() error = %v", err)
 	}

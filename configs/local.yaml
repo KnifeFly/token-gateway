@@ -67,6 +67,22 @@ gateway:
     route_priority: 1
     route_weight: 100
     channel_timeout: 30s
+  billing:
+    enabled: true
+    currency: USD
+    input_micros_per_token: 1
+    output_micros_per_token: 2
+    estimated_output_tokens: 256
+    hold_ttl: 10m
+    local_seed_balance_micros: 1000000000
+  limits:
+    enabled: true
+    qps: 60
+    tpm: 60000
+    concurrency: 100
+    window: 1s
+    lease_ttl: 30s
+    key_prefix: token-gateway-local
 
 worker:
   enabled: false

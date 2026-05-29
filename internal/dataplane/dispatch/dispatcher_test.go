@@ -18,7 +18,7 @@ func TestDispatcherSuccess(t *testing.T) {
 	}
 	state := dispatchState()
 
-	result, err := New(registry, nil, nil).Dispatch(context.Background(), state)
+	result, err := New(registry, nil, nil, nil).Dispatch(context.Background(), state)
 	if err != nil {
 		t.Fatalf("Dispatch() error = %v", err)
 	}
@@ -37,7 +37,7 @@ func TestDispatcherMapsProvider429(t *testing.T) {
 		Code:       "provider_rate_limited",
 		Retryable:  true,
 	}})
-	_, err := New(registry, nil, nil).Dispatch(context.Background(), dispatchState())
+	_, err := New(registry, nil, nil, nil).Dispatch(context.Background(), dispatchState())
 	appErr, ok := apperr.As(err)
 	if !ok || appErr.Code != apperr.CodeRateLimited {
 		t.Fatalf("error = %v, want rate limited", err)
@@ -51,7 +51,7 @@ func TestDispatcherMapsProvider401(t *testing.T) {
 		Code:       "provider_auth_failed",
 		Retryable:  false,
 	}})
-	_, err := New(registry, nil, nil).Dispatch(context.Background(), dispatchState())
+	_, err := New(registry, nil, nil, nil).Dispatch(context.Background(), dispatchState())
 	appErr, ok := apperr.As(err)
 	if !ok || appErr.Code != apperr.CodeProviderError || appErr.Temporary {
 		t.Fatalf("error = %#v, want non-temporary provider error", appErr)

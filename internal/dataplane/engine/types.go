@@ -162,6 +162,7 @@ type ProviderCandidate struct {
 
 // ProviderAttempt records one upstream attempt without sensitive data.
 type ProviderAttempt struct {
+	AttemptIndex int
 	ChannelID    string
 	ProviderType string
 	PublicModel  string
@@ -209,9 +210,26 @@ type ProviderDispatcher interface {
 	Dispatch(ctx context.Context, state *RequestState) (*ProviderResult, error)
 }
 
-// SettlementService is a placeholder for M2 billing closure.
+// AdmissionController reserves balance before the provider is called.
+type AdmissionController interface {
+	Reserve(ctx context.Context, state *RequestState) error
+	Release(ctx context.Context, state *RequestState, cause error) error
+}
+
+// LimitEnforcer acquires distributed request limits.
+type LimitEnforcer interface {
+	Acquire(ctx context.Context, state *RequestState) (LimitRelease, error)
+}
+
+// LimitRelease releases a previously acquired limit lease.
+type LimitRelease interface {
+	Release(ctx context.Context) error
+}
+
+// SettlementService performs final usage settlement after provider success.
 type SettlementService interface {
 	Settle(ctx context.Context, state *RequestState) error
+	RecordFailed(ctx context.Context, state *RequestState, cause error) error
 }
 
 // ObserveRecorder records hot-path metrics, traces, and logs.

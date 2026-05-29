@@ -40,6 +40,14 @@ type RequestState struct {
 	ProviderResult *ProviderResult
 	Attempts       []ProviderAttempt
 
+	Currency              string
+	EstimatedChargeMicros int64
+	ActualChargeMicros    int64
+	BalanceHoldID         string
+	BalanceAccountID      string
+	SettlementID          string
+	LimitReleases         []LimitRelease
+
 	Metadata map[string]string
 	Internal map[string]any
 }
@@ -92,6 +100,14 @@ func (s *RequestState) Cleanup() {
 		return
 	}
 	_ = s.Incoming.Body.Close()
+}
+
+// AddLimitRelease records a lease that should be released before request end.
+func (s *RequestState) AddLimitRelease(release LimitRelease) {
+	if release == nil {
+		return
+	}
+	s.LimitReleases = append(s.LimitReleases, release)
 }
 
 func newID() string {
