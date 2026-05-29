@@ -15,6 +15,7 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 		if requestID == "" {
 			requestID = newRequestID()
 		}
+		r.Header.Set("X-Request-ID", requestID)
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
 	})

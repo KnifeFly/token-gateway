@@ -7,10 +7,20 @@ import (
 	"os"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/classifier"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/dispatch"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/observe"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/parser"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/router"
+	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	"github.com/KnifeFly/token-gateway/internal/provider"
+	"github.com/KnifeFly/token-gateway/internal/provider/openai"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 )
 
@@ -44,6 +54,10 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	if err != nil {
 		return nil, err
 	}
+	gatewayEngine, err := newGatewayEngine(cfg, tel, logger)
+	if err != nil {
+		return nil, err
+	}
 
 	readiness := func(ctx context.Context) []httpserver.DependencyStatus {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -53,7 +67,7 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 			dependencyFromRedis(redisClient.Ping(ctx)),
 		}
 	}
-	handler := httpserver.NewHandler(readiness, tel.Registry, logger)
+	handler := httpserver.NewHandler(readiness, tel.Registry, logger, gatewayEngine)
 	server := httpserver.New(httpServerConfig(cfg), handler, logger)
 	return &GatewayApp{
 		server:    server,
@@ -62,6 +76,31 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 		telemetry: tel,
 		logger:    logger,
 	}, nil
+}
+
+func newGatewayEngine(cfg Config, tel *telemetry.Provider, logger *slog.Logger) (*engine.GatewayEngine, error) {
+	indexed, err := buildSeedSnapshot(cfg)
+	if err != nil {
+		return nil, err
+	}
+	observeRecorder, err := observe.NewRecorder(tel.Registry, logger)
+	if err != nil {
+		return nil, err
+	}
+	registry := provider.NewRegistry()
+	if err := registry.Register("openai_compatible", openai.NewAdapter(nil)); err != nil {
+		return nil, err
+	}
+	return engine.New(
+		engine.WithSnapshot(dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed))),
+		engine.WithClassifier(classifier.NewDefault()),
+		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
+		engine.WithAuthenticator(auth.NewSnapshotAuthenticator()),
+		engine.WithRoutePlanner(router.NewRoutePlanner(nil)),
+		engine.WithDispatcher(dispatch.New(registry, observeRecorder, logger)),
+		engine.WithSettlement(engine.NoopSettlement{}),
+		engine.WithObserveRecorder(observeRecorder),
+	)
 }
 
 // Run starts the HTTP server until ctx is canceled.

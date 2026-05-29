@@ -1,0 +1,58 @@
+package snapshot
+
+import (
+	"testing"
+	"time"
+
+	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+)
+
+func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
+	indexed, err := Build(cpsnapshot.RuntimeSnapshot{
+		Version:   "v1",
+		CreatedAt: time.Unix(100, 0),
+		APIKeys: []cpsnapshot.APIKeyRuntime{{
+			ID:       "key_1",
+			TenantID: "tenant_1",
+			KeyHash:  "sha256:test",
+			Enabled:  true,
+		}},
+		Models: []cpsnapshot.ModelRuntime{{
+			PublicModel: "gpt-4o-mini",
+			Protocol:    string(engine.ProtocolNativeOpenAI),
+			Enabled:     true,
+		}},
+		Channels: []cpsnapshot.ChannelRuntime{{
+			ID:           "channel_1",
+			ProviderType: "openai_compatible",
+			Enabled:      true,
+			Models: []cpsnapshot.ChannelModelRuntime{{
+				PublicModel:   "gpt-4o-mini",
+				UpstreamModel: "gpt-4o-mini",
+			}},
+		}},
+		RoutePolicies: []cpsnapshot.RoutePolicyRuntime{{
+			ID:          "route_1",
+			PublicModel: "gpt-4o-mini",
+			Strategy:    "priority",
+			Candidates: []cpsnapshot.RouteCandidateRuntime{{
+				ChannelID: "channel_1",
+				Priority:  1,
+				Weight:    100,
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	if indexed.Ref().Version != "v1" {
+		t.Fatalf("version = %q", indexed.Ref().Version)
+	}
+	if _, ok := indexed.LookupAPIKeyHash("sha256:test"); !ok {
+		t.Fatal("missing api key index")
+	}
+	if channel, ok := indexed.LookupChannel("channel_1"); !ok || channel.Models["gpt-4o-mini"] != "gpt-4o-mini" {
+		t.Fatalf("channel = %#v, ok = %v", channel, ok)
+	}
+}

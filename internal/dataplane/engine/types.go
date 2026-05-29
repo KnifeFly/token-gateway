@@ -1,0 +1,222 @@
+package engine
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"time"
+
+	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// ProtocolMode describes the external API dialect selected for a request.
+type ProtocolMode string
+
+const (
+	ProtocolAuto         ProtocolMode = "auto"
+	ProtocolUnified      ProtocolMode = "unified"
+	ProtocolNativeOpenAI ProtocolMode = "native_openai"
+	ProtocolNativeClaude ProtocolMode = "native_claude"
+	ProtocolNativeGemini ProtocolMode = "native_gemini"
+)
+
+// CanonicalAPI identifies the normalized API operation.
+type CanonicalAPI string
+
+const (
+	CanonicalOpenAIChatCompletions CanonicalAPI = "openai.chat_completions"
+)
+
+// EndpointSpec records the matched public endpoint.
+type EndpointSpec struct {
+	Method      string
+	Path        string
+	Canonical   CanonicalAPI
+	AllowedMode []ProtocolMode
+}
+
+// IncomingRequest is the transport-neutral request shape consumed by the engine.
+type IncomingRequest struct {
+	Method        string
+	Path          string
+	RawQuery      string
+	Header        http.Header
+	Body          io.ReadCloser
+	RemoteAddr    string
+	ContentLength int64
+}
+
+// GatewayResponse is the transport-neutral response shape returned by the engine.
+type GatewayResponse struct {
+	StatusCode int
+	Header     http.Header
+	Body       []byte
+	Usage      tokenusage.Actual
+}
+
+// SnapshotRef pins the runtime snapshot version used for one request.
+type SnapshotRef struct {
+	Version   string
+	CreatedAt time.Time
+}
+
+// SnapshotView is the indexed read-only runtime view used by the hot path.
+type SnapshotView interface {
+	Ref() SnapshotRef
+	LookupAPIKeyHash(hash string) (APIKeyView, bool)
+	LookupModel(publicModel string) (ModelView, bool)
+	LookupRoute(publicModel string) (RoutePolicyView, bool)
+	LookupChannel(channelID string) (ChannelView, bool)
+}
+
+// APIKeyView is the indexed API key view used by authentication.
+type APIKeyView struct {
+	ID            string
+	TenantID      string
+	ProjectID     string
+	Name          string
+	Hash          string
+	Enabled       bool
+	AllowedModels []string
+}
+
+// ModelView is the indexed public model view used by routing.
+type ModelView struct {
+	PublicModel string
+	Protocol    ProtocolMode
+	Capability  string
+	Enabled     bool
+}
+
+// ChannelView is the indexed provider channel view used by dispatch.
+type ChannelView struct {
+	ID           string
+	ProviderType string
+	BaseURL      string
+	APIKey       string
+	Enabled      bool
+	Timeout      time.Duration
+	Models       map[string]string
+}
+
+// RoutePolicyView is the indexed route policy view used by routing.
+type RoutePolicyView struct {
+	ID          string
+	PublicModel string
+	Strategy    string
+	Candidates  []RouteCandidateView
+}
+
+// RouteCandidateView is one snapshot route candidate before resolution.
+type RouteCandidateView struct {
+	ChannelID string
+	Priority  int
+	Weight    int
+}
+
+// Principal is the authenticated caller identity.
+type Principal struct {
+	TenantID      string
+	ProjectID     string
+	APIKeyID      string
+	AllowedModels []string
+}
+
+// ParsedRequest is the normalized request body extracted by parsers.
+type ParsedRequest struct {
+	RawBody    []byte
+	OpenAIChat *OpenAIChatRequest
+}
+
+// OpenAIChatRequest contains M1 fields needed from an OpenAI-compatible chat request.
+type OpenAIChatRequest struct {
+	Model    string
+	Messages []OpenAIChatMessage
+	Stream   bool
+}
+
+// OpenAIChatMessage is a minimal OpenAI-compatible chat message.
+type OpenAIChatMessage struct {
+	Role    string
+	Content any
+}
+
+// RoutePlan is the ordered provider attempt plan for one request.
+type RoutePlan struct {
+	PolicyID   string
+	Candidates []ProviderCandidate
+}
+
+// ProviderCandidate is a resolved route candidate.
+type ProviderCandidate struct {
+	ChannelID     string
+	ProviderType  string
+	PublicModel   string
+	UpstreamModel string
+	Priority      int
+	Weight        int
+	Timeout       time.Duration
+}
+
+// ProviderAttempt records one upstream attempt without sensitive data.
+type ProviderAttempt struct {
+	ChannelID    string
+	ProviderType string
+	PublicModel  string
+	StatusCode   int
+	ErrorCode    string
+	Success      bool
+	StartedAt    time.Time
+	Duration     time.Duration
+}
+
+// ProviderResult is the successful provider dispatch result.
+type ProviderResult struct {
+	Candidate ProviderCandidate
+	Response  *GatewayResponse
+	Usage     tokenusage.Actual
+}
+
+// SnapshotProvider attaches the current indexed snapshot to a request.
+type SnapshotProvider interface {
+	Attach(ctx context.Context, state *RequestState) error
+}
+
+// APIClassifier selects the canonical API for a request.
+type APIClassifier interface {
+	Classify(ctx context.Context, state *RequestState) error
+}
+
+// RequestParser parses the request body into normalized fields.
+type RequestParser interface {
+	Parse(ctx context.Context, state *RequestState) error
+}
+
+// Authenticator authenticates the caller against the pinned snapshot.
+type Authenticator interface {
+	Authenticate(ctx context.Context, state *RequestState) error
+}
+
+// RoutePlanner resolves a model and ordered route candidates.
+type RoutePlanner interface {
+	Plan(ctx context.Context, state *RequestState) error
+}
+
+// ProviderDispatcher calls provider adapters according to the route plan.
+type ProviderDispatcher interface {
+	Dispatch(ctx context.Context, state *RequestState) (*ProviderResult, error)
+}
+
+// SettlementService is a placeholder for M2 billing closure.
+type SettlementService interface {
+	Settle(ctx context.Context, state *RequestState) error
+}
+
+// ObserveRecorder records hot-path metrics, traces, and logs.
+type ObserveRecorder interface {
+	StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span)
+	RecordProviderAttempt(ctx context.Context, state *RequestState, attempt ProviderAttempt)
+	FinishRequest(ctx context.Context, state *RequestState, response *GatewayResponse, err error)
+}

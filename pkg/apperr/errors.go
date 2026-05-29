@@ -21,6 +21,7 @@ const (
 	CodeIdempotencyConflict Code = "idempotency_conflict"
 	CodeSnapshotStale       Code = "snapshot_stale"
 	CodeConfigUnavailable   Code = "config_unavailable"
+	CodeServiceUnavailable  Code = "service_unavailable"
 	CodeInternal            Code = "internal_error"
 )
 
@@ -127,8 +128,20 @@ func NotFound(message string, opts ...Option) *Error {
 	return New(CodeNotFound, message, http.StatusNotFound, opts...)
 }
 
+func RateLimited(message string, opts ...Option) *Error {
+	return New(CodeRateLimited, message, http.StatusTooManyRequests, opts...)
+}
+
+func ProviderError(message string, opts ...Option) *Error {
+	return New(CodeProviderError, message, http.StatusBadGateway, opts...)
+}
+
 func ConfigUnavailable(message string, opts ...Option) *Error {
 	return New(CodeConfigUnavailable, message, http.StatusServiceUnavailable, opts...)
+}
+
+func ServiceUnavailable(message string, opts ...Option) *Error {
+	return New(CodeServiceUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
 
 func Internal(message string, opts ...Option) *Error {
@@ -159,6 +172,8 @@ func defaultMessage(code Code) string {
 		return "configuration snapshot is stale"
 	case CodeConfigUnavailable:
 		return "configuration unavailable"
+	case CodeServiceUnavailable:
+		return "service unavailable"
 	default:
 		return "internal error"
 	}

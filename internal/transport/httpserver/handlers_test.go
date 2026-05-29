@@ -2,10 +2,12 @@ package httpserver
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -49,4 +51,29 @@ func TestMetrics(t *testing.T) {
 	if res.Code != http.StatusOK {
 		t.Fatalf("status = %d", res.Code)
 	}
+}
+
+func TestChatCompletionsRouteDelegatesGateway(t *testing.T) {
+	handler := NewHandler(func(context.Context) []DependencyStatus { return nil }, prometheus.NewRegistry(), nil, fakeGateway{})
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(nil))
+	res := httptest.NewRecorder()
+
+	handler.ServeHTTP(res, req)
+
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d", res.Code)
+	}
+	if res.Body.String() != `{"id":"ok"}` {
+		t.Fatalf("body = %q", res.Body.String())
+	}
+}
+
+type fakeGateway struct{}
+
+func (fakeGateway) Handle(context.Context, engine.IncomingRequest) (*engine.GatewayResponse, error) {
+	return &engine.GatewayResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       []byte(`{"id":"ok"}`),
+	}, nil
 }

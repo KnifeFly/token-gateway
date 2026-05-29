@@ -63,3 +63,14 @@ func TestValidateEnabledDatabaseRequiresDSN(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestValidateSeedSnapshotRequiresAPIKey(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Gateway.Seed.Enabled = true
+	cfg.Gateway.Seed.ProviderBaseURL = "mock://openai"
+	cfg.Normalize()
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}

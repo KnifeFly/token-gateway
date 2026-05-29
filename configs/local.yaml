@@ -51,6 +51,22 @@ gateway:
     default_mode: auto
   idempotency:
     ttl: 24h
+  seed_snapshot:
+    enabled: true
+    api_key: "tg-local-dev-key"
+    api_key_id: "key_local"
+    tenant_id: "tenant_local"
+    project_id: "project_local"
+    model: "gpt-4o-mini"
+    upstream_model: "gpt-4o-mini"
+    provider_type: "openai_compatible"
+    channel_id: "channel_mock_openai"
+    provider_base_url: "mock://openai"
+    provider_api_key: ""
+    route_strategy: "priority"
+    route_priority: 1
+    route_weight: 100
+    channel_timeout: 30s
 
 worker:
   enabled: false

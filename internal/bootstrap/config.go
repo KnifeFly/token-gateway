@@ -101,10 +101,11 @@ type TracingConfig struct {
 }
 
 type GatewayConfig struct {
-	Body        BodyConfig        `yaml:"body"`
-	Snapshot    SnapshotConfig    `yaml:"snapshot"`
-	Protocol    ProtocolConfig    `yaml:"protocol"`
-	Idempotency IdempotencyConfig `yaml:"idempotency"`
+	Body        BodyConfig         `yaml:"body"`
+	Snapshot    SnapshotConfig     `yaml:"snapshot"`
+	Protocol    ProtocolConfig     `yaml:"protocol"`
+	Idempotency IdempotencyConfig  `yaml:"idempotency"`
+	Seed        SeedSnapshotConfig `yaml:"seed_snapshot"`
 }
 
 type BodyConfig struct {
@@ -122,6 +123,24 @@ type ProtocolConfig struct {
 
 type IdempotencyConfig struct {
 	TTL Duration `yaml:"ttl"`
+}
+
+type SeedSnapshotConfig struct {
+	Enabled         bool     `yaml:"enabled"`
+	APIKey          string   `yaml:"api_key"`
+	APIKeyID        string   `yaml:"api_key_id"`
+	TenantID        string   `yaml:"tenant_id"`
+	ProjectID       string   `yaml:"project_id"`
+	Model           string   `yaml:"model"`
+	UpstreamModel   string   `yaml:"upstream_model"`
+	ProviderType    string   `yaml:"provider_type"`
+	ChannelID       string   `yaml:"channel_id"`
+	ProviderBaseURL string   `yaml:"provider_base_url"`
+	ProviderAPIKey  string   `yaml:"provider_api_key"`
+	RouteStrategy   string   `yaml:"route_strategy"`
+	RoutePriority   int      `yaml:"route_priority"`
+	RouteWeight     int      `yaml:"route_weight"`
+	ChannelTimeout  Duration `yaml:"channel_timeout"`
 }
 
 type WorkerConfig struct {
@@ -184,6 +203,20 @@ func DefaultConfig() Config {
 			Idempotency: IdempotencyConfig{
 				TTL: Duration{24 * time.Hour},
 			},
+			Seed: SeedSnapshotConfig{
+				Enabled:        false,
+				APIKeyID:       "key_local",
+				TenantID:       "tenant_local",
+				ProjectID:      "project_local",
+				Model:          "gpt-4o-mini",
+				UpstreamModel:  "gpt-4o-mini",
+				ProviderType:   "openai_compatible",
+				ChannelID:      "channel_mock_openai",
+				RouteStrategy:  "priority",
+				RoutePriority:  1,
+				RouteWeight:    100,
+				ChannelTimeout: Duration{30 * time.Second},
+			},
 		},
 	}
 }
@@ -242,6 +275,38 @@ func (c *Config) Normalize() {
 	if c.Telemetry.Tracing.Exporter == "" {
 		c.Telemetry.Tracing.Exporter = "noop"
 	}
+	c.Gateway.Seed.ProviderType = strings.TrimSpace(c.Gateway.Seed.ProviderType)
+	c.Gateway.Seed.ChannelID = strings.TrimSpace(c.Gateway.Seed.ChannelID)
+	c.Gateway.Seed.Model = strings.TrimSpace(c.Gateway.Seed.Model)
+	c.Gateway.Seed.UpstreamModel = strings.TrimSpace(c.Gateway.Seed.UpstreamModel)
+	c.Gateway.Seed.RouteStrategy = strings.TrimSpace(c.Gateway.Seed.RouteStrategy)
+	if c.Gateway.Seed.APIKeyID == "" {
+		c.Gateway.Seed.APIKeyID = "key_local"
+	}
+	if c.Gateway.Seed.TenantID == "" {
+		c.Gateway.Seed.TenantID = "tenant_local"
+	}
+	if c.Gateway.Seed.ProjectID == "" {
+		c.Gateway.Seed.ProjectID = "project_local"
+	}
+	if c.Gateway.Seed.UpstreamModel == "" {
+		c.Gateway.Seed.UpstreamModel = c.Gateway.Seed.Model
+	}
+	if c.Gateway.Seed.ProviderType == "" {
+		c.Gateway.Seed.ProviderType = "openai_compatible"
+	}
+	if c.Gateway.Seed.ChannelID == "" {
+		c.Gateway.Seed.ChannelID = "channel_mock_openai"
+	}
+	if c.Gateway.Seed.RouteStrategy == "" {
+		c.Gateway.Seed.RouteStrategy = "priority"
+	}
+	if c.Gateway.Seed.RouteWeight <= 0 {
+		c.Gateway.Seed.RouteWeight = 100
+	}
+	if c.Gateway.Seed.ChannelTimeout.Duration <= 0 {
+		c.Gateway.Seed.ChannelTimeout = Duration{30 * time.Second}
+	}
 }
 
 // Validate checks the minimum viable M0 configuration.
@@ -272,6 +337,17 @@ func (c Config) Validate() error {
 		case "noop", "stdout":
 		default:
 			errs = append(errs, fmt.Errorf("unsupported tracing exporter %q", c.Telemetry.Tracing.Exporter))
+		}
+	}
+	if c.Gateway.Seed.Enabled {
+		if c.Gateway.Seed.APIKey == "" {
+			errs = append(errs, errors.New("gateway.seed_snapshot.api_key is required when seed snapshot is enabled"))
+		}
+		if c.Gateway.Seed.Model == "" {
+			errs = append(errs, errors.New("gateway.seed_snapshot.model is required when seed snapshot is enabled"))
+		}
+		if c.Gateway.Seed.ProviderBaseURL == "" {
+			errs = append(errs, errors.New("gateway.seed_snapshot.provider_base_url is required when seed snapshot is enabled"))
 		}
 	}
 	return errors.Join(errs...)
@@ -319,4 +395,11 @@ func applyEnv(cfg *Config) {
 	setBool("TOKEN_GATEWAY_METRICS_ENABLED", &cfg.Telemetry.MetricsEnabled)
 	setBool("TOKEN_GATEWAY_TRACING_ENABLED", &cfg.Telemetry.Tracing.Enabled)
 	setString("TOKEN_GATEWAY_TRACING_EXPORTER", &cfg.Telemetry.Tracing.Exporter)
+	setBool("TOKEN_GATEWAY_SEED_SNAPSHOT_ENABLED", &cfg.Gateway.Seed.Enabled)
+	setString("TOKEN_GATEWAY_SEED_API_KEY", &cfg.Gateway.Seed.APIKey)
+	setString("TOKEN_GATEWAY_SEED_MODEL", &cfg.Gateway.Seed.Model)
+	setString("TOKEN_GATEWAY_SEED_UPSTREAM_MODEL", &cfg.Gateway.Seed.UpstreamModel)
+	setString("TOKEN_GATEWAY_SEED_PROVIDER_TYPE", &cfg.Gateway.Seed.ProviderType)
+	setString("TOKEN_GATEWAY_SEED_PROVIDER_BASE_URL", &cfg.Gateway.Seed.ProviderBaseURL)
+	setString("TOKEN_GATEWAY_SEED_PROVIDER_API_KEY", &cfg.Gateway.Seed.ProviderAPIKey)
 }
