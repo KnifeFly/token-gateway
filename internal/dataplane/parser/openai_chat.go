@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -13,26 +14,42 @@ import (
 
 const defaultMaxBodyBytes int64 = 4 << 20
 
-// OpenAIChatParser parses M1 OpenAI-compatible chat completion requests.
-type OpenAIChatParser struct {
+// Parser parses M1/M3 request bodies into the shared RequestState.
+type Parser struct {
 	bodyStore BodyStore
 }
 
-func NewOpenAIChatParser(maxBodyBytes int64) *OpenAIChatParser {
+// NewOpenAIChatParser returns the shared JSON body parser.
+func NewOpenAIChatParser(maxBodyBytes int64) *Parser {
 	if maxBodyBytes <= 0 {
 		maxBodyBytes = defaultMaxBodyBytes
 	}
-	return &OpenAIChatParser{bodyStore: BodyStore{MaxBytes: maxBodyBytes}}
+	return &Parser{bodyStore: BodyStore{MaxBytes: maxBodyBytes}}
 }
 
-func (p *OpenAIChatParser) Parse(_ context.Context, state *engine.RequestState) error {
-	if state.CanonicalAPI != engine.CanonicalOpenAIChatCompletions {
-		return apperr.InvalidArgument("unsupported request parser")
-	}
+// Parse reads the request body and extracts normalized model and stream fields.
+func (p *Parser) Parse(_ context.Context, state *engine.RequestState) error {
 	body, err := p.bodyStore.Read(state.Incoming.Body)
 	if err != nil {
 		return err
 	}
+	switch state.CanonicalAPI {
+	case engine.CanonicalOpenAIChatCompletions:
+		return p.parseOpenAIChat(state, body)
+	case engine.CanonicalOpenAIResponses:
+		return p.parseOpenAIResponse(state, body)
+	case engine.CanonicalOpenAIEmbeddings:
+		return p.parseEmbedding(state, body)
+	case engine.CanonicalClaudeMessages:
+		return p.parseClaudeMessage(state, body)
+	case engine.CanonicalGeminiGenerateContent:
+		return p.parseGemini(state, body)
+	default:
+		return apperr.InvalidArgument("unsupported request parser")
+	}
+}
+
+func (p *Parser) parseOpenAIChat(state *engine.RequestState, body []byte) error {
 	var req openAIChatRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
@@ -42,9 +59,6 @@ func (p *OpenAIChatParser) Parse(_ context.Context, state *engine.RequestState) 
 	}
 	if len(req.Messages) == 0 {
 		return apperr.InvalidArgument("messages is required")
-	}
-	if req.Stream {
-		return apperr.InvalidArgument("streaming is not supported in M1")
 	}
 	messages := make([]engine.OpenAIChatMessage, 0, len(req.Messages))
 	for i, message := range req.Messages {
@@ -64,10 +78,98 @@ func (p *OpenAIChatParser) Parse(_ context.Context, state *engine.RequestState) 
 	state.Stream = req.Stream
 	state.Parsed = engine.ParsedRequest{
 		RawBody: body,
+		Model:   req.Model,
+		Stream:  req.Stream,
 		OpenAIChat: &engine.OpenAIChatRequest{
 			Model:    req.Model,
 			Messages: messages,
 			Stream:   req.Stream,
+		},
+	}
+	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
+	return nil
+}
+
+func (p *Parser) parseOpenAIResponse(state *engine.RequestState, body []byte) error {
+	var req modelStreamRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	if req.Model == "" {
+		return apperr.InvalidArgument("model is required")
+	}
+	state.RequestedModel = req.Model
+	state.Stream = req.Stream
+	state.Parsed = engine.ParsedRequest{
+		RawBody: body,
+		Model:   req.Model,
+		Stream:  req.Stream,
+		OpenAIResponse: &engine.OpenAIResponseRequest{
+			Model:  req.Model,
+			Stream: req.Stream,
+		},
+	}
+	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
+	return nil
+}
+
+func (p *Parser) parseEmbedding(state *engine.RequestState, body []byte) error {
+	var req modelStreamRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	if req.Model == "" {
+		return apperr.InvalidArgument("model is required")
+	}
+	state.RequestedModel = req.Model
+	state.Stream = false
+	state.Parsed = engine.ParsedRequest{
+		RawBody:   body,
+		Model:     req.Model,
+		Embedding: &engine.EmbeddingRequest{Model: req.Model},
+	}
+	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
+	return nil
+}
+
+func (p *Parser) parseClaudeMessage(state *engine.RequestState, body []byte) error {
+	var req modelStreamRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	if req.Model == "" {
+		return apperr.InvalidArgument("model is required")
+	}
+	state.RequestedModel = req.Model
+	state.Stream = req.Stream
+	state.Parsed = engine.ParsedRequest{
+		RawBody: body,
+		Model:   req.Model,
+		Stream:  req.Stream,
+		ClaudeMessage: &engine.ClaudeMessageRequest{
+			Model:  req.Model,
+			Stream: req.Stream,
+		},
+	}
+	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
+	return nil
+}
+
+func (p *Parser) parseGemini(state *engine.RequestState, body []byte) error {
+	model := geminiModelFromPath(state.Incoming.Path)
+	if model == "" {
+		return apperr.InvalidArgument("model is required")
+	}
+	stream := isGeminiStreamPath(state.Incoming.Path)
+	state.RequestedModel = model
+	state.Stream = stream
+	state.Parsed = engine.ParsedRequest{
+		RawBody: body,
+		Model:   model,
+		Stream:  stream,
+		Gemini: &engine.GeminiRequest{
+			Model:  model,
+			Stream: stream,
 		},
 	}
 	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
@@ -79,6 +181,7 @@ type BodyStore struct {
 	MaxBytes int64
 }
 
+// Read reads a bounded request body into memory.
 func (s BodyStore) Read(body io.Reader) ([]byte, error) {
 	if body == nil {
 		return nil, apperr.InvalidArgument("request body is required")
@@ -110,4 +213,25 @@ type openAIChatRequest struct {
 type openAIChatMessage struct {
 	Role    string          `json:"role"`
 	Content json.RawMessage `json:"content"`
+}
+
+type modelStreamRequest struct {
+	Model  string `json:"model"`
+	Stream bool   `json:"stream"`
+}
+
+func geminiModelFromPath(path string) string {
+	const prefix = "/v1beta/models/"
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	rest := strings.TrimPrefix(path, prefix)
+	if idx := strings.IndexByte(rest, ':'); idx >= 0 {
+		return rest[:idx]
+	}
+	return ""
+}
+
+func isGeminiStreamPath(path string) bool {
+	return strings.HasSuffix(path, ":streamGenerateContent")
 }

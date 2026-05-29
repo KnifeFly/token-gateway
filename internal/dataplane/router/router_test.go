@@ -44,6 +44,21 @@ func TestRoutePlannerRejectsForbiddenModel(t *testing.T) {
 	}
 }
 
+func TestRoutePlannerRejectsProtocolMismatch(t *testing.T) {
+	state := &engine.RequestState{
+		RequestedModel: "gpt-4o-mini",
+		ProtocolMode:   engine.ProtocolNativeClaude,
+		Principal:      &engine.Principal{AllowedModels: []string{"gpt-4o-mini"}},
+		Snapshot:       routeSnapshot{},
+	}
+
+	err := NewRoutePlanner(nil).Plan(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeInvalidArgument {
+		t.Fatalf("error = %v, want invalid argument", err)
+	}
+}
+
 func TestWeightedRandomDistribution(t *testing.T) {
 	selector := NewWeightedRandomSelector(rand.New(rand.NewSource(9)))
 	candidates := []engine.ProviderCandidate{

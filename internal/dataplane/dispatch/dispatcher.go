@@ -59,18 +59,20 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			attribute.String("gateway.channel_id", candidate.ChannelID),
 			attribute.String("gateway.model", candidate.PublicModel),
 		)
-		response, err := adapter.ChatCompletions(spanCtx, relay.ChannelConfig{
+		response, err := adapter.Relay(spanCtx, relay.ChannelConfig{
 			ChannelID:     candidate.ChannelID,
 			ProviderType:  candidate.ProviderType,
 			BaseURL:       channel.BaseURL,
 			APIKey:        channel.APIKey,
 			UpstreamModel: candidate.UpstreamModel,
 			Timeout:       candidate.Timeout,
-		}, relay.ChatCompletionRequest{
+		}, relay.Request{
+			CanonicalAPI:  string(state.CanonicalAPI),
 			PublicModel:   candidate.PublicModel,
 			UpstreamModel: candidate.UpstreamModel,
 			RawBody:       state.Parsed.RawBody,
 			RequestID:     state.RequestID,
+			Stream:        state.Stream,
 		})
 		attempt := engine.ProviderAttempt{
 			AttemptIndex: len(state.Attempts) + 1,
@@ -115,6 +117,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 				StatusCode: response.StatusCode,
 				Header:     response.Header,
 				Body:       response.Body,
+				Stream:     response.Stream,
 				Usage:      response.Usage,
 			},
 			Usage: response.Usage,

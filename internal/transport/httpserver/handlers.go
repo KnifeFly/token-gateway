@@ -33,7 +33,11 @@ func NewHandler(readiness ReadinessFunc, registry *prometheus.Registry, logger *
 	mux.HandleFunc("GET /readyz", readyz(readiness))
 	mux.Handle("GET /metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
 	if len(gateways) > 0 && gateways[0] != nil {
-		mux.HandleFunc("POST /v1/chat/completions", chatCompletions(gateways[0]))
+		mux.HandleFunc("POST /v1/chat/completions", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/responses", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/embeddings", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1/messages", dataPlane(gateways[0]))
+		mux.HandleFunc("POST /v1beta/models/", dataPlane(gateways[0]))
 	}
 	return RequestIDMiddleware(RecoveryMiddleware(AccessLogMiddleware(mux, logger)))
 }
@@ -71,7 +75,7 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func chatCompletions(gateway Gateway) http.HandlerFunc {
+func dataPlane(gateway Gateway) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		response, err := gateway.Handle(r.Context(), engine.IncomingRequest{
 			Method:        r.Method,
@@ -90,6 +94,15 @@ func chatCompletions(gateway Gateway) http.HandlerFunc {
 					"type":    "service_error",
 				},
 			})
+			return
+		}
+		if response.Stream != nil {
+			for key, values := range response.Header {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
+			writeStream(r.Context(), w, response.StatusCode, response.Stream)
 			return
 		}
 		for key, values := range response.Header {

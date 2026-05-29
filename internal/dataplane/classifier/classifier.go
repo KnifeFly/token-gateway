@@ -18,27 +18,78 @@ var openAIChatEndpoint = engine.EndpointSpec{
 	AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI},
 }
 
-// DefaultClassifier classifies the M1 OpenAI-compatible chat endpoint.
+var endpoints = []engine.EndpointSpec{
+	openAIChatEndpoint,
+	{Method: http.MethodPost, Path: "/v1/responses", Canonical: engine.CanonicalOpenAIResponses, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
+	{Method: http.MethodPost, Path: "/v1/embeddings", Canonical: engine.CanonicalOpenAIEmbeddings, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
+	{Method: http.MethodPost, Path: "/v1/messages", Canonical: engine.CanonicalClaudeMessages, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeClaude}},
+}
+
+// DefaultClassifier classifies M1/M3 data-plane endpoints.
 type DefaultClassifier struct{}
 
+// NewDefault returns the default API classifier.
 func NewDefault() *DefaultClassifier {
 	return &DefaultClassifier{}
 }
 
+// Classify pins the endpoint and protocol mode for one request.
 func (c *DefaultClassifier) Classify(_ context.Context, state *engine.RequestState) error {
-	if state.Incoming.Method != openAIChatEndpoint.Method || state.Incoming.Path != openAIChatEndpoint.Path {
+	endpoint, ok := matchEndpoint(state.Incoming.Method, state.Incoming.Path)
+	if !ok {
 		return apperr.NotFound("endpoint not found")
 	}
 	mode := protocolFromHeader(state.Incoming.Header.Get(protocolHeader))
 	if mode == "" || mode == engine.ProtocolAuto {
-		mode = engine.ProtocolNativeOpenAI
+		mode = defaultProtocol(endpoint.Canonical)
 	}
-	if mode != engine.ProtocolNativeOpenAI {
+	if !allows(endpoint, mode) {
 		return apperr.InvalidArgument("protocol is not allowed for endpoint")
 	}
-	state.Endpoint = openAIChatEndpoint
-	state.CanonicalAPI = openAIChatEndpoint.Canonical
+	state.Endpoint = endpoint
+	state.CanonicalAPI = endpoint.Canonical
 	return state.SetProtocol(mode)
+}
+
+func matchEndpoint(method, path string) (engine.EndpointSpec, bool) {
+	if method != http.MethodPost {
+		return engine.EndpointSpec{}, false
+	}
+	if strings.HasPrefix(path, "/v1beta/models/") &&
+		(strings.HasSuffix(path, ":generateContent") || strings.HasSuffix(path, ":streamGenerateContent")) {
+		return engine.EndpointSpec{
+			Method:      http.MethodPost,
+			Path:        "/v1beta/models/{model}:generateContent",
+			Canonical:   engine.CanonicalGeminiGenerateContent,
+			AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeGemini},
+		}, true
+	}
+	for _, endpoint := range endpoints {
+		if endpoint.Method == method && endpoint.Path == path {
+			return endpoint, true
+		}
+	}
+	return engine.EndpointSpec{}, false
+}
+
+func defaultProtocol(api engine.CanonicalAPI) engine.ProtocolMode {
+	switch api {
+	case engine.CanonicalClaudeMessages:
+		return engine.ProtocolNativeClaude
+	case engine.CanonicalGeminiGenerateContent:
+		return engine.ProtocolNativeGemini
+	default:
+		return engine.ProtocolNativeOpenAI
+	}
+}
+
+func allows(endpoint engine.EndpointSpec, mode engine.ProtocolMode) bool {
+	for _, allowed := range endpoint.AllowedMode {
+		if allowed == mode {
+			return true
+		}
+	}
+	return false
 }
 
 func protocolFromHeader(value string) engine.ProtocolMode {
