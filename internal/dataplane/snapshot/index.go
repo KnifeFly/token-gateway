@@ -300,6 +300,12 @@ type Store struct {
 	current atomic.Pointer[IndexedSnapshot]
 }
 
+// StoreDiagnostics describes the indexed snapshot currently used by the hot path.
+type StoreDiagnostics struct {
+	Current          engine.SnapshotRef
+	StalenessSeconds float64
+}
+
 func NewStore(initial *IndexedSnapshot) *Store {
 	store := &Store{}
 	if initial != nil {
@@ -322,6 +328,23 @@ func (s *Store) Replace(next *IndexedSnapshot) error {
 	}
 	s.current.Store(next)
 	return nil
+}
+
+// Diagnostics returns current hot-path snapshot age without reading control-plane tables.
+func (s *Store) Diagnostics(now time.Time) (StoreDiagnostics, error) {
+	current, err := s.Current()
+	if err != nil {
+		return StoreDiagnostics{}, err
+	}
+	ref := current.Ref()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	diagnostics := StoreDiagnostics{Current: ref}
+	if !ref.CreatedAt.IsZero() {
+		diagnostics.StalenessSeconds = now.Sub(ref.CreatedAt).Seconds()
+	}
+	return diagnostics, nil
 }
 
 func limitScopeMatches(rule, request engine.LimitScope) bool {

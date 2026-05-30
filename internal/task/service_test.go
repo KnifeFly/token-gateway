@@ -108,6 +108,37 @@ func TestServiceRecordsTaskMetrics(t *testing.T) {
 	t.Fatalf("metric %q was not gathered", metricnames.MetricTaskLifecycleTransitions)
 }
 
+func TestServiceEnqueuesCallbackWhenTaskCompletes(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	service := NewService(repo, 0)
+	task, _, err := service.CreateMediaTask(ctx, CreateTaskRequest{
+		TenantID:    "tenant",
+		ProjectID:   "project",
+		APIKeyID:    "key",
+		RequestID:   "req_1",
+		Endpoint:    "/v1/videos/generations",
+		Kind:        KindVideoGeneration,
+		MediaType:   "video",
+		Model:       "seedance-2.0-text-to-video",
+		Input:       []byte(`{"model":"seedance-2.0-text-to-video","prompt":"hello"}`),
+		CallbackURL: "https://hooks.example/task",
+	})
+	if err != nil {
+		t.Fatalf("CreateMediaTask() error = %v", err)
+	}
+	if _, err := service.CompleteTask(ctx, *task, ProviderTaskResult{Status: StatusSucceeded}); err != nil {
+		t.Fatalf("CompleteTask() error = %v", err)
+	}
+	callbacks, err := repo.ListDueCallbacks(ctx, 10, service.now())
+	if err != nil {
+		t.Fatalf("ListDueCallbacks() error = %v", err)
+	}
+	if len(callbacks) != 1 || callbacks[0].URL != "https://hooks.example/task" {
+		t.Fatalf("callbacks = %#v", callbacks)
+	}
+}
+
 func TestFileServiceIdempotency(t *testing.T) {
 	ctx := context.Background()
 	service := NewFileService(NewMemoryRepository(), 0)

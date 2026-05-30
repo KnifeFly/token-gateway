@@ -154,3 +154,26 @@ func TestProviderMarksSoftStaleSnapshot(t *testing.T) {
 		t.Fatalf("stale marker = %#v", state.Internal["snapshot_stale"])
 	}
 }
+
+func TestStoreDiagnosticsReportsCurrentSnapshotStaleness(t *testing.T) {
+	createdAt := time.Unix(100, 0).UTC()
+	indexed, err := Build(cpsnapshot.RuntimeSnapshot{
+		Version:   "diag",
+		CreatedAt: createdAt,
+		Models: []cpsnapshot.ModelRuntime{{
+			PublicModel: "m",
+			Protocol:    string(engine.ProtocolNativeOpenAI),
+			Enabled:     true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	diagnostics, err := NewStore(indexed).Diagnostics(createdAt.Add(30 * time.Second))
+	if err != nil {
+		t.Fatalf("Diagnostics() error = %v", err)
+	}
+	if diagnostics.Current.Version != "diag" || diagnostics.StalenessSeconds != 30 {
+		t.Fatalf("diagnostics = %#v", diagnostics)
+	}
+}

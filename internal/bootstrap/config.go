@@ -50,6 +50,7 @@ type Config struct {
 	Gateway     GatewayConfig   `yaml:"gateway"`
 	Control     ControlConfig   `yaml:"control"`
 	Worker      WorkerConfig    `yaml:"worker"`
+	Configd     ConfigdConfig   `yaml:"configd"`
 }
 
 type ServiceConfig struct {
@@ -190,6 +191,12 @@ type WorkerConfig struct {
 	BatchSize                int      `yaml:"batch_size"`
 }
 
+type ConfigdConfig struct {
+	Addr            string   `yaml:"addr"`
+	ShutdownTimeout Duration `yaml:"shutdown_timeout"`
+	PublishOnStart  bool     `yaml:"publish_on_start"`
+}
+
 // DefaultConfig returns local-safe defaults. External dependencies are disabled
 // so unit tests never need Docker services.
 func DefaultConfig() Config {
@@ -296,6 +303,11 @@ func DefaultConfig() Config {
 			FailedSettlementInterval: Duration{time.Minute},
 			CallbackInterval:         Duration{5 * time.Second},
 			BatchSize:                100,
+		},
+		Configd: ConfigdConfig{
+			Addr:            ":9504",
+			ShutdownTimeout: Duration{10 * time.Second},
+			PublishOnStart:  false,
 		},
 	}
 }
@@ -440,6 +452,12 @@ func (c *Config) Normalize() {
 	}
 	if c.Worker.BatchSize <= 0 {
 		c.Worker.BatchSize = 100
+	}
+	if c.Configd.Addr == "" {
+		c.Configd.Addr = ":9504"
+	}
+	if c.Configd.ShutdownTimeout.Duration <= 0 {
+		c.Configd.ShutdownTimeout = Duration{10 * time.Second}
 	}
 }
 

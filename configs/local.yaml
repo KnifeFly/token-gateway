@@ -103,3 +103,8 @@ worker:
   failed_settlement_interval: 1m
   callback_interval: 5s
   batch_size: 100
+
+configd:
+  addr: ":9504"
+  shutdown_timeout: 10s
+  publish_on_start: false

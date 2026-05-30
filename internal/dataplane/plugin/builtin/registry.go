@@ -12,7 +12,11 @@ func Registry() *plugin.Registry {
 // RegisterAll registers every MVP built-in plugin.
 func RegisterAll(registry *plugin.Registry) {
 	registry.Register(RequestSize{})
+	registry.Register(IPAllowlist{})
 	registry.Register(PromptTokenLimit{})
+	registry.Register(ModelACL{})
+	registry.Register(RouteOverride{})
+	registry.Register(Callback{})
 	registry.Register(PIIRedaction{})
 	registry.Register(PromptGuard{})
 	registry.Register(ResponseGuard{})

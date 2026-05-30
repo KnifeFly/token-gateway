@@ -18,6 +18,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Database.Enabled {
 		t.Fatal("database should be disabled by default")
 	}
+	if cfg.Configd.Addr != ":9504" {
+		t.Fatalf("Configd.Addr = %q", cfg.Configd.Addr)
+	}
 }
 
 func TestLoadConfigYAMLAndEnv(t *testing.T) {

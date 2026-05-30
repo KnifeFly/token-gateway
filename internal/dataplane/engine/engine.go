@@ -242,6 +242,12 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
+	if err = e.runStage(ctx, state, "gateway.policy.pre_route", func(stageCtx context.Context) error {
+		return e.evaluatePolicy(stageCtx, state)
+	}); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
 	if err = e.runStage(ctx, state, "gateway.route", func(stageCtx context.Context) error {
 		if state.RoutePlan != nil {
 			return nil
@@ -253,6 +259,18 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	}
 	if err = e.runStage(ctx, state, "gateway.policy", func(stageCtx context.Context) error {
 		return e.plugins.Run(stageCtx, "post_route", state)
+	}); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
+	if err = e.runStage(ctx, state, "gateway.policy.post_route", func(stageCtx context.Context) error {
+		if err := e.evaluatePolicy(stageCtx, state); err != nil {
+			return err
+		}
+		if state.RoutePlan == nil {
+			return e.router.Plan(stageCtx, state)
+		}
+		return nil
 	}); err != nil {
 		response = e.errorResponse(state, err)
 		return response, nil
@@ -374,16 +392,101 @@ func (e *GatewayEngine) evaluatePolicy(ctx context.Context, state *RequestState)
 			return apperr.ConfigUnavailable("policy degrade model is required")
 		}
 		state.RequestedModel = decision.DegradeModel
+		clearRouteSelection(state)
 		return nil
 	case PolicyRouteOverride:
 		if decision.RoutePlan == nil || len(decision.RoutePlan.Candidates) == 0 {
 			return apperr.ConfigUnavailable("policy route override requires candidates")
+		}
+		if err := constrainRouteOverride(state, decision.RoutePlan); err != nil {
+			return err
 		}
 		state.RoutePlan = decision.RoutePlan
 		return nil
 	default:
 		return apperr.ConfigUnavailable("policy decision action is not supported")
 	}
+}
+
+func clearRouteSelection(state *RequestState) {
+	if state == nil {
+		return
+	}
+	state.ResolvedModel = ModelView{}
+	state.PriceRule = PriceRuleView{}
+	state.LimitRule = LimitRuleView{}
+	state.RoutePlan = nil
+}
+
+func constrainRouteOverride(state *RequestState, plan *RoutePlan) error {
+	if state == nil || state.Snapshot == nil {
+		return apperr.ConfigUnavailable("runtime snapshot is unavailable")
+	}
+	model, ok := state.Snapshot.LookupModel(state.RequestedModel)
+	if !ok || !model.Enabled {
+		return apperr.NotFound("model not found")
+	}
+	if state.Principal == nil {
+		return apperr.Unauthorized("authentication is required")
+	}
+	if !principalAllowsModel(state.Principal.AllowedModels, state.RequestedModel, model) {
+		return apperr.Forbidden("model is not allowed")
+	}
+	if !protocolMatchesPolicyModel(state.ProtocolMode, model.Protocol) {
+		return apperr.InvalidArgument("model protocol does not match endpoint")
+	}
+	for _, candidate := range plan.Candidates {
+		channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
+		if !ok || !channel.Enabled {
+			return apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
+		}
+		if candidate.ProviderType != "" && candidate.ProviderType != channel.ProviderType {
+			return apperr.ConfigUnavailable("route override provider does not match channel")
+		}
+		upstreamModel := channel.Models[model.PublicModel]
+		if upstreamModel == "" {
+			return apperr.ConfigUnavailable("route override channel does not serve model")
+		}
+		if candidate.PublicModel != "" && candidate.PublicModel != model.PublicModel {
+			return apperr.ConfigUnavailable("route override public model does not match request")
+		}
+		if candidate.UpstreamModel != "" && candidate.UpstreamModel != upstreamModel {
+			return apperr.ConfigUnavailable("route override upstream model does not match channel mapping")
+		}
+	}
+	state.ResolvedModel = model
+	if price, ok := state.Snapshot.LookupPrice(model.PublicModel); ok {
+		state.PriceRule = price
+	}
+	if limit, ok := state.Snapshot.LookupLimit(model.PublicModel); ok {
+		state.LimitRule = limit
+	}
+	return nil
+}
+
+func principalAllowsModel(allowed []string, requested string, model ModelView) bool {
+	if listAllowsModel(allowed, "*") || listAllowsModel(allowed, model.PublicModel) || listAllowsModel(allowed, requested) {
+		return true
+	}
+	for _, alias := range model.Aliases {
+		if listAllowsModel(allowed, alias) {
+			return true
+		}
+	}
+	return false
+}
+
+func listAllowsModel(allowed []string, model string) bool {
+	for _, value := range allowed {
+		if value == model {
+			return true
+		}
+	}
+	return false
+}
+
+func protocolMatchesPolicyModel(requestMode ProtocolMode, modelMode ProtocolMode) bool {
+	return requestMode == "" || modelMode == "" || requestMode == modelMode
 }
 
 func addSnapshotHeader(response *GatewayResponse, state *RequestState) {

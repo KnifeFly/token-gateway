@@ -168,6 +168,13 @@ func TestPublisherPublishesAndRollsBack(t *testing.T) {
 	if rolledBack.Version != first.Version {
 		t.Fatalf("rollback version = %q, want %q", rolledBack.Version, first.Version)
 	}
+	diagnostics, err := publisher.Diagnostics(ctx)
+	if err != nil {
+		t.Fatalf("Diagnostics() error = %v", err)
+	}
+	if diagnostics.Active == nil || !diagnostics.Active.Valid || diagnostics.Active.Version != first.Version {
+		t.Fatalf("active diagnostics = %#v", diagnostics.Active)
+	}
 }
 
 func seedSnapshotConfig(t *testing.T, ctx context.Context, service *admin.Service, model string) {

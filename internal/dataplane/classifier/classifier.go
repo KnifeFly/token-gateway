@@ -1,7 +1,10 @@
 package classifier
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
@@ -10,6 +13,7 @@ import (
 )
 
 const protocolHeader = "X-Gateway-Protocol"
+const maxClassifierBodyBytes int64 = 4 << 20
 
 var openAIChatEndpoint = engine.EndpointSpec{
 	Method:      http.MethodPost,
@@ -24,8 +28,8 @@ var endpoints = []engine.EndpointSpec{
 	{Method: http.MethodPost, Path: "/v1/embeddings", Canonical: engine.CanonicalOpenAIEmbeddings, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/moderations", Canonical: engine.CanonicalOpenAIModerations, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/messages", Canonical: engine.CanonicalClaudeMessages, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeClaude}},
-	{Method: http.MethodPost, Path: "/v1/images/generations", Canonical: engine.CanonicalImageGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
-	{Method: http.MethodPost, Path: "/v1/images/edits", Canonical: engine.CanonicalImageEdit, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/images/generations", Canonical: engine.CanonicalImageGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified, engine.ProtocolNativeOpenAI}},
+	{Method: http.MethodPost, Path: "/v1/images/edits", Canonical: engine.CanonicalImageEdit, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/videos/generations", Canonical: engine.CanonicalVideoGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
 	{Method: http.MethodPost, Path: "/v1/audio/speech", Canonical: engine.CanonicalAudioSpeech, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
 	{Method: http.MethodPost, Path: "/v1/audio/transcriptions", Canonical: engine.CanonicalAudioTranscription, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
@@ -52,7 +56,11 @@ func (c *DefaultClassifier) Classify(_ context.Context, state *engine.RequestSta
 	}
 	mode := protocolFromHeader(state.Incoming.Header.Get(protocolHeader))
 	if mode == "" || mode == engine.ProtocolAuto {
-		mode = defaultProtocol(endpoint.Canonical)
+		inferred, err := inferProtocol(state, endpoint)
+		if err != nil {
+			return err
+		}
+		mode = inferred
 	}
 	if !allows(endpoint, mode) {
 		return apperr.InvalidArgument("protocol is not allowed for endpoint")
@@ -60,6 +68,29 @@ func (c *DefaultClassifier) Classify(_ context.Context, state *engine.RequestSta
 	state.Endpoint = endpoint
 	state.CanonicalAPI = endpoint.Canonical
 	return state.SetProtocol(mode)
+}
+
+func inferProtocol(state *engine.RequestState, endpoint engine.EndpointSpec) (engine.ProtocolMode, error) {
+	fields, err := peekJSONFields(state)
+	if err != nil && isAmbiguousEndpoint(endpoint) {
+		return "", err
+	}
+	if modelName := modelFromFields(fields); modelName != "" && state.Snapshot != nil {
+		model, ok := state.Snapshot.LookupModel(modelName)
+		if ok && model.Protocol != "" {
+			if !allows(endpoint, model.Protocol) {
+				return "", apperr.InvalidArgument("model protocol is not allowed for endpoint")
+			}
+			return model.Protocol, nil
+		}
+	}
+	if inferred := inferProtocolFromBody(endpoint, fields); inferred != "" {
+		return inferred, nil
+	}
+	if isAmbiguousEndpoint(endpoint) {
+		return "", apperr.AmbiguousProtocol("request protocol cannot be inferred; set X-Gateway-Protocol")
+	}
+	return defaultProtocol(endpoint.Canonical), nil
 }
 
 func matchEndpoint(method, path string) (engine.EndpointSpec, bool) {
@@ -118,6 +149,73 @@ func defaultProtocol(api engine.CanonicalAPI) engine.ProtocolMode {
 	default:
 		return engine.ProtocolNativeOpenAI
 	}
+}
+
+func isAmbiguousEndpoint(endpoint engine.EndpointSpec) bool {
+	switch endpoint.Canonical {
+	case engine.CanonicalImageGeneration, engine.CanonicalImageEdit:
+		return true
+	default:
+		return false
+	}
+}
+
+func peekJSONFields(state *engine.RequestState) (map[string]json.RawMessage, error) {
+	if state == nil || state.Incoming.Body == nil || state.Incoming.Method == http.MethodGet {
+		return nil, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(state.Incoming.Body, maxClassifierBodyBytes+1))
+	if err != nil {
+		return nil, apperr.InvalidArgument("request body could not be read", apperr.WithCause(err))
+	}
+	state.Incoming.Body = io.NopCloser(bytes.NewReader(body))
+	if int64(len(body)) > maxClassifierBodyBytes {
+		return nil, apperr.InvalidArgument("request body is too large")
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	return fields, nil
+}
+
+func modelFromFields(fields map[string]json.RawMessage) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	var model string
+	if raw := fields["model"]; len(raw) > 0 {
+		_ = json.Unmarshal(raw, &model)
+	}
+	return strings.TrimSpace(model)
+}
+
+func inferProtocolFromBody(endpoint engine.EndpointSpec, fields map[string]json.RawMessage) engine.ProtocolMode {
+	if !isAmbiguousEndpoint(endpoint) || len(fields) == 0 {
+		return ""
+	}
+	unified := hasAnyField(fields, "callback_url", "metadata", "model_params")
+	nativeOpenAI := hasAnyField(fields, "n", "size", "quality", "style", "response_format", "user")
+	switch {
+	case unified && !nativeOpenAI:
+		return engine.ProtocolUnified
+	case nativeOpenAI && !unified:
+		return engine.ProtocolNativeOpenAI
+	default:
+		return ""
+	}
+}
+
+func hasAnyField(fields map[string]json.RawMessage, keys ...string) bool {
+	for _, key := range keys {
+		if _, ok := fields[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func allows(endpoint engine.EndpointSpec, mode engine.ProtocolMode) bool {
