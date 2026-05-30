@@ -46,6 +46,20 @@ func (s *BalanceService) ReleaseHold(ctx context.Context, holdID string, reason 
 	return s.repo.ReleaseHold(ctx, holdID, reason)
 }
 
+// ReleaseExpiredHolds releases active holds whose reservation TTL elapsed.
+func (s *BalanceService) ReleaseExpiredHolds(ctx context.Context, now time.Time, limit int) (int, error) {
+	if s == nil || s.repo == nil {
+		return 0, nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	return s.repo.ReleaseExpiredHolds(ctx, now.UTC(), limit)
+}
+
 // AttemptWriter persists provider attempts.
 type AttemptWriter struct {
 	repo Repository

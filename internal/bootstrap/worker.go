@@ -93,6 +93,8 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 	jobList := []worker.Job{
 		jobs.NewProviderTaskPoller(taskRepo, dispatcher, taskService, taskSettlement, cfg.Worker.ProviderTaskPollInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewFailedSettlementReplayer(billing.NewFailedSettlementServiceWithMetrics(billingRepo, billingMetrics), cfg.Worker.FailedSettlementInterval.Duration, cfg.Worker.BatchSize),
+		jobs.NewBalanceHoldReaper(billing.NewBalanceService(billingRepo), cfg.Worker.HoldReaperInterval.Duration, cfg.Worker.BatchSize),
+		jobs.NewReconciliationJob(billing.NewReconciliationService(billingRepo), cfg.Worker.ReconciliationInterval.Duration),
 		jobs.NewCallbackDispatcherWithMetrics(taskRepo, &http.Client{Timeout: cfg.Worker.JobTimeout.Duration}, taskMetrics, cfg.Worker.CallbackInterval.Duration, cfg.Worker.BatchSize),
 	}
 	leaseStore := worker.LeaseStore(worker.NewRedisLeaseStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix))

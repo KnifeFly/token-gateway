@@ -158,6 +158,70 @@ WHERE id = ?`, HoldStatusReleased, reason, holdID); err != nil {
 	return tx.Commit()
 }
 
+// ReleaseExpiredHolds returns expired active holds to available balance.
+func (r *MySQLRepository) ReleaseExpiredHolds(ctx context.Context, now time.Time, limit int) (int, error) {
+	if r == nil || r.db == nil {
+		return 0, apperr.ConfigUnavailable("billing database is unavailable")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `
+SELECT id, request_id, tenant_id, project_id, api_key_id, account_id, currency, amount_micros,
+       status, COALESCE(release_reason, ''), expires_at, created_at, updated_at
+FROM balance_holds
+WHERE status = ? AND expires_at <= ?
+ORDER BY expires_at ASC, created_at ASC
+LIMIT ? FOR UPDATE`, HoldStatusActive, now.UTC(), limit)
+	if err != nil {
+		return 0, err
+	}
+	var holds []BalanceHold
+	for rows.Next() {
+		var hold BalanceHold
+		if err := rows.Scan(
+			&hold.ID, &hold.RequestID, &hold.TenantID, &hold.ProjectID, &hold.APIKeyID,
+			&hold.AccountID, &hold.Currency, &hold.AmountMicros, &hold.Status,
+			&hold.ReleaseReason, &hold.ExpiresAt, &hold.CreatedAt, &hold.UpdatedAt,
+		); err != nil {
+			_ = rows.Close()
+			return 0, err
+		}
+		holds = append(holds, hold)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, hold := range holds {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE balance_accounts
+SET available_micros = available_micros + ?,
+    held_micros = GREATEST(held_micros - ?, 0),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = ?`, hold.AmountMicros, hold.AmountMicros, hold.AccountID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE balance_holds
+SET status = ?, release_reason = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND status = ?`, HoldStatusReleased, "expired hold reaper", hold.ID, HoldStatusActive); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return len(holds), nil
+}
+
 // RecordUsageAttempt upserts one provider attempt for the request.
 func (r *MySQLRepository) RecordUsageAttempt(ctx context.Context, attempt UsageAttempt) error {
 	if r == nil || r.db == nil {
