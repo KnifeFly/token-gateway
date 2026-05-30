@@ -62,6 +62,43 @@ func TestAdapterMockStream(t *testing.T) {
 	}
 }
 
+func TestAdapterHTTPStreamRemainsOpenAfterRelayReturns(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\n"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+	}))
+	defer server.Close()
+
+	res, err := NewAdapter(server.Client()).Relay(context.Background(), relay.ChannelConfig{
+		BaseURL:       server.URL,
+		UpstreamModel: "gpt-4o-mini",
+	}, relay.Request{
+		CanonicalAPI: "openai.chat_completions",
+		PublicModel:  "gpt-4o-mini",
+		RawBody:      []byte(`{"model":"gpt-4o-mini","stream":true,"messages":[{"role":"user","content":"hi"}]}`),
+		Stream:       true,
+	})
+	if err != nil {
+		t.Fatalf("Relay() error = %v", err)
+	}
+	if res.Stream == nil {
+		t.Fatal("missing stream")
+	}
+	defer res.Stream.Close()
+
+	chunk, err := res.Stream.Recv(context.Background())
+	if err != nil {
+		t.Fatalf("Recv() error = %v", err)
+	}
+	if !strings.Contains(string(chunk), "hello") {
+		t.Fatalf("chunk = %q", chunk)
+	}
+}
+
 func TestAdapterMapsProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "down", http.StatusServiceUnavailable)

@@ -49,8 +49,6 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	if request.UpstreamModel == "" {
 		request.UpstreamModel = channel.UpstreamModel
@@ -59,8 +57,10 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	if err != nil {
 		return nil, err
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	if contentType == "" {
@@ -79,6 +79,7 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	}
 	res, err := a.client.Do(httpReq)
 	if err != nil {
+		cancel()
 		return nil, &relay.ProviderError{
 			StatusCode: http.StatusBadGateway,
 			Code:       "provider_unavailable",
@@ -88,6 +89,7 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	}
 	if request.Stream {
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
+			defer cancel()
 			defer res.Body.Close()
 			content, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 			code, retryable := relay.ClassifyStatus(res.StatusCode)
@@ -101,9 +103,10 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 		return &relay.Response{
 			StatusCode: res.StatusCode,
 			Header:     safeStreamHeaders(res.Header),
-			Stream:     newHTTPStream(res.Body),
+			Stream:     newHTTPStream(res.Body, cancel),
 		}, nil
 	}
+	defer cancel()
 	defer res.Body.Close()
 	content, err := io.ReadAll(io.LimitReader(res.Body, 16<<20))
 	if err != nil {
@@ -488,12 +491,13 @@ func parseUsage(body []byte) tokenusage.Actual {
 
 type httpStream struct {
 	body   io.ReadCloser
+	cancel context.CancelFunc
 	buf    []byte
 	actual tokenusage.Actual
 }
 
-func newHTTPStream(body io.ReadCloser) *httpStream {
-	return &httpStream{body: body}
+func newHTTPStream(body io.ReadCloser, cancel context.CancelFunc) *httpStream {
+	return &httpStream{body: body, cancel: cancel}
 }
 
 func (s *httpStream) Recv(ctx context.Context) ([]byte, error) {
@@ -522,7 +526,11 @@ func (s *httpStream) Close() error {
 	if s == nil || s.body == nil {
 		return nil
 	}
-	return s.body.Close()
+	err := s.body.Close()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	return err
 }
 
 func (s *httpStream) observeUsage(chunk []byte) {
