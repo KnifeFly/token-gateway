@@ -35,6 +35,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/provider/claude"
 	"github.com/KnifeFly/token-gateway/internal/provider/gemini"
 	"github.com/KnifeFly/token-gateway/internal/provider/openai"
+	"github.com/KnifeFly/token-gateway/internal/provider/replicate"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 	"github.com/KnifeFly/token-gateway/internal/transport/publichttp"
@@ -174,6 +175,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	taskService := tasksvc.NewServiceWithMetrics(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, taskMetrics)
 	credentialResolver := providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)}
 	taskDispatcher := tasksvc.NewHTTPProviderTaskDispatcher(nil, credentialResolver, snapshotChannelResolver{store: snapshotStore})
+	taskDispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(nil, credentialResolver))
 	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher)
 	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration))
 	var attemptRecorder dispatch.AttemptRecorder

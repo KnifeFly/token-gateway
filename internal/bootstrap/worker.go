@@ -17,6 +17,7 @@ import (
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	"github.com/KnifeFly/token-gateway/internal/provider/replicate"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 	"github.com/KnifeFly/token-gateway/internal/worker"
@@ -81,6 +82,10 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
 		adminChannelResolver{repo: adminRepo},
 	)
+	dispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(
+		&http.Client{Timeout: cfg.Worker.JobTimeout.Duration},
+		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
+	))
 	price := pricing.TokenPrice{
 		Currency:             cfg.Gateway.Billing.Currency,
 		InputMicrosPerToken:  cfg.Gateway.Billing.InputMicrosPerToken,

@@ -1,0 +1,101 @@
+{
+  "note": "Example control-api payloads for a disposable release channel. Replace all bracketed values at deploy time; never commit provider secrets.",
+  "models": [
+    {
+      "public_model": "gpt-4o-mini",
+      "protocol": "native_openai",
+      "capability": "chat",
+      "enabled": true
+    },
+    {
+      "public_model": "claude-3-5-sonnet",
+      "protocol": "native_claude",
+      "capability": "chat",
+      "enabled": true
+    },
+    {
+      "public_model": "gemini-2.5-flash",
+      "protocol": "native_gemini",
+      "capability": "chat",
+      "enabled": true
+    },
+    {
+      "public_model": "replicate-image-release",
+      "protocol": "unified",
+      "capability": "image",
+      "enabled": true
+    }
+  ],
+  "channels": [
+    {
+      "id": "channel_release_openai",
+      "provider_type": "openai_compatible",
+      "base_url": "https://api.openai.com",
+      "api_key": "[REDACTED_SECRET]",
+      "enabled": true,
+      "timeout_millis": 30000,
+      "models": [
+        {
+          "public_model": "gpt-4o-mini",
+          "upstream_model": "gpt-4o-mini"
+        }
+      ]
+    },
+    {
+      "id": "channel_release_claude",
+      "provider_type": "claude",
+      "base_url": "https://api.anthropic.com",
+      "api_key": "[REDACTED_SECRET]",
+      "enabled": true,
+      "timeout_millis": 30000,
+      "models": [
+        {
+          "public_model": "claude-3-5-sonnet",
+          "upstream_model": "claude-3-5-sonnet-20241022"
+        }
+      ]
+    },
+    {
+      "id": "channel_release_gemini",
+      "provider_type": "gemini",
+      "base_url": "https://generativelanguage.googleapis.com",
+      "api_key": "[REDACTED_SECRET]",
+      "enabled": true,
+      "timeout_millis": 30000,
+      "models": [
+        {
+          "public_model": "gemini-2.5-flash",
+          "upstream_model": "gemini-2.5-flash"
+        }
+      ]
+    },
+    {
+      "id": "channel_release_replicate",
+      "provider_type": "replicate",
+      "base_url": "https://api.replicate.com",
+      "api_key": "[REDACTED_SECRET]",
+      "enabled": true,
+      "timeout_millis": 120000,
+      "models": [
+        {
+          "public_model": "replicate-image-release",
+          "upstream_model": "[REPLICATE_VERSION_ID]"
+        }
+      ]
+    }
+  ],
+  "routes": [
+    {
+      "public_model": "replicate-image-release",
+      "strategy": "priority",
+      "enabled": true,
+      "candidates": [
+        {
+          "channel_id": "channel_release_replicate",
+          "priority": 1,
+          "weight": 100
+        }
+      ]
+    }
+  ]
+}
