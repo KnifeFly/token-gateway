@@ -41,7 +41,7 @@ if rg -n "(sk-[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|ghp
 fi
 
 echo "release_gate=focused_tests"
-(cd "${ROOT_DIR}" && go test ./pkg/redaction ./internal/infra/telemetry ./internal/dataplane/observe ./internal/worker)
+(cd "${ROOT_DIR}" && go test ./pkg/redaction ./internal/infra/telemetry ./internal/dataplane/observe ./internal/dataplane/router ./internal/dataplane/dispatch ./internal/billing ./internal/infra/redis ./internal/worker)
 
 if [[ "${REDIS_ADDR}" != "" ]]; then
   echo "release_gate=redis_latency"
@@ -52,6 +52,7 @@ fi
 if [[ "${LIVE}" == "true" ]]; then
   echo "release_gate=live_failure_drills"
   (cd "${ROOT_DIR}" && GATEWAY_URL="${GATEWAY_URL}" API_KEY="${API_KEY}" MODEL="${MODEL}" tests/failure/drills.sh)
+  (cd "${ROOT_DIR}" && GATEWAY_URL="${GATEWAY_URL}" API_KEY="${API_KEY}" MODEL="${MODEL}" tests/failure/provider_reliability_drills.sh)
 
   echo "release_gate=live_loadtest"
   output="$(cd "${ROOT_DIR}" && go run ./tools/loadtest -url "${GATEWAY_URL}/v1/chat/completions" -api-key "${API_KEY}" -model "${MODEL}" -requests 10 -concurrency 2)"

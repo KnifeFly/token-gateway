@@ -37,7 +37,7 @@ func (p *RedisSignalProvider) Signals(ctx context.Context, _ *engine.RequestStat
 		return RouteSignals{}, err
 	}
 	for _, candidate := range candidates {
-		signal := CandidateSignal{Healthy: true, HealthWeight: 1, ModelCompatible: true}
+		signal := defaultCandidateSignal()
 		if raw, ok := loaded[candidate.ChannelID]; ok {
 			applyRouteSignal(&signal, raw)
 		}
@@ -67,5 +67,26 @@ func applyRouteSignal(signal *CandidateSignal, raw redisinfra.RouteSignal) {
 	}
 	if raw.ModelCompatible != nil {
 		signal.ModelCompatible = *raw.ModelCompatible
+	}
+	if raw.SuccessRate > 0 {
+		signal.SuccessRate = raw.SuccessRate
+	}
+	if raw.ErrorRate > 0 {
+		signal.ErrorRate = raw.ErrorRate
+	}
+	if raw.RateLimited > 0 {
+		signal.RateLimited = raw.RateLimited
+	}
+	if raw.ServerErrors > 0 {
+		signal.ServerErrors = raw.ServerErrors
+	}
+	if raw.Timeouts > 0 {
+		signal.Timeouts = raw.Timeouts
+	}
+	if raw.StreamInterrupts > 0 {
+		signal.StreamInterrupts = raw.StreamInterrupts
+	}
+	if raw.CircuitState != "" {
+		signal.CircuitState = raw.CircuitState
 	}
 }

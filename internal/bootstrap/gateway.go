@@ -229,11 +229,16 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
+	circuitBreaker := router.NewCircuitBreaker(router.DefaultCircuitConfig())
 	snapshotProvider := dpsnapshot.NewProvider(snapshotStore, dpsnapshot.WithMetrics(snapshotMetrics))
 	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
 	routePlanner := router.NewRoutePlanner(nil, emergencyDisableStore).WithSignals(
-		router.NewRedisSignalProvider(redisinfra.NewRouteSignalStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)),
+		router.NewCompositeSignalProvider(
+			router.NewRedisSignalProvider(redisinfra.NewRouteSignalStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)),
+			circuitBreaker,
+		),
 	)
+	dispatcher := dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, credentialResolver, logger, emergencyDisableStore).WithReliability(circuitBreaker)
 	gatewayEngine, err := engine.New(
 		engine.WithSnapshot(snapshotProvider),
 		engine.WithClassifier(classifier.NewDefault()),
@@ -243,7 +248,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		engine.WithRoutePlanner(routePlanner),
 		engine.WithAdmission(admissionController),
 		engine.WithLimitEnforcer(limitEnforcer),
-		engine.WithDispatcher(dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, credentialResolver, logger, emergencyDisableStore)),
+		engine.WithDispatcher(dispatcher),
 		engine.WithSettlement(settlementService),
 		engine.WithStreamFinalizer(streamFinalizer),
 		engine.WithTaskBridge(taskBridge),

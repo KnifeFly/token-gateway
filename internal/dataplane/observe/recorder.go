@@ -187,6 +187,13 @@ func (r *Recorder) RecordProviderAttempt(_ context.Context, state *engine.Reques
 		"error_code", attempt.ErrorCode,
 		"success", attempt.Success,
 		"duration_ms", attempt.Duration.Milliseconds(),
+		"retryable", attempt.Retryable,
+		"retry_budget_consumed", attempt.RetryBudgetConsumed,
+		"retry_budget_remaining", attempt.RetryBudgetRemaining,
+		"fallback_from_channel", attempt.FallbackFromChannelID,
+		"fallback_from_provider", attempt.FallbackFromProvider,
+		"circuit_state", attempt.CircuitState,
+		"final", attempt.Final,
 		"snapshot_version", state.SnapshotRef.Version,
 	)
 }

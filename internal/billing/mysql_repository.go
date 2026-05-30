@@ -234,13 +234,16 @@ func (r *MySQLRepository) RecordUsageAttempt(ctx context.Context, attempt UsageA
 INSERT INTO usage_attempts (
   id, request_id, attempt_index, tenant_id, project_id, api_key_id, channel_id, provider_type,
   model, status_code, error_code, success, estimated_input_tokens, estimated_output_tokens,
-  actual_input_tokens, actual_output_tokens
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  actual_input_tokens, actual_output_tokens, retryable, retry_budget_consumed,
+  retry_budget_remaining, fallback_from_channel_id, fallback_from_provider, circuit_state, final
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
 		attempt.ID, attempt.RequestID, attempt.AttemptIndex, attempt.TenantID, attempt.ProjectID,
 		attempt.APIKeyID, attempt.ChannelID, attempt.ProviderType, attempt.Model, attempt.StatusCode,
 		attempt.ErrorCode, attempt.Success, attempt.EstimatedInputTokens, attempt.EstimatedOutputTokens,
-		attempt.ActualInputTokens, attempt.ActualOutputTokens,
+		attempt.ActualInputTokens, attempt.ActualOutputTokens, attempt.Retryable,
+		attempt.RetryBudgetConsumed, attempt.RetryBudgetRemaining, attempt.FallbackFromChannelID,
+		attempt.FallbackFromProvider, attempt.CircuitState, attempt.Final,
 	)
 	return err
 }

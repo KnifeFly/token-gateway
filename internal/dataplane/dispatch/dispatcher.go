@@ -23,6 +23,8 @@ type Dispatcher struct {
 	attempts    AttemptRecorder
 	credentials CredentialResolver
 	disable     DisableChecker
+	reliability ReliabilityRecorder
+	retry       RetryPolicy
 	logger      *slog.Logger
 }
 
@@ -42,6 +44,22 @@ type DisableChecker interface {
 	IsChannelDisabled(ctx context.Context, channelID string) (bool, error)
 }
 
+// ReliabilityRecorder observes attempts for circuit breakers and hot signals.
+type ReliabilityRecorder interface {
+	RecordProviderAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt)
+}
+
+// RetryPolicy bounds provider fallback attempts for one request.
+type RetryPolicy struct {
+	MaxAttempts int
+	MaxElapsed  time.Duration
+}
+
+// DefaultRetryPolicy returns conservative request-local retry limits.
+func DefaultRetryPolicy() RetryPolicy {
+	return RetryPolicy{MaxAttempts: 3, MaxElapsed: 10 * time.Second}
+}
+
 // New returns a dispatcher without external credential resolution.
 func New(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, logger *slog.Logger) *Dispatcher {
 	return NewWithCredentials(registry, observe, attempts, nil, logger)
@@ -55,10 +73,34 @@ func NewWithCredentials(registry *provider.Registry, observe engine.ObserveRecor
 	if observe == nil {
 		observe = engine.NoopObserveRecorder{}
 	}
-	d := &Dispatcher{registry: registry, observe: observe, attempts: attempts, credentials: credentials, logger: logger}
+	d := &Dispatcher{registry: registry, observe: observe, attempts: attempts, credentials: credentials, logger: logger, retry: DefaultRetryPolicy()}
 	if len(disable) > 0 {
 		d.disable = disable[0]
 	}
+	return d
+}
+
+// WithReliability configures the provider reliability recorder.
+func (d *Dispatcher) WithReliability(recorder ReliabilityRecorder) *Dispatcher {
+	if d == nil {
+		return d
+	}
+	d.reliability = recorder
+	return d
+}
+
+// WithRetryPolicy configures request-local retry limits.
+func (d *Dispatcher) WithRetryPolicy(policy RetryPolicy) *Dispatcher {
+	if d == nil {
+		return d
+	}
+	if policy.MaxAttempts <= 0 {
+		policy.MaxAttempts = DefaultRetryPolicy().MaxAttempts
+	}
+	if policy.MaxElapsed <= 0 {
+		policy.MaxElapsed = DefaultRetryPolicy().MaxElapsed
+	}
+	d.retry = policy
 	return d
 }
 
@@ -68,7 +110,14 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		return nil, apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
 	}
 	var lastErr error
+	requestStarted := time.Now()
+	retryBudget := d.retryBudget(len(state.RoutePlan.Candidates))
+	retryBudgetLimit := retryBudget
+	var firstFailed *engine.ProviderAttempt
 	for _, candidate := range state.RoutePlan.Candidates {
+		if retryBudget <= 0 || d.retryElapsed(requestStarted) {
+			break
+		}
 		// Step 1: resolve adapter, channel, disable state, and credential.
 		adapter, ok := d.registry.Adapter(candidate.ProviderType)
 		if !ok {
@@ -124,29 +173,47 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			Stream:        state.Stream,
 		})
 		attempt := engine.ProviderAttempt{
-			AttemptIndex: len(state.Attempts) + 1,
-			ChannelID:    candidate.ChannelID,
-			ProviderType: candidate.ProviderType,
-			PublicModel:  candidate.PublicModel,
-			StartedAt:    started,
-			Duration:     time.Since(started),
+			AttemptIndex:         len(state.Attempts) + 1,
+			ChannelID:            candidate.ChannelID,
+			ProviderType:         candidate.ProviderType,
+			PublicModel:          candidate.PublicModel,
+			StartedAt:            started,
+			Duration:             time.Since(started),
+			RetryBudgetConsumed:  retryBudgetLimit - retryBudget + 1,
+			RetryBudgetRemaining: retryBudget - 1,
+			CircuitState:         circuitStateForCandidate(state, candidate),
+		}
+		if firstFailed != nil {
+			attempt.FallbackFromChannelID = firstFailed.ChannelID
+			attempt.FallbackFromProvider = firstFailed.ProviderType
 		}
 		if err != nil {
 			// Step 3: record failed attempts before moving to fallback candidates.
 			span.RecordError(err)
 			lastErr = mapProviderError(err)
+			attempt.Retryable = providerRetryable(err)
 			attempt.ErrorCode = providerErrorCode(err)
 			attempt.StatusCode = providerStatusCode(err)
+			nextBudget := retryBudget - 1
+			eligible := d.eligibleForFallback(err, state, nextBudget, requestStarted)
+			if !eligible {
+				attempt.Final = true
+			}
 			state.Attempts = append(state.Attempts, attempt)
+			if firstFailed == nil {
+				failed := attempt
+				firstFailed = &failed
+			}
 			if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
 				span.RecordError(recordErr)
 				span.End()
 				return nil, recordErr
 			}
-			d.observe.RecordProviderAttempt(ctx, state, attempt)
+			d.recordReliability(ctx, state, attempt)
 			span.End()
-			if !providerRetryable(err) {
-				continue
+			retryBudget = nextBudget
+			if !eligible {
+				return nil, lastErr
 			}
 			continue
 		}
@@ -154,6 +221,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		// Step 4: record success and stop fallback.
 		attempt.Success = true
 		attempt.StatusCode = response.StatusCode
+		attempt.Final = true
 		state.ActualUsage = response.Usage
 		state.Attempts = append(state.Attempts, attempt)
 		if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
@@ -161,7 +229,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			span.End()
 			return nil, recordErr
 		}
-		d.observe.RecordProviderAttempt(ctx, state, attempt)
+		d.recordReliability(ctx, state, attempt)
 		span.End()
 		return &engine.ProviderResult{
 			Candidate: candidate,
@@ -178,7 +246,33 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 	if lastErr == nil {
 		lastErr = apperr.ServiceUnavailable("provider is unavailable", apperr.WithTemporary())
 	}
+	markFinalAttempt(state)
 	return nil, lastErr
+}
+
+func (d *Dispatcher) retryBudget(candidateCount int) int {
+	maxAttempts := d.retry.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = DefaultRetryPolicy().MaxAttempts
+	}
+	if candidateCount > 0 && maxAttempts > candidateCount {
+		maxAttempts = candidateCount
+	}
+	return maxAttempts
+}
+
+func (d *Dispatcher) retryElapsed(started time.Time) bool {
+	return d.retry.MaxElapsed > 0 && time.Since(started) >= d.retry.MaxElapsed
+}
+
+func (d *Dispatcher) eligibleForFallback(err error, state *engine.RequestState, remaining int, started time.Time) bool {
+	if remaining <= 0 || d.retryElapsed(started) {
+		return false
+	}
+	if state == nil || len(state.Parsed.RawBody) == 0 {
+		return false
+	}
+	return providerRetryable(err)
 }
 
 func (d *Dispatcher) isDisabled(ctx context.Context, providerType, channelID string) (bool, error) {
@@ -197,6 +291,31 @@ func (d *Dispatcher) recordAttempt(ctx context.Context, state *engine.RequestSta
 		return nil
 	}
 	return d.attempts.RecordProviderAttempt(ctx, state, attempt)
+}
+
+func (d *Dispatcher) recordReliability(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) {
+	d.observe.RecordProviderAttempt(ctx, state, attempt)
+	if d.reliability != nil {
+		d.reliability.RecordProviderAttempt(ctx, state, attempt)
+	}
+}
+
+func markFinalAttempt(state *engine.RequestState) {
+	if state == nil || len(state.Attempts) == 0 {
+		return
+	}
+	state.Attempts[len(state.Attempts)-1].Final = true
+}
+
+func circuitStateForCandidate(state *engine.RequestState, candidate engine.ProviderCandidate) string {
+	if state == nil || state.Internal == nil {
+		return ""
+	}
+	states, ok := state.Internal["route.circuit_states"].(map[string]string)
+	if !ok {
+		return ""
+	}
+	return states[candidate.ChannelID]
 }
 
 func mapProviderError(err error) error {

@@ -103,6 +103,7 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	if err != nil {
 		return err
 	}
+	p.storeCircuitStates(state, candidates, signals)
 	ordered := p.registry.Order(route.Strategy, candidates, signals)
 	if len(ordered) == 0 {
 		return noRouteAvailable()
@@ -136,20 +137,44 @@ func (p *RoutePlanner) routeSignals(ctx context.Context, state *engine.RequestSt
 	for _, candidate := range candidates {
 		signal, ok := signals.Candidates[candidate.ChannelID]
 		if !ok {
-			signal = CandidateSignal{Healthy: true, HealthWeight: 1, ModelCompatible: true}
+			signal = defaultCandidateSignal()
 		}
 		disabled, err := p.isDisabled(ctx, candidate.ProviderType, candidate.ChannelID)
 		if err != nil {
 			return RouteSignals{}, err
 		}
 		signal.Disabled = signal.Disabled || disabled
-		signal.ModelCompatible = true
 		if signal.HealthWeight == 0 {
 			signal.HealthWeight = 1
+		}
+		if signal.CircuitState == "" {
+			signal.CircuitState = CircuitClosed
 		}
 		signals.Candidates[candidate.ChannelID] = signal
 	}
 	return signals, nil
+}
+
+func (p *RoutePlanner) storeCircuitStates(state *engine.RequestState, candidates []engine.ProviderCandidate, signals RouteSignals) {
+	if state == nil {
+		return
+	}
+	if state.Internal == nil {
+		state.Internal = map[string]any{}
+	}
+	states := make(map[string]string, len(candidates))
+	for _, candidate := range candidates {
+		circuitState := signals.signal(candidate).CircuitState
+		if circuitState == "" {
+			circuitState = CircuitClosed
+		}
+		states[candidate.ChannelID] = circuitState
+	}
+	state.Internal["route.circuit_states"] = states
+}
+
+func defaultCandidateSignal() CandidateSignal {
+	return CandidateSignal{Healthy: true, HealthWeight: 1, ModelCompatible: true, CircuitState: CircuitClosed}
 }
 
 func (p *RoutePlanner) isDisabled(ctx context.Context, providerType, channelID string) (bool, error) {
