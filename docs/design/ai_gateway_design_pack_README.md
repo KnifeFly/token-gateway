@@ -1,6 +1,6 @@
 # 商用 AI Gateway 最终设计包
 
-本设计包综合 `v0.2` 的完整商业化设计、`v0.3` 的评审修订和 P5-P8 剩余能力路线，作为后续实现、计划和任务拆分的唯一设计来源。
+本设计包综合 `v0.2` 的完整商业化设计、`v0.3` 的评审修订和 P5-P9 剩余能力与验收路线，作为后续实现、计划和任务拆分的唯一设计来源。
 
 ## 文档清单
 
@@ -38,6 +38,7 @@ P5 Provider Protocol Compatibility
 P6 Provider Reliability
 P7 Media Forwarding Providers
 P8 Portal API
+P9 Customer Acceptance Closure
 ```
 
 第一版不要急着铺满所有 provider 和高级商业功能。先把请求生命周期、账务闭环、幂等、失败补偿、snapshot、限流和基础可观测性写稳。
@@ -48,3 +49,4 @@ P8 Portal API
 - 当前先不做：semantic routing/cache、多地域 active-active。
 - 文件能力按非存储输入资产处理，只用于请求归一化、幂等校验和 provider 转发，不承诺持久化、下载、生命周期或存储 SLA。
 - Portal 第一版只做 API：模型/Schema、credits、usage、API key 自助管理和 task 查询；不做 UI，也不暴露 admin/control 配置能力。
+- P9 只做客户接入验收收口：Portal smoke、OpenAPI import preflight 和 RC smoke 集成，不扩大产品边界。

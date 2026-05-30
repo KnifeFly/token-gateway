@@ -925,6 +925,10 @@ semantic cache
 
 这些能力需要重新产品决策后另立路线和任务板。
 
+### 16.4 客户接入验收收口
+
+P9 只补齐客户接入验收资产：Portal smoke CLI、OpenAPI import preflight、RC smoke 集成和客户验收 runbook。P9 不新增产品接口，也不改变 16.2 和 16.3 的范围边界。
+
 ---
 
 ## 17. 核心验收标准

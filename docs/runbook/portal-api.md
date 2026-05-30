@@ -33,7 +33,11 @@ Run these focused checks after touching Portal behavior:
 
 ```bash
 go test ./internal/portal ./internal/transport/portalhttp ./internal/task ./internal/bootstrap
+go test ./tools/portal-smoke ./tests/contract
+GATEWAY_URL=http://127.0.0.1:9501 API_KEY=tg-rc-key make portal-smoke
 go test ./...
 ```
 
 The Portal handler tests cover model visibility, schema access, credits/usage redaction, API key subset enforcement, self-disable prevention, cross-project denial, task scope filtering, sensitive metadata filtering, and OpenAPI contract coverage.
+
+For customer acceptance and RC evidence, see [Customer Acceptance Runbook](./customer-acceptance.md).
