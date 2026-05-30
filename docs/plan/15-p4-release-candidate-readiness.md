@@ -58,6 +58,7 @@ P4 继续保持完整 Realtime 不进入当前路线。Realtime 只维护已有 
 | P4/E14-T04 configd 生产分发 | 已完成 | configd 在 DB activate 后写 Redis active key 并发布 pubsub event，gateway watcher 优先 Redis、回落 DB polling；`go test ./internal/controlplane/snapshot ./internal/dataplane/snapshot ./internal/snapshotdist ./internal/bootstrap` 和 `bash tests/rc/clean_env_smoke.sh` 通过 |
 | P4/E14-T05 OpenAPI 管理面合同 | 已完成 | OpenAPI 补齐 tenant/project/api-key/model/channel/route/price/limit/plugin/snapshot/emergency 管理路径、schema、示例和 `adminTokenAuth`；`go test ./internal/transport/controlhttp` 通过 |
 | P4/E14-T06 发布级观测与安全验收 | 已完成 | 补 dashboard/alert 的 worker、provider 5xx、snapshot publish error 覆盖，新增 `tests/failure/release_gate.sh` 和 runbook；`tests/failure/release_gate.sh` 通过 |
+| P4/E14-T07 staging 灰度上线 runbook | 已完成 | 新增 staging rollout runbook，覆盖环境准备、密钥注入、迁移、配置发布、真实请求、release gate、故障演练、回滚、数据核对和发布记录模板 |
 
 ## 风险与处理
 
