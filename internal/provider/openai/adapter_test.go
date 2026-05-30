@@ -1,8 +1,10 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -80,6 +82,90 @@ func TestAdapterMapsProviderError(t *testing.T) {
 	}
 	if providerErr.Code != "provider_unavailable" || !providerErr.Retryable {
 		t.Fatalf("provider error = %#v", providerErr)
+	}
+}
+
+func TestAdapterRelaysNativeImageEndpointAndRewritesModel(t *testing.T) {
+	var gotPath string
+	var gotBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		body, _ := io.ReadAll(r.Body)
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"url":"https://example.com/image.png"}]}`))
+	}))
+	defer server.Close()
+
+	_, err := NewAdapter(server.Client()).Relay(context.Background(), relay.ChannelConfig{
+		BaseURL:       server.URL,
+		UpstreamModel: "upstream-image",
+	}, relay.Request{
+		CanonicalAPI: "unified.image_generation",
+		PublicModel:  "gpt-image-public",
+		RawBody:      []byte(`{"model":"gpt-image-public","prompt":"cat"}`),
+		ContentType:  "application/json",
+	})
+	if err != nil {
+		t.Fatalf("Relay() error = %v", err)
+	}
+	if gotPath != "/v1/images/generations" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if !strings.Contains(gotBody, `"model":"upstream-image"`) {
+		t.Fatalf("body = %q", gotBody)
+	}
+}
+
+func TestAdapterRelaysMultipartMediaAndRewritesModel(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "public-audio"); err != nil {
+		t.Fatalf("WriteField() error = %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "audio.wav")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write([]byte("wav")); err != nil {
+		t.Fatalf("part.Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	var gotModel string
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Errorf("ParseMultipartForm() error = %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		gotModel = r.FormValue("model")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"text":"hello"}`))
+	}))
+	defer server.Close()
+
+	_, err = NewAdapter(server.Client()).Relay(context.Background(), relay.ChannelConfig{
+		BaseURL:       server.URL,
+		UpstreamModel: "upstream-audio",
+	}, relay.Request{
+		CanonicalAPI: "unified.audio_transcription",
+		PublicModel:  "public-audio",
+		RawBody:      body.Bytes(),
+		ContentType:  writer.FormDataContentType(),
+	})
+	if err != nil {
+		t.Fatalf("Relay() error = %v", err)
+	}
+	if gotPath != "/v1/audio/transcriptions" {
+		t.Fatalf("path = %q", gotPath)
+	}
+	if gotModel != "upstream-audio" {
+		t.Fatalf("model = %q", gotModel)
 	}
 }
 

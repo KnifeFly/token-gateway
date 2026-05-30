@@ -228,13 +228,16 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		dpsnapshot.WithMetrics(snapshotMetrics),
 	)
 	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
+	routePlanner := router.NewRoutePlanner(nil, emergencyDisableStore).WithSignals(
+		router.NewRedisSignalProvider(redisinfra.NewRouteSignalStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)),
+	)
 	gatewayEngine, err := engine.New(
 		engine.WithSnapshot(snapshotProvider),
 		engine.WithClassifier(classifier.NewDefault()),
 		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
 		engine.WithAuthenticator(authenticator),
 		engine.WithPolicyEvaluator(policy.NewEvaluator()),
-		engine.WithRoutePlanner(router.NewRoutePlanner(nil, emergencyDisableStore)),
+		engine.WithRoutePlanner(routePlanner),
 		engine.WithAdmission(admissionController),
 		engine.WithLimitEnforcer(limitEnforcer),
 		engine.WithDispatcher(dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, credentialResolver, logger, emergencyDisableStore)),

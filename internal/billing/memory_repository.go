@@ -161,6 +161,9 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 		}
 	}
 	charge := plan.AmountMicros
+	if !plan.Billable {
+		charge = 0
+	}
 	if charge < 0 {
 		charge = 0
 	}
@@ -197,6 +200,7 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 		Currency:           plan.Currency,
 		AmountMicros:       -charge,
 		BalanceAfterMicros: account.AvailableMicros,
+		Reason:             settlementReason(plan),
 	}
 	r.records[plan.RequestID] = record
 	r.ledger[plan.RequestID] = entry

@@ -57,18 +57,21 @@ func TestOperationsIncludeAllP1LimitTypes(t *testing.T) {
 		Enabled:             true,
 	}}
 
-	fixed, leases := enforcer.operationsFor(state, rules, now)
-	if len(fixed) != 5 {
-		t.Fatalf("fixed operations = %d, want 5", len(fixed))
+	buckets, counters, leases := enforcer.operationsFor(state, rules, now)
+	if len(buckets) != 4 {
+		t.Fatalf("bucket operations = %d, want 4", len(buckets))
+	}
+	if len(counters) != 1 {
+		t.Fatalf("counter operations = %d, want 1", len(counters))
 	}
 	if len(leases) != 1 {
 		t.Fatalf("lease operations = %d, want 1", len(leases))
 	}
-	if fixed[2].cost != 30 {
-		t.Fatalf("tpm cost = %d", fixed[2].cost)
+	if buckets[2].cost != 30 {
+		t.Fatalf("tpm cost = %d", buckets[2].cost)
 	}
-	if fixed[3].cost != 42 || fixed[4].cost != 42 {
-		t.Fatalf("budget costs = %d/%d", fixed[3].cost, fixed[4].cost)
+	if counters[0].cost != 42 || buckets[3].cost != 42 {
+		t.Fatalf("budget costs = %d/%d", counters[0].cost, buckets[3].cost)
 	}
 }
 
@@ -78,11 +81,11 @@ func TestAcquireUsesLocalDenyCacheBeforeRedis(t *testing.T) {
 	enforcer := NewRedisEnforcer(client, Config{Enabled: true, QPS: 1, DenyCacheTTL: time.Second})
 	state := &engine.RequestState{RequestID: "req_1", TenantID: "tenant_1", ProjectID: "project_1"}
 	rules := enforcer.rulesFor(state)
-	fixed, _ := enforcer.operationsFor(state, rules, time.Now().UTC())
-	if len(fixed) == 0 {
-		t.Fatal("missing fixed operation")
+	buckets, _, _ := enforcer.operationsFor(state, rules, time.Now().UTC())
+	if len(buckets) == 0 {
+		t.Fatal("missing bucket operation")
 	}
-	enforcer.deny.Set(fixed[0].cacheKey, "cached deny", time.Now().UTC().Add(time.Second))
+	enforcer.deny.Set(buckets[0].cacheKey, "cached deny", time.Now().UTC().Add(time.Second))
 
 	if _, err := enforcer.Acquire(context.Background(), state); err == nil || !strings.Contains(err.Error(), "cached deny") {
 		t.Fatalf("Acquire() error = %v", err)

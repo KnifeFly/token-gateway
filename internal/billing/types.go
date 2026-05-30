@@ -82,18 +82,19 @@ type UsageAttempt struct {
 
 // SettlementPlan contains the durable inputs for final settlement.
 type SettlementPlan struct {
-	RequestID    string            `json:"request_id"`
-	TenantID     string            `json:"tenant_id"`
-	ProjectID    string            `json:"project_id"`
-	APIKeyID     string            `json:"api_key_id"`
-	HoldID       string            `json:"hold_id"`
-	Model        string            `json:"model"`
-	ProviderType string            `json:"provider_type"`
-	ChannelID    string            `json:"channel_id"`
-	Usage        tokenusage.Actual `json:"usage"`
-	AmountMicros int64             `json:"amount_micros"`
-	Currency     string            `json:"currency"`
-	Billable     bool              `json:"billable"`
+	RequestID      string            `json:"request_id"`
+	TenantID       string            `json:"tenant_id"`
+	ProjectID      string            `json:"project_id"`
+	APIKeyID       string            `json:"api_key_id"`
+	HoldID         string            `json:"hold_id"`
+	Model          string            `json:"model"`
+	ProviderType   string            `json:"provider_type"`
+	ChannelID      string            `json:"channel_id"`
+	Usage          tokenusage.Actual `json:"usage"`
+	AmountMicros   int64             `json:"amount_micros"`
+	Currency       string            `json:"currency"`
+	Billable       bool              `json:"billable"`
+	BillableReason string            `json:"billable_reason,omitempty"`
 }
 
 // UsageRecord is the final customer usage record.

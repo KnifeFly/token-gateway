@@ -72,9 +72,15 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 		if result == nil || !tasksvc.IsTerminal(result.Status) {
 			continue
 		}
+		settlementTask := task
+		settlementTask.Status = result.Status
+		settlementTask.Result = result.Result
+		settlementTask.Usage = result.Usage
+		settlementTask.ErrorCode = result.ErrorCode
+		settlementTask.ErrorMessage = result.ErrorMessage
 		if result.Status == tasksvc.StatusSucceeded {
-			if err := j.settlement.Settle(ctx, task, result.Usage); err != nil {
-				if recordErr := j.settlement.RecordFailed(ctx, task, result.Usage, err); recordErr != nil {
+			if err := j.settlement.Settle(ctx, settlementTask, result.Usage); err != nil {
+				if recordErr := j.settlement.RecordFailed(ctx, settlementTask, result.Usage, err); recordErr != nil {
 					return recordErr
 				}
 			}

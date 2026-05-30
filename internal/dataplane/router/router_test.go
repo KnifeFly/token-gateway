@@ -4,8 +4,10 @@ import (
 	"context"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -131,6 +133,32 @@ func TestStrategyRegistryFiltersDisabledAndIncompatibleCandidates(t *testing.T) 
 	}
 }
 
+func TestRedisSignalProviderLoadsHotSignals(t *testing.T) {
+	healthy := false
+	compatible := false
+	disabled := true
+	provider := NewRedisSignalProvider(fakeRouteSignalStore{signals: map[string]redisinfra.RouteSignal{
+		"channel_1": {
+			Healthy:         &healthy,
+			HealthWeight:    0.25,
+			Latency:         45 * time.Millisecond,
+			CostMicros:      12,
+			RemainingQuota:  7,
+			Disabled:        &disabled,
+			ModelCompatible: &compatible,
+		},
+	}})
+
+	signals, err := provider.Signals(context.Background(), nil, []engine.ProviderCandidate{{ChannelID: "channel_1"}})
+	if err != nil {
+		t.Fatalf("Signals() error = %v", err)
+	}
+	got := signals.Candidates["channel_1"]
+	if got.Healthy || got.ModelCompatible || !got.Disabled || got.HealthWeight != 0.25 || got.Latency != 45*time.Millisecond || got.CostMicros != 12 || got.RemainingQuota != 7 {
+		t.Fatalf("signal = %#v", got)
+	}
+}
+
 type routeSnapshot struct{}
 
 func (routeSnapshot) Ref() engine.SnapshotRef { return engine.SnapshotRef{Version: "test"} }
@@ -200,4 +228,12 @@ func (c disabledChecker) IsProviderDisabled(_ context.Context, providerType stri
 
 func (c disabledChecker) IsChannelDisabled(_ context.Context, channelID string) (bool, error) {
 	return c.channelID == channelID, nil
+}
+
+type fakeRouteSignalStore struct {
+	signals map[string]redisinfra.RouteSignal
+}
+
+func (s fakeRouteSignalStore) GetRouteSignals(_ context.Context, _ []string) (map[string]redisinfra.RouteSignal, error) {
+	return s.signals, nil
 }

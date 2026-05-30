@@ -216,3 +216,75 @@ OpenAPI 预留 `/v1/realtime/sessions`，代码预留 `RealtimeEngine`，MVP 返
 ## Alternatives
 
 MVP 直接实现 realtime：风险过高。
+
+---
+
+# ADR-0008: Redis 限流采用 bucket/counter/lease 三类语义
+
+## Status
+
+Accepted
+
+## Context
+
+生产限流同时需要 QPS/RPM/TPM、预算和并发控制。固定窗口计数无法准确表达突发平滑、token 预扣和请求生命周期内的并发占用。
+
+## Decision
+
+Redis Lua 输入拆为三类操作：QPS、RPM、TPM 和 cost-per-minute 使用 token bucket；daily budget 使用按日 counter；concurrency 使用带 TTL 的 sorted-set lease。请求只缓存短期 deny，不缓存 allow。
+
+## Consequences
+
+优点：多副本下限流语义清晰且原子。缺点：Redis key 类型更多，集成测试必须覆盖 refill、预扣和 release。
+
+## Alternatives
+
+全部使用固定窗口 counter：实现简单，但 TPM 和突发流量语义不符合商用设计。
+
+---
+
+# ADR-0009: 计费由统一 BillabilityPolicy 判定
+
+## Status
+
+Accepted
+
+## Context
+
+同步、流式和异步任务都有 provider success、部分输出、客户端断开、provider error、任务取消等边界。如果各 settlement 入口自行判断，会导致账务不可解释。
+
+## Decision
+
+引入统一 `BillabilityPolicy`。所有 settlement 入口先生成 billability context，再由 policy 输出 billable 与 reason；无有效输出默认不计费，已向客户交付部分输出时按策略计费。
+
+## Consequences
+
+优点：账务原因可审计，replay 和人工排查有同一事实来源。缺点：新增场景时必须补 policy case 和 focused tests。
+
+## Alternatives
+
+在 stream finalizer、billing planner 和 task settlement 分别编码：短期快，但长期账务口径会漂移。
+
+---
+
+# ADR-0010: RouteSignals 使用 Redis hot data，缺失时安全回退
+
+## Status
+
+Accepted
+
+## Context
+
+health/cost/latency/quota 路由策略不能只依赖静态 route policy。信号必须能被多个 gateway 副本共享，同时不能让控制面 DB 进入热路径。
+
+## Decision
+
+RouteSignals 从 Redis hash 读取 channel 级健康、权重、延迟、成本、剩余额度、禁用状态和模型兼容性。缺失信号按 healthy、compatible、weight=1 的安全默认值处理，并继续允许 priority/weighted 策略回退。
+
+## Consequences
+
+优点：策略可读取实时运营信号，且数据面仍只访问 snapshot、Redis hot data 和内存索引。缺点：信号生产者需要独立保障 TTL 和更新频率。
+
+## Alternatives
+
+请求时查询控制面或报表库：数据更完整，但破坏热路径隔离和稳定性。

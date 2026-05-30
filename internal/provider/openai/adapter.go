@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,7 +52,10 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	body, err := rewriteModel(request.RawBody, request.UpstreamModel)
+	if request.UpstreamModel == "" {
+		request.UpstreamModel = channel.UpstreamModel
+	}
+	body, contentType, err := rewriteRequestBody(request)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +63,10 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	if err != nil {
 		return nil, err
 	}
-	httpReq.Header.Set("Content-Type", "application/json")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	httpReq.Header.Set("Content-Type", contentType)
 	httpReq.Header.Set("Accept", "application/json")
 	if channel.APIKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+channel.APIKey)
@@ -123,7 +131,19 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	}, nil
 }
 
-func rewriteModel(body []byte, upstreamModel string) ([]byte, error) {
+func rewriteRequestBody(request relay.Request) ([]byte, string, error) {
+	contentType := request.ContentType
+	if contentType == "" || strings.Contains(strings.ToLower(contentType), "json") {
+		body, err := rewriteJSONModel(request.RawBody, request.UpstreamModel)
+		return body, contentType, err
+	}
+	if strings.HasPrefix(strings.ToLower(contentType), "multipart/") {
+		return rewriteMultipartModel(request.RawBody, contentType, request.UpstreamModel)
+	}
+	return append([]byte(nil), request.RawBody...), contentType, nil
+}
+
+func rewriteJSONModel(body []byte, upstreamModel string) ([]byte, error) {
 	if upstreamModel == "" {
 		return append([]byte(nil), body...), nil
 	}
@@ -149,6 +169,79 @@ func rewriteModel(body []byte, upstreamModel string) ([]byte, error) {
 	return encoded, nil
 }
 
+func rewriteMultipartModel(body []byte, contentType string, upstreamModel string) ([]byte, string, error) {
+	if upstreamModel == "" {
+		return append([]byte(nil), body...), contentType, nil
+	}
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil || params["boundary"] == "" {
+		return nil, "", &relay.ProviderError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "provider_request_invalid",
+			Message:    "multipart request content type is invalid",
+			Retryable:  false,
+		}
+	}
+	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(32 << 20)
+	if err != nil {
+		return nil, "", &relay.ProviderError{
+			StatusCode: http.StatusBadRequest,
+			Code:       "provider_request_invalid",
+			Message:    "multipart request could not be decoded",
+			Retryable:  false,
+		}
+	}
+	defer func() { _ = form.RemoveAll() }()
+
+	var rewritten bytes.Buffer
+	writer := multipart.NewWriter(&rewritten)
+	modelWritten := false
+	for name, values := range form.Value {
+		for _, value := range values {
+			if name == "model" {
+				value = upstreamModel
+				modelWritten = true
+			}
+			if err := writer.WriteField(name, value); err != nil {
+				_ = writer.Close()
+				return nil, "", err
+			}
+		}
+	}
+	if !modelWritten {
+		if err := writer.WriteField("model", upstreamModel); err != nil {
+			_ = writer.Close()
+			return nil, "", err
+		}
+	}
+	for _, files := range form.File {
+		for _, fileHeader := range files {
+			if err := copyMultipartFile(writer, fileHeader); err != nil {
+				_ = writer.Close()
+				return nil, "", err
+			}
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, "", err
+	}
+	return rewritten.Bytes(), writer.FormDataContentType(), nil
+}
+
+func copyMultipartFile(writer *multipart.Writer, fileHeader *multipart.FileHeader) error {
+	source, err := fileHeader.Open()
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	part, err := writer.CreatePart(fileHeader.Header)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(part, source)
+	return err
+}
+
 func chatCompletionsURL(base string) (string, error) {
 	return appendPath(base, "/v1/chat/completions")
 }
@@ -163,6 +256,14 @@ func endpointURL(base string, canonical string) (string, error) {
 		return appendPath(base, "/v1/embeddings")
 	case "openai.moderations":
 		return appendPath(base, "/v1/moderations")
+	case "unified.image_generation":
+		return appendPath(base, "/v1/images/generations")
+	case "unified.image_edit":
+		return appendPath(base, "/v1/images/edits")
+	case "unified.audio_speech":
+		return appendPath(base, "/v1/audio/speech")
+	case "unified.audio_transcription":
+		return appendPath(base, "/v1/audio/transcriptions")
 	default:
 		return "", &relay.ProviderError{
 			StatusCode: http.StatusBadRequest,

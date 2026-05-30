@@ -31,8 +31,8 @@ var endpoints = []engine.EndpointSpec{
 	{Method: http.MethodPost, Path: "/v1/images/generations", Canonical: engine.CanonicalImageGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/images/edits", Canonical: engine.CanonicalImageEdit, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/videos/generations", Canonical: engine.CanonicalVideoGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
-	{Method: http.MethodPost, Path: "/v1/audio/speech", Canonical: engine.CanonicalAudioSpeech, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
-	{Method: http.MethodPost, Path: "/v1/audio/transcriptions", Canonical: engine.CanonicalAudioTranscription, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
+	{Method: http.MethodPost, Path: "/v1/audio/speech", Canonical: engine.CanonicalAudioSpeech, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified, engine.ProtocolNativeOpenAI}},
+	{Method: http.MethodPost, Path: "/v1/audio/transcriptions", Canonical: engine.CanonicalAudioTranscription, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/music/generations", Canonical: engine.CanonicalMusicGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
 	{Method: http.MethodPost, Path: "/v1/files/upload/base64", Canonical: engine.CanonicalFileUploadBase64, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
 	{Method: http.MethodPost, Path: "/v1/files/upload/url", Canonical: engine.CanonicalFileUploadURL, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
@@ -71,6 +71,9 @@ func (c *DefaultClassifier) Classify(_ context.Context, state *engine.RequestSta
 }
 
 func inferProtocol(state *engine.RequestState, endpoint engine.EndpointSpec) (engine.ProtocolMode, error) {
+	if inferred := inferProtocolFromContentType(endpoint, state.Incoming.Header.Get("Content-Type")); inferred != "" {
+		return inferred, nil
+	}
 	fields, err := peekJSONFields(state)
 	if err != nil && isAmbiguousEndpoint(endpoint) {
 		return "", err
@@ -153,7 +156,10 @@ func defaultProtocol(api engine.CanonicalAPI) engine.ProtocolMode {
 
 func isAmbiguousEndpoint(endpoint engine.EndpointSpec) bool {
 	switch endpoint.Canonical {
-	case engine.CanonicalImageGeneration, engine.CanonicalImageEdit:
+	case engine.CanonicalImageGeneration,
+		engine.CanonicalImageEdit,
+		engine.CanonicalAudioSpeech,
+		engine.CanonicalAudioTranscription:
 		return true
 	default:
 		return false
@@ -198,7 +204,7 @@ func inferProtocolFromBody(endpoint engine.EndpointSpec, fields map[string]json.
 		return ""
 	}
 	unified := hasAnyField(fields, "callback_url", "metadata", "model_params")
-	nativeOpenAI := hasAnyField(fields, "n", "size", "quality", "style", "response_format", "user")
+	nativeOpenAI := hasNativeOpenAIFields(endpoint.Canonical, fields)
 	switch {
 	case unified && !nativeOpenAI:
 		return engine.ProtocolUnified
@@ -206,6 +212,33 @@ func inferProtocolFromBody(endpoint engine.EndpointSpec, fields map[string]json.
 		return engine.ProtocolNativeOpenAI
 	default:
 		return ""
+	}
+}
+
+func inferProtocolFromContentType(endpoint engine.EndpointSpec, contentType string) engine.ProtocolMode {
+	if !isAmbiguousEndpoint(endpoint) {
+		return ""
+	}
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	if strings.HasPrefix(mediaType, "multipart/") {
+		switch endpoint.Canonical {
+		case engine.CanonicalImageEdit, engine.CanonicalAudioTranscription:
+			return engine.ProtocolNativeOpenAI
+		}
+	}
+	return ""
+}
+
+func hasNativeOpenAIFields(api engine.CanonicalAPI, fields map[string]json.RawMessage) bool {
+	switch api {
+	case engine.CanonicalImageGeneration, engine.CanonicalImageEdit:
+		return hasAnyField(fields, "n", "size", "quality", "style", "response_format", "user")
+	case engine.CanonicalAudioSpeech:
+		return hasAnyField(fields, "response_format", "speed", "instructions", "user")
+	case engine.CanonicalAudioTranscription:
+		return hasAnyField(fields, "language", "prompt", "response_format", "temperature", "timestamp_granularities", "user")
+	default:
+		return false
 	}
 }
 

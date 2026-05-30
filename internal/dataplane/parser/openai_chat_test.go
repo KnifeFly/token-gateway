@@ -1,8 +1,10 @@
 package parser
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -105,6 +107,64 @@ func TestParserUnifiedMediaVideo(t *testing.T) {
 	}
 	if state.Parsed.Media.ModelParams["seed"].(float64) != 123 {
 		t.Fatalf("model_params = %#v", state.Parsed.Media.ModelParams)
+	}
+}
+
+func TestParserNativeOpenAIImageGenerationIsSynchronous(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalImageGeneration,
+		ProtocolMode: engine.ProtocolNativeOpenAI,
+		Incoming: engine.IncomingRequest{
+			Path:   "/v1/images/generations",
+			Header: http.Header{},
+			Body:   io.NopCloser(strings.NewReader(`{"model":"gpt-image-1","prompt":"cat","size":"1024x1024"}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.Async || state.Parsed.Media != nil {
+		t.Fatalf("native OpenAI media parsed as async media: async=%v media=%#v", state.Async, state.Parsed.Media)
+	}
+	if state.RequestedModel != "gpt-image-1" || state.Parsed.Model != "gpt-image-1" {
+		t.Fatalf("model = %q parsed = %q", state.RequestedModel, state.Parsed.Model)
+	}
+}
+
+func TestParserNativeOpenAIAudioTranscriptionMultipart(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "whisper-1"); err != nil {
+		t.Fatalf("WriteField() error = %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "audio.wav")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write([]byte("wav")); err != nil {
+		t.Fatalf("part.Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalAudioTranscription,
+		ProtocolMode: engine.ProtocolNativeOpenAI,
+		Incoming: engine.IncomingRequest{
+			Path:   "/v1/audio/transcriptions",
+			Header: http.Header{"Content-Type": []string{writer.FormDataContentType()}},
+			Body:   io.NopCloser(bytes.NewReader(body.Bytes())),
+		},
+	}
+
+	err = NewOpenAIChatParser(4096).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.Async || state.RequestedModel != "whisper-1" {
+		t.Fatalf("async = %v model = %q", state.Async, state.RequestedModel)
 	}
 }
 
