@@ -22,8 +22,15 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 		}},
 		Models: []cpsnapshot.ModelRuntime{{
 			PublicModel: "gpt-4o-mini",
+			Aliases:     []string{"gpt-4o-mini-alias"},
 			Protocol:    string(engine.ProtocolNativeOpenAI),
 			Enabled:     true,
+			ProviderMappings: []cpsnapshot.ProviderModelMappingRuntime{{
+				ProviderType:  "openai_compatible",
+				ChannelID:     "channel_1",
+				PublicModel:   "gpt-4o-mini",
+				UpstreamModel: "gpt-4o-mini",
+			}},
 		}},
 		Channels: []cpsnapshot.ChannelRuntime{{
 			ID:           "channel_1",
@@ -54,6 +61,18 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 			FailurePolicy: "fail_closed",
 			Config:        json.RawMessage(`{"deny_terms":["blocked"]}`),
 		}},
+		LimitRules: []cpsnapshot.LimitRuleRuntime{{
+			ID:           "limit_model",
+			TenantID:     "tenant_1",
+			ProjectID:    "project_1",
+			APIKeyID:     "key_1",
+			PublicModel:  "gpt-4o-mini",
+			ProviderType: "openai_compatible",
+			ChannelID:    "channel_1",
+			RPM:          60,
+			QPS:          1,
+			Enabled:      true,
+		}},
 	})
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
@@ -66,6 +85,20 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 	}
 	if channel, ok := indexed.LookupChannel("channel_1"); !ok || channel.Models["gpt-4o-mini"] != "gpt-4o-mini" {
 		t.Fatalf("channel = %#v, ok = %v", channel, ok)
+	}
+	if model, ok := indexed.LookupModel("gpt-4o-mini-alias"); !ok || model.PublicModel != "gpt-4o-mini" || len(model.ProviderMappings) != 1 {
+		t.Fatalf("alias model = %#v ok = %v", model, ok)
+	}
+	limits := indexed.LookupLimits(engine.LimitScope{
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_1",
+		PublicModel:  "gpt-4o-mini",
+		ProviderType: "openai_compatible",
+		ChannelID:    "channel_1",
+	})
+	if len(limits) != 1 || limits[0].RPM != 60 {
+		t.Fatalf("limits = %#v", limits)
 	}
 	bindings := indexed.LookupPluginBindings("pre_prompt")
 	if len(bindings) != 1 || bindings[0].Name != "prompt_guard" {

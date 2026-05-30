@@ -18,10 +18,12 @@ type IndexedSnapshot struct {
 	ref            engine.SnapshotRef
 	apiKeysByHash  map[string]engine.APIKeyView
 	modelsByName   map[string]engine.ModelView
+	modelAliases   map[string]string
 	channelsByID   map[string]engine.ChannelView
 	routesByModel  map[string]engine.RoutePolicyView
 	pricesByModel  map[string]engine.PriceRuleView
 	limitsByModel  map[string]engine.LimitRuleView
+	limitRules     []engine.LimitRuleView
 	pluginsByPhase map[string][]engine.PluginBindingView
 	revokedHashes  map[string]struct{}
 }
@@ -41,6 +43,7 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		},
 		apiKeysByHash:  make(map[string]engine.APIKeyView, len(runtime.APIKeys)),
 		modelsByName:   make(map[string]engine.ModelView, len(runtime.Models)),
+		modelAliases:   make(map[string]string),
 		channelsByID:   make(map[string]engine.ChannelView, len(runtime.Channels)),
 		routesByModel:  make(map[string]engine.RoutePolicyView, len(runtime.RoutePolicies)),
 		pricesByModel:  make(map[string]engine.PriceRuleView, len(runtime.PriceRules)),
@@ -72,11 +75,37 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		if _, exists := indexed.modelsByName[model.PublicModel]; exists {
 			return nil, fmt.Errorf("duplicate model %q", model.PublicModel)
 		}
+		mappings := make([]engine.ProviderModelMapping, 0, len(model.ProviderMappings))
+		for _, mapping := range model.ProviderMappings {
+			mappings = append(mappings, engine.ProviderModelMapping{
+				ProviderType:  mapping.ProviderType,
+				ChannelID:     mapping.ChannelID,
+				PublicModel:   mapping.PublicModel,
+				UpstreamModel: mapping.UpstreamModel,
+			})
+		}
 		indexed.modelsByName[model.PublicModel] = engine.ModelView{
-			PublicModel: model.PublicModel,
-			Protocol:    engine.ProtocolMode(model.Protocol),
-			Capability:  model.Capability,
-			Enabled:     model.Enabled,
+			PublicModel:      model.PublicModel,
+			Aliases:          append([]string(nil), model.Aliases...),
+			DisplayName:      model.DisplayName,
+			Description:      model.Description,
+			Protocol:         engine.ProtocolMode(model.Protocol),
+			Capability:       model.Capability,
+			Schema:           append([]byte(nil), model.Schema...),
+			ProviderMappings: mappings,
+			Enabled:          model.Enabled,
+		}
+		for _, alias := range model.Aliases {
+			if alias == "" || alias == model.PublicModel {
+				continue
+			}
+			if _, exists := indexed.modelsByName[alias]; exists {
+				return nil, fmt.Errorf("model alias %q conflicts with public model", alias)
+			}
+			if existing := indexed.modelAliases[alias]; existing != "" && existing != model.PublicModel {
+				return nil, fmt.Errorf("duplicate model alias %q", alias)
+			}
+			indexed.modelAliases[alias] = model.PublicModel
 		}
 	}
 	for _, channel := range runtime.Channels {
@@ -138,17 +167,38 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		}
 	}
 	for _, limit := range runtime.LimitRules {
-		if limit.PublicModel == "" || !limit.Enabled {
+		if !limit.Enabled {
 			continue
 		}
-		indexed.limitsByModel[limit.PublicModel] = engine.LimitRuleView{
-			PublicModel: limit.PublicModel,
-			QPS:         limit.QPS,
-			TPM:         limit.TPM,
-			Concurrency: limit.Concurrency,
-			Enabled:     limit.Enabled,
+		view := engine.LimitRuleView{
+			ID: limit.ID,
+			Scope: engine.LimitScope{
+				TenantID:     limit.TenantID,
+				ProjectID:    limit.ProjectID,
+				APIKeyID:     limit.APIKeyID,
+				PublicModel:  limit.PublicModel,
+				ProviderType: limit.ProviderType,
+				ChannelID:    limit.ChannelID,
+			},
+			RPM:                 limit.RPM,
+			QPS:                 limit.QPS,
+			TPM:                 limit.TPM,
+			Concurrency:         limit.Concurrency,
+			DailyBudgetMicros:   limit.DailyBudgetMicros,
+			CostPerMinuteMicros: limit.CostPerMinuteMicros,
+			Enabled:             limit.Enabled,
+		}
+		if view.ID == "" {
+			view.ID = limitKey(view.Scope)
+		}
+		indexed.limitRules = append(indexed.limitRules, view)
+		if limit.PublicModel != "" {
+			indexed.limitsByModel[limit.PublicModel] = view
 		}
 	}
+	sort.SliceStable(indexed.limitRules, func(i, j int) bool {
+		return limitSpecificity(indexed.limitRules[i].Scope) > limitSpecificity(indexed.limitRules[j].Scope)
+	})
 	for _, binding := range runtime.PluginBindings {
 		if binding.Name == "" || binding.Phase == "" || !binding.Enabled {
 			continue
@@ -199,6 +249,9 @@ func (s *IndexedSnapshot) LookupAPIKeyHash(hash string) (engine.APIKeyView, bool
 }
 
 func (s *IndexedSnapshot) LookupModel(publicModel string) (engine.ModelView, bool) {
+	if canonical := s.modelAliases[publicModel]; canonical != "" {
+		publicModel = canonical
+	}
 	value, ok := s.modelsByName[publicModel]
 	return value, ok
 }
@@ -221,6 +274,16 @@ func (s *IndexedSnapshot) LookupPrice(publicModel string) (engine.PriceRuleView,
 func (s *IndexedSnapshot) LookupLimit(publicModel string) (engine.LimitRuleView, bool) {
 	value, ok := s.limitsByModel[publicModel]
 	return value, ok
+}
+
+func (s *IndexedSnapshot) LookupLimits(scope engine.LimitScope) []engine.LimitRuleView {
+	var out []engine.LimitRuleView
+	for _, rule := range s.limitRules {
+		if limitScopeMatches(rule.Scope, scope) {
+			out = append(out, rule)
+		}
+	}
+	return out
 }
 
 func (s *IndexedSnapshot) LookupPluginBindings(phase string) []engine.PluginBindingView {
@@ -259,6 +322,46 @@ func (s *Store) Replace(next *IndexedSnapshot) error {
 	}
 	s.current.Store(next)
 	return nil
+}
+
+func limitScopeMatches(rule, request engine.LimitScope) bool {
+	return scopeValueMatches(rule.TenantID, request.TenantID) &&
+		scopeValueMatches(rule.ProjectID, request.ProjectID) &&
+		scopeValueMatches(rule.APIKeyID, request.APIKeyID) &&
+		scopeValueMatches(rule.PublicModel, request.PublicModel) &&
+		scopeValueMatches(rule.ProviderType, request.ProviderType) &&
+		scopeValueMatches(rule.ChannelID, request.ChannelID)
+}
+
+func scopeValueMatches(rule, request string) bool {
+	return rule == "" || rule == request
+}
+
+func limitSpecificity(scope engine.LimitScope) int {
+	score := 0
+	if scope.TenantID != "" {
+		score++
+	}
+	if scope.ProjectID != "" {
+		score++
+	}
+	if scope.APIKeyID != "" {
+		score++
+	}
+	if scope.PublicModel != "" {
+		score++
+	}
+	if scope.ProviderType != "" {
+		score++
+	}
+	if scope.ChannelID != "" {
+		score++
+	}
+	return score
+}
+
+func limitKey(scope engine.LimitScope) string {
+	return fmt.Sprintf("limit:%s:%s:%s:%s:%s:%s", scope.TenantID, scope.ProjectID, scope.APIKeyID, scope.PublicModel, scope.ProviderType, scope.ChannelID)
 }
 
 // StalePolicy controls request behavior when the active snapshot is old.

@@ -151,6 +151,8 @@ func (dispatchSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
 	return engine.LimitRuleView{}, false
 }
 
+func (dispatchSnapshot) LookupLimits(engine.LimitScope) []engine.LimitRuleView { return nil }
+
 func (dispatchSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
 	return nil
 }

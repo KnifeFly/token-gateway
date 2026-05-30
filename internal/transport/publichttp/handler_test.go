@@ -1,6 +1,7 @@
 package publichttp
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,8 +29,11 @@ func TestListModelsAndSchema(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), `"id":"moderation-latest"`) {
 		t.Fatalf("body = %s", rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `"aliases":["mod-latest"]`) {
+		t.Fatalf("catalog aliases missing: %s", rec.Body.String())
+	}
 
-	req = httptest.NewRequest(http.MethodGet, "/v1/models/moderation-latest/schema", nil)
+	req = httptest.NewRequest(http.MethodGet, "/v1/models/mod-latest/schema", nil)
 	req.Header.Set("Authorization", "Bearer test-key")
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -39,6 +43,9 @@ func TestListModelsAndSchema(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"version":"v1"`) {
 		t.Fatalf("schema body = %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"input"`) {
+		t.Fatalf("catalog schema missing: %s", rec.Body.String())
 	}
 }
 
@@ -81,8 +88,11 @@ func testHandler(t *testing.T) http.Handler {
 		}},
 		Models: []cpsnapshot.ModelRuntime{{
 			PublicModel: "moderation-latest",
+			Aliases:     []string{"mod-latest"},
+			DisplayName: "Moderation Latest",
 			Protocol:    string(engine.ProtocolNativeOpenAI),
 			Capability:  "moderation",
+			Schema:      json.RawMessage(`{"type":"object","required":["model","input"]}`),
 			Enabled:     true,
 		}},
 	})

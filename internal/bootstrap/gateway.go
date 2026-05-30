@@ -21,6 +21,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/dataplane/parser"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/plugin"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/plugin/builtin"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/policy"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/realtime"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/router"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
@@ -200,13 +201,17 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	}
 	if cfg.Gateway.Limits.Enabled {
 		limitEnforcer = limit.NewRedisEnforcer(redisClient.Raw(), limit.Config{
-			Enabled:     cfg.Gateway.Limits.Enabled,
-			QPS:         cfg.Gateway.Limits.QPS,
-			TPM:         cfg.Gateway.Limits.TPM,
-			Concurrency: cfg.Gateway.Limits.Concurrency,
-			Window:      cfg.Gateway.Limits.Window.Duration,
-			LeaseTTL:    cfg.Gateway.Limits.LeaseTTL.Duration,
-			KeyPrefix:   cfg.Gateway.Limits.KeyPrefix,
+			Enabled:             cfg.Gateway.Limits.Enabled,
+			RPM:                 cfg.Gateway.Limits.RPM,
+			QPS:                 cfg.Gateway.Limits.QPS,
+			TPM:                 cfg.Gateway.Limits.TPM,
+			Concurrency:         cfg.Gateway.Limits.Concurrency,
+			DailyBudgetMicros:   cfg.Gateway.Limits.DailyBudgetMicros,
+			CostPerMinuteMicros: cfg.Gateway.Limits.CostPerMinuteMicros,
+			Window:              cfg.Gateway.Limits.Window.Duration,
+			LeaseTTL:            cfg.Gateway.Limits.LeaseTTL.Duration,
+			DenyCacheTTL:        cfg.Gateway.Limits.DenyCacheTTL.Duration,
+			KeyPrefix:           cfg.Gateway.Limits.KeyPrefix,
 		})
 	}
 	streamFinalizer := stream.NewFinalizer(settlementService, observeRecorder)
@@ -228,6 +233,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		engine.WithClassifier(classifier.NewDefault()),
 		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
 		engine.WithAuthenticator(authenticator),
+		engine.WithPolicyEvaluator(policy.NewEvaluator()),
 		engine.WithRoutePlanner(router.NewRoutePlanner(nil, emergencyDisableStore)),
 		engine.WithAdmission(admissionController),
 		engine.WithLimitEnforcer(limitEnforcer),

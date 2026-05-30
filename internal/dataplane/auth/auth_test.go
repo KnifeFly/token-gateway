@@ -93,6 +93,8 @@ func (s fakeSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
 	return engine.LimitRuleView{}, false
 }
 
+func (s fakeSnapshot) LookupLimits(engine.LimitScope) []engine.LimitRuleView { return nil }
+
 func (s fakeSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
 	return nil
 }

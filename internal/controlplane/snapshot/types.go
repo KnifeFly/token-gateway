@@ -34,10 +34,23 @@ type APIKeyRuntime struct {
 
 // ModelRuntime describes one public model.
 type ModelRuntime struct {
-	PublicModel string
-	Protocol    string
-	Capability  string
-	Enabled     bool
+	PublicModel      string
+	Aliases          []string
+	DisplayName      string
+	Description      string
+	Protocol         string
+	Capability       string
+	Schema           json.RawMessage
+	ProviderMappings []ProviderModelMappingRuntime
+	Enabled          bool
+}
+
+// ProviderModelMappingRuntime maps a catalog model to one provider channel.
+type ProviderModelMappingRuntime struct {
+	ProviderType  string
+	ChannelID     string
+	PublicModel   string
+	UpstreamModel string
 }
 
 // ChannelRuntime describes one provider channel.
@@ -84,13 +97,22 @@ type PriceRuleRuntime struct {
 	Enabled               bool
 }
 
-// LimitRuleRuntime pins request limits for one public model.
+// LimitRuleRuntime pins request limits for one multi-dimensional scope.
 type LimitRuleRuntime struct {
-	PublicModel string
-	QPS         int64
-	TPM         int64
-	Concurrency int64
-	Enabled     bool
+	ID                  string
+	TenantID            string
+	ProjectID           string
+	APIKeyID            string
+	PublicModel         string
+	ProviderType        string
+	ChannelID           string
+	RPM                 int64
+	QPS                 int64
+	TPM                 int64
+	Concurrency         int64
+	DailyBudgetMicros   int64
+	CostPerMinuteMicros int64
+	Enabled             bool
 }
 
 // PluginBindingRuntime is a validated data-plane plugin binding.

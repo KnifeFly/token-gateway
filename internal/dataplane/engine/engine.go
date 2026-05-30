@@ -17,6 +17,7 @@ type GatewayEngine struct {
 	classifier APIClassifier
 	parser     RequestParser
 	auth       Authenticator
+	policy     PolicyEvaluator
 	router     RoutePlanner
 	admission  AdmissionController
 	limiter    LimitEnforcer
@@ -50,6 +51,11 @@ func WithParser(parser RequestParser) Option {
 // WithAuthenticator configures the API key authenticator.
 func WithAuthenticator(auth Authenticator) Option {
 	return func(e *GatewayEngine) { e.auth = auth }
+}
+
+// WithPolicyEvaluator configures explicit data-plane policy evaluation.
+func WithPolicyEvaluator(policy PolicyEvaluator) Option {
+	return func(e *GatewayEngine) { e.policy = policy }
 }
 
 // WithRoutePlanner configures the route planner.
@@ -116,6 +122,9 @@ func New(opts ...Option) (*GatewayEngine, error) {
 	}
 	if e.limiter == nil {
 		e.limiter = NoopLimitEnforcer{}
+	}
+	if e.policy == nil {
+		e.policy = NoopPolicyEvaluator{}
 	}
 	if e.stream == nil {
 		e.stream = NoopStreamFinalizer{}
@@ -187,6 +196,12 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		response = e.errorResponse(state, err)
 		return response, nil
 	}
+	if err = e.runStage(ctx, state, "gateway.policy.evaluate", func(stageCtx context.Context) error {
+		return e.evaluatePolicy(stageCtx, state)
+	}); err != nil {
+		response = e.errorResponse(state, err)
+		return response, nil
+	}
 	if state.IsTaskOperation() {
 		response, err = e.tasks.HandleTaskOperation(ctx, state)
 		if err != nil {
@@ -228,6 +243,9 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 		return response, nil
 	}
 	if err = e.runStage(ctx, state, "gateway.route", func(stageCtx context.Context) error {
+		if state.RoutePlan != nil {
+			return nil
+		}
 		return e.router.Plan(stageCtx, state)
 	}); err != nil {
 		response = e.errorResponse(state, err)
@@ -325,6 +343,49 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	return response, nil
 }
 
+func (e *GatewayEngine) evaluatePolicy(ctx context.Context, state *RequestState) error {
+	decision, err := e.policy.Evaluate(ctx, state)
+	if err != nil {
+		return err
+	}
+	if decision.Action == "" {
+		decision.Action = PolicyAllow
+	}
+	state.PolicyDecision = decision
+	if len(decision.Metadata) > 0 {
+		if state.Metadata == nil {
+			state.Metadata = map[string]string{}
+		}
+		for key, value := range decision.Metadata {
+			state.Metadata[key] = value
+		}
+	}
+	switch decision.Action {
+	case PolicyAllow:
+		return nil
+	case PolicyDeny:
+		message := decision.Reason
+		if message == "" {
+			message = "request denied by policy"
+		}
+		return apperr.PolicyDenied(message)
+	case PolicyDegrade:
+		if decision.DegradeModel == "" {
+			return apperr.ConfigUnavailable("policy degrade model is required")
+		}
+		state.RequestedModel = decision.DegradeModel
+		return nil
+	case PolicyRouteOverride:
+		if decision.RoutePlan == nil || len(decision.RoutePlan.Candidates) == 0 {
+			return apperr.ConfigUnavailable("policy route override requires candidates")
+		}
+		state.RoutePlan = decision.RoutePlan
+		return nil
+	default:
+		return apperr.ConfigUnavailable("policy decision action is not supported")
+	}
+}
+
 func addSnapshotHeader(response *GatewayResponse, state *RequestState) {
 	if response == nil || state == nil || state.SnapshotRef.Version == "" {
 		return
@@ -351,6 +412,9 @@ func (e *GatewayEngine) validate() error {
 	}
 	if e.auth == nil {
 		errs = append(errs, errors.New("authenticator is required"))
+	}
+	if e.policy == nil {
+		errs = append(errs, errors.New("policy evaluator is required"))
 	}
 	if e.router == nil {
 		errs = append(errs, errors.New("route planner is required"))

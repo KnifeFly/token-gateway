@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -25,6 +26,44 @@ func TestErrorResponseAmbiguousProtocolCode(t *testing.T) {
 	if payload.Error.Type != "invalid_request_error" {
 		t.Fatalf("type = %q", payload.Error.Type)
 	}
+}
+
+func TestEvaluatePolicyConsumesDecision(t *testing.T) {
+	engine := &GatewayEngine{policy: fakePolicy{decision: PolicyDecision{
+		Action:       PolicyDegrade,
+		DegradeModel: "cheap-model",
+		Metadata:     map[string]string{"policy.result": "degraded"},
+	}}}
+	state := &RequestState{RequestedModel: "expensive-model", Metadata: map[string]string{}}
+
+	if err := engine.evaluatePolicy(context.Background(), state); err != nil {
+		t.Fatalf("evaluatePolicy() error = %v", err)
+	}
+	if state.RequestedModel != "cheap-model" {
+		t.Fatalf("requested model = %q", state.RequestedModel)
+	}
+	if state.PolicyDecision.Action != PolicyDegrade || state.Metadata["policy.result"] != "degraded" {
+		t.Fatalf("decision = %#v metadata = %#v", state.PolicyDecision, state.Metadata)
+	}
+}
+
+func TestEvaluatePolicyRejectsDenyDecision(t *testing.T) {
+	engine := &GatewayEngine{policy: fakePolicy{decision: PolicyDecision{Action: PolicyDeny, Reason: "blocked"}}}
+
+	err := engine.evaluatePolicy(context.Background(), &RequestState{})
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodePolicyDenied {
+		t.Fatalf("error = %v, want policy denied", err)
+	}
+}
+
+type fakePolicy struct {
+	decision PolicyDecision
+	err      error
+}
+
+func (p fakePolicy) Evaluate(context.Context, *RequestState) (PolicyDecision, error) {
+	return p.decision, p.err
 }
 
 func TestErrorResponsePolicyDeniedCode(t *testing.T) {

@@ -14,6 +14,8 @@ import (
 // RoutePlanner resolves model permissions and ordered provider candidates.
 type RoutePlanner struct {
 	selector *PrioritySelector
+	registry *StrategyRegistry
+	signals  SignalProvider
 	disable  DisableChecker
 }
 
@@ -27,10 +29,19 @@ func NewRoutePlanner(selector *PrioritySelector, disable ...DisableChecker) *Rou
 	if selector == nil {
 		selector = NewPrioritySelector(nil)
 	}
-	p := &RoutePlanner{selector: selector}
+	p := &RoutePlanner{selector: selector, registry: NewStrategyRegistry(selector)}
 	if len(disable) > 0 {
 		p.disable = disable[0]
 	}
+	return p
+}
+
+// WithSignals configures the optional hot-signal provider.
+func (p *RoutePlanner) WithSignals(provider SignalProvider) *RoutePlanner {
+	if p == nil {
+		return p
+	}
+	p.signals = provider
 	return p
 }
 
@@ -45,7 +56,7 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	if state.Principal == nil {
 		return apperr.Unauthorized("authentication is required")
 	}
-	if !modelAllowed(state.Principal.AllowedModels, model.PublicModel) {
+	if !modelAllowedForView(state.Principal.AllowedModels, state.RequestedModel, model) {
 		return apperr.Forbidden("model is not allowed")
 	}
 	if !protocolMatchesModel(state.ProtocolMode, model.Protocol) {
@@ -59,13 +70,6 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	for _, candidate := range route.Candidates {
 		channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
 		if !ok || !channel.Enabled {
-			continue
-		}
-		disabled, err := p.isDisabled(ctx, channel.ProviderType, channel.ID)
-		if err != nil {
-			return err
-		}
-		if disabled {
 			continue
 		}
 		upstreamModel := channel.Models[model.PublicModel]
@@ -85,6 +89,14 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	if len(candidates) == 0 {
 		return apperr.ServiceUnavailable("no provider channel is available", apperr.WithTemporary())
 	}
+	signals, err := p.routeSignals(ctx, state, candidates)
+	if err != nil {
+		return err
+	}
+	ordered := p.registry.Order(route.Strategy, candidates, signals)
+	if len(ordered) == 0 {
+		return noRouteAvailable()
+	}
 	state.ResolvedModel = model
 	if price, ok := state.Snapshot.LookupPrice(model.PublicModel); ok {
 		state.PriceRule = price
@@ -94,9 +106,40 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	}
 	state.RoutePlan = &engine.RoutePlan{
 		PolicyID:   route.ID,
-		Candidates: p.selector.Order(candidates),
+		Candidates: ordered,
 	}
 	return nil
+}
+
+func (p *RoutePlanner) routeSignals(ctx context.Context, state *engine.RequestState, candidates []engine.ProviderCandidate) (RouteSignals, error) {
+	signals := RouteSignals{Candidates: map[string]CandidateSignal{}}
+	if p.signals != nil {
+		loaded, err := p.signals.Signals(ctx, state, candidates)
+		if err != nil {
+			return RouteSignals{}, err
+		}
+		signals = loaded
+		if signals.Candidates == nil {
+			signals.Candidates = map[string]CandidateSignal{}
+		}
+	}
+	for _, candidate := range candidates {
+		signal, ok := signals.Candidates[candidate.ChannelID]
+		if !ok {
+			signal = CandidateSignal{Healthy: true, HealthWeight: 1, ModelCompatible: true}
+		}
+		disabled, err := p.isDisabled(ctx, candidate.ProviderType, candidate.ChannelID)
+		if err != nil {
+			return RouteSignals{}, err
+		}
+		signal.Disabled = signal.Disabled || disabled
+		signal.ModelCompatible = true
+		if signal.HealthWeight == 0 {
+			signal.HealthWeight = 1
+		}
+		signals.Candidates[candidate.ChannelID] = signal
+	}
+	return signals, nil
 }
 
 func (p *RoutePlanner) isDisabled(ctx context.Context, providerType, channelID string) (bool, error) {
@@ -113,6 +156,18 @@ func (p *RoutePlanner) isDisabled(ctx context.Context, providerType, channelID s
 func modelAllowed(allowed []string, model string) bool {
 	for _, value := range allowed {
 		if value == "*" || value == model {
+			return true
+		}
+	}
+	return false
+}
+
+func modelAllowedForView(allowed []string, requested string, model engine.ModelView) bool {
+	if modelAllowed(allowed, model.PublicModel) || modelAllowed(allowed, requested) {
+		return true
+	}
+	for _, alias := range model.Aliases {
+		if modelAllowed(allowed, alias) {
 			return true
 		}
 	}

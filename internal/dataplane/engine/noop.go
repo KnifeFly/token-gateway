@@ -83,6 +83,13 @@ func (NoopPluginManager) Run(context.Context, string, *RequestState) error {
 	return nil
 }
 
+// NoopPolicyEvaluator allows every request without changes.
+type NoopPolicyEvaluator struct{}
+
+func (NoopPolicyEvaluator) Evaluate(context.Context, *RequestState) (PolicyDecision, error) {
+	return PolicyDecision{Action: PolicyAllow}, nil
+}
+
 // NoopObserveRecorder keeps tests and minimal setups dependency-free.
 type NoopObserveRecorder struct{}
 

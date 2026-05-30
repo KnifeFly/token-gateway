@@ -106,8 +106,21 @@ func (s *Service) DisableAPIKey(ctx context.Context, keyID string) (*APIKey, err
 
 // UpsertModel creates or updates a model.
 func (s *Service) UpsertModel(ctx context.Context, model ModelConfig) (*ModelConfig, error) {
+	model.PublicModel = strings.TrimSpace(model.PublicModel)
+	model.Protocol = strings.TrimSpace(model.Protocol)
+	model.Capability = strings.TrimSpace(model.Capability)
 	if model.PublicModel == "" || model.Protocol == "" || model.Capability == "" {
 		return nil, apperr.InvalidArgument("public_model, protocol, and capability are required")
+	}
+	model.Aliases = cleanStrings(model.Aliases)
+	if model.DisplayName == "" {
+		model.DisplayName = model.PublicModel
+	}
+	if len(model.Schema) == 0 {
+		model.Schema = json.RawMessage(`{}`)
+	}
+	if !json.Valid(model.Schema) {
+		return nil, apperr.InvalidArgument("model schema must be valid json")
 	}
 	if !model.Enabled {
 		model.Enabled = true
@@ -176,8 +189,17 @@ func (s *Service) UpsertPrice(ctx context.Context, price PriceRuleConfig) (*Pric
 
 // UpsertLimit creates or updates a limit rule.
 func (s *Service) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error) {
-	if limit.PublicModel == "" {
-		return nil, apperr.InvalidArgument("public_model is required")
+	limit.TenantID = strings.TrimSpace(limit.TenantID)
+	limit.ProjectID = strings.TrimSpace(limit.ProjectID)
+	limit.APIKeyID = strings.TrimSpace(limit.APIKeyID)
+	limit.PublicModel = strings.TrimSpace(limit.PublicModel)
+	limit.ProviderType = strings.TrimSpace(limit.ProviderType)
+	limit.ChannelID = strings.TrimSpace(limit.ChannelID)
+	if limit.TenantID == "" && limit.ProjectID == "" && limit.APIKeyID == "" && limit.PublicModel == "" && limit.ProviderType == "" && limit.ChannelID == "" {
+		return nil, apperr.InvalidArgument("at least one limit scope dimension is required")
+	}
+	if limit.ID == "" {
+		limit.ID = limitRuleID(limit)
 	}
 	if !limit.Enabled {
 		limit.Enabled = true
@@ -268,4 +290,26 @@ func validPluginPhase(phase string) bool {
 func pluginBindingID(binding PluginBindingConfig) string {
 	base := fmt.Sprintf("plugin_%s_%s_%s_%s_%s", binding.Phase, binding.Name, binding.TenantID, binding.ProjectID, binding.Model)
 	return strings.Trim(pluginBindingIDRe.ReplaceAllString(base, "_"), "_")
+}
+
+func limitRuleID(limit LimitRuleConfig) string {
+	base := fmt.Sprintf("limit_%s_%s_%s_%s_%s_%s", limit.TenantID, limit.ProjectID, limit.APIKeyID, limit.PublicModel, limit.ProviderType, limit.ChannelID)
+	return strings.Trim(pluginBindingIDRe.ReplaceAllString(base, "_"), "_")
+}
+
+func cleanStrings(values []string) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }

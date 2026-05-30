@@ -110,6 +110,7 @@ type SnapshotView interface {
 	LookupChannel(channelID string) (ChannelView, bool)
 	LookupPrice(publicModel string) (PriceRuleView, bool)
 	LookupLimit(publicModel string) (LimitRuleView, bool)
+	LookupLimits(scope LimitScope) []LimitRuleView
 	LookupPluginBindings(phase string) []PluginBindingView
 	IsAPIKeyRevoked(hash string) bool
 }
@@ -127,10 +128,15 @@ type APIKeyView struct {
 
 // ModelView is the indexed public model view used by routing.
 type ModelView struct {
-	PublicModel string
-	Protocol    ProtocolMode
-	Capability  string
-	Enabled     bool
+	PublicModel      string
+	Aliases          []string
+	DisplayName      string
+	Description      string
+	Protocol         ProtocolMode
+	Capability       string
+	Schema           json.RawMessage
+	ProviderMappings []ProviderModelMapping
+	Enabled          bool
 }
 
 // ChannelView is the indexed provider channel view used by dispatch.
@@ -171,13 +177,35 @@ type PriceRuleView struct {
 	Enabled               bool
 }
 
-// LimitRuleView is the pinned model-level limit config.
+// LimitScope identifies the dimensions used by runtime limit rules.
+type LimitScope struct {
+	TenantID     string
+	ProjectID    string
+	APIKeyID     string
+	PublicModel  string
+	ProviderType string
+	ChannelID    string
+}
+
+// LimitRuleView is the pinned multi-dimensional request limit config.
 type LimitRuleView struct {
-	PublicModel string
-	QPS         int64
-	TPM         int64
-	Concurrency int64
-	Enabled     bool
+	ID                  string
+	Scope               LimitScope
+	RPM                 int64
+	QPS                 int64
+	TPM                 int64
+	Concurrency         int64
+	DailyBudgetMicros   int64
+	CostPerMinuteMicros int64
+	Enabled             bool
+}
+
+// ProviderModelMapping describes one catalog-owned provider model mapping.
+type ProviderModelMapping struct {
+	ProviderType  string
+	ChannelID     string
+	PublicModel   string
+	UpstreamModel string
 }
 
 // PluginBindingView is a runtime plugin binding compiled from control-plane config.
@@ -322,6 +350,25 @@ type ProviderResult struct {
 	Usage     tokenusage.Actual
 }
 
+// PolicyAction is the normalized result of data-plane policy evaluation.
+type PolicyAction string
+
+const (
+	PolicyAllow         PolicyAction = "allow"
+	PolicyDeny          PolicyAction = "deny"
+	PolicyDegrade       PolicyAction = "degrade"
+	PolicyRouteOverride PolicyAction = "route_override"
+)
+
+// PolicyDecision is consumed by GatewayEngine before route dispatch.
+type PolicyDecision struct {
+	Action       PolicyAction
+	Reason       string
+	DegradeModel string
+	RoutePlan    *RoutePlan
+	Metadata     map[string]string
+}
+
 // SnapshotProvider attaches the current indexed snapshot to a request.
 type SnapshotProvider interface {
 	Attach(ctx context.Context, state *RequestState) error
@@ -340,6 +387,11 @@ type RequestParser interface {
 // Authenticator authenticates the caller against the pinned snapshot.
 type Authenticator interface {
 	Authenticate(ctx context.Context, state *RequestState) error
+}
+
+// PolicyEvaluator returns one explicit policy decision for the request.
+type PolicyEvaluator interface {
+	Evaluate(ctx context.Context, state *RequestState) (PolicyDecision, error)
 }
 
 // RoutePlanner resolves a model and ordered route candidates.
