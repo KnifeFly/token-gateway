@@ -119,6 +119,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			UpstreamModel: candidate.UpstreamModel,
 			RawBody:       state.Parsed.RawBody,
 			ContentType:   state.Incoming.Header.Get("Content-Type"),
+			Headers:       state.Incoming.Header.Clone(),
 			RequestID:     state.RequestID,
 			Stream:        state.Stream,
 		})

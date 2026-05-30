@@ -80,25 +80,14 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	res, err := a.client.Do(httpReq)
 	if err != nil {
 		cancel()
-		return nil, &relay.ProviderError{
-			StatusCode: http.StatusBadGateway,
-			Code:       "provider_unavailable",
-			Message:    "provider request failed",
-			Retryable:  true,
-		}
+		return nil, relay.ErrorFromRequestFailure(err)
 	}
 	if request.Stream {
 		if res.StatusCode < 200 || res.StatusCode >= 300 {
 			defer cancel()
 			defer res.Body.Close()
 			content, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
-			code, retryable := relay.ClassifyStatus(res.StatusCode)
-			return nil, &relay.ProviderError{
-				StatusCode: res.StatusCode,
-				Code:       code,
-				Message:    fmt.Sprintf("provider returned status %d: %s", res.StatusCode, string(content)),
-				Retryable:  retryable,
-			}
+			return nil, relay.ErrorFromStatus(res.StatusCode, content)
 		}
 		return &relay.Response{
 			StatusCode: res.StatusCode,
@@ -118,13 +107,7 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 		}
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		code, retryable := relay.ClassifyStatus(res.StatusCode)
-		return nil, &relay.ProviderError{
-			StatusCode: res.StatusCode,
-			Code:       code,
-			Message:    fmt.Sprintf("provider returned status %d", res.StatusCode),
-			Retryable:  retryable,
-		}
+		return nil, relay.ErrorFromStatus(res.StatusCode, content)
 	}
 	return &relay.Response{
 		StatusCode: res.StatusCode,
@@ -458,34 +441,55 @@ func safeStreamHeaders(header http.Header) http.Header {
 }
 
 func parseUsage(body []byte) tokenusage.Actual {
+	type detail struct {
+		CachedTokens    int64 `json:"cached_tokens"`
+		AudioTokens     int64 `json:"audio_tokens"`
+		ReasoningTokens int64 `json:"reasoning_tokens"`
+	}
+	type usageShape struct {
+		PromptTokens            int64  `json:"prompt_tokens"`
+		CompletionTokens        int64  `json:"completion_tokens"`
+		InputTokens             int64  `json:"input_tokens"`
+		OutputTokens            int64  `json:"output_tokens"`
+		TotalTokens             int64  `json:"total_tokens"`
+		PromptTokensDetails     detail `json:"prompt_tokens_details"`
+		CompletionTokensDetails detail `json:"completion_tokens_details"`
+		InputTokensDetails      detail `json:"input_tokens_details"`
+		OutputTokensDetails     detail `json:"output_tokens_details"`
+	}
 	var payload struct {
-		Usage struct {
-			PromptTokens     int64 `json:"prompt_tokens"`
-			CompletionTokens int64 `json:"completion_tokens"`
-			InputTokens      int64 `json:"input_tokens"`
-			OutputTokens     int64 `json:"output_tokens"`
-			TotalTokens      int64 `json:"total_tokens"`
-		} `json:"usage"`
+		Usage    usageShape `json:"usage"`
+		Response struct {
+			Usage usageShape `json:"usage"`
+		} `json:"response"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return tokenusage.Actual{}
 	}
-	inputTokens := payload.Usage.PromptTokens
+	usage := payload.Usage
+	if usage == (usageShape{}) {
+		usage = payload.Response.Usage
+	}
+	inputTokens := usage.PromptTokens
 	if inputTokens == 0 {
-		inputTokens = payload.Usage.InputTokens
+		inputTokens = usage.InputTokens
 	}
-	outputTokens := payload.Usage.CompletionTokens
+	outputTokens := usage.CompletionTokens
 	if outputTokens == 0 {
-		outputTokens = payload.Usage.OutputTokens
+		outputTokens = usage.OutputTokens
 	}
-	totalTokens := payload.Usage.TotalTokens
+	totalTokens := usage.TotalTokens
 	if totalTokens == 0 {
 		totalTokens = inputTokens + outputTokens
 	}
 	return tokenusage.Actual{
-		InputTokens:  inputTokens,
-		OutputTokens: outputTokens,
-		TotalTokens:  totalTokens,
+		InputTokens:       inputTokens,
+		OutputTokens:      outputTokens,
+		TotalTokens:       totalTokens,
+		CachedInputTokens: usage.PromptTokensDetails.CachedTokens + usage.InputTokensDetails.CachedTokens,
+		ReasoningTokens:   usage.CompletionTokensDetails.ReasoningTokens + usage.OutputTokensDetails.ReasoningTokens,
+		AudioInputTokens:  usage.PromptTokensDetails.AudioTokens + usage.InputTokensDetails.AudioTokens,
+		AudioOutputTokens: usage.CompletionTokensDetails.AudioTokens + usage.OutputTokensDetails.AudioTokens,
 	}
 }
 
@@ -545,7 +549,7 @@ func (s *httpStream) observeUsage(chunk []byte) {
 		}
 		usage := parseUsage([]byte(data))
 		if usage.TotalTokens > 0 {
-			s.actual = usage
+			s.actual = tokenusage.Merge(s.actual, usage)
 		}
 	}
 }

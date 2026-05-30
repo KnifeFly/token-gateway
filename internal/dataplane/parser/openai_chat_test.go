@@ -58,6 +58,30 @@ func TestOpenAIChatParserAcceptsStream(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatParserAcceptsAssistantToolCallsWithoutContent(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalOpenAIChatCompletions,
+		Incoming: engine.IncomingRequest{
+			Body: io.NopCloser(strings.NewReader(`{
+				"model":"gpt-4o-mini",
+				"messages":[
+					{"role":"user","content":"call a tool"},
+					{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}
+				],
+				"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]
+			}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(2048).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.RequestedModel != "gpt-4o-mini" {
+		t.Fatalf("RequestedModel = %q", state.RequestedModel)
+	}
+}
+
 func TestParserGeminiModelFromPath(t *testing.T) {
 	state := &engine.RequestState{
 		CanonicalAPI: engine.CanonicalGeminiGenerateContent,
@@ -73,6 +97,22 @@ func TestParserGeminiModelFromPath(t *testing.T) {
 	}
 	if state.RequestedModel != "gemini-2.5-flash" || !state.Stream {
 		t.Fatalf("model = %q stream = %v", state.RequestedModel, state.Stream)
+	}
+}
+
+func TestParserGeminiRequiresValidContents(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalGeminiGenerateContent,
+		Incoming: engine.IncomingRequest{
+			Path: "/v1beta/models/gemini-2.5-flash:generateContent",
+			Body: io.NopCloser(strings.NewReader(`{"tools":[]}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeInvalidArgument {
+		t.Fatalf("error = %v, want invalid argument", err)
 	}
 }
 

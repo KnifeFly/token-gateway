@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -101,7 +102,8 @@ func TestAdapterHTTPStreamRemainsOpenAfterRelayReturns(t *testing.T) {
 
 func TestAdapterMapsProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "down", http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":{"code":"server_overloaded","message":"do not leak"}}`))
 	}))
 	defer server.Close()
 
@@ -119,6 +121,53 @@ func TestAdapterMapsProviderError(t *testing.T) {
 	}
 	if providerErr.Code != "provider_unavailable" || !providerErr.Retryable {
 		t.Fatalf("provider error = %#v", providerErr)
+	}
+	if strings.Contains(providerErr.Message, "do not leak") {
+		t.Fatalf("provider error leaked body: %#v", providerErr)
+	}
+	if providerErr.ProviderCode != "server_overloaded" {
+		t.Fatalf("provider code = %q", providerErr.ProviderCode)
+	}
+}
+
+func TestAdapterPreservesChatToolWireShapeAndRewritesModel(t *testing.T) {
+	var payload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("Decode() error = %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","tool_calls":[]}}],"usage":{"prompt_tokens":3,"completion_tokens":4,"total_tokens":7}}`))
+	}))
+	defer server.Close()
+
+	_, err := NewAdapter(server.Client()).Relay(context.Background(), relay.ChannelConfig{
+		BaseURL:       server.URL,
+		UpstreamModel: "gpt-upstream",
+	}, relay.Request{
+		CanonicalAPI: "openai.chat_completions",
+		PublicModel:  "gpt-public",
+		RawBody:      []byte(`{"model":"gpt-public","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]},{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}],"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]}`),
+		ContentType:  "application/json",
+	})
+	if err != nil {
+		t.Fatalf("Relay() error = %v", err)
+	}
+	if payload["model"] != "gpt-upstream" {
+		t.Fatalf("model = %#v", payload["model"])
+	}
+	if _, ok := payload["tools"]; !ok {
+		t.Fatalf("tools were not preserved: %#v", payload)
+	}
+	messages := payload["messages"].([]any)
+	assistant := messages[1].(map[string]any)
+	if _, ok := assistant["tool_calls"]; !ok {
+		t.Fatalf("tool_calls were not preserved: %#v", assistant)
 	}
 }
 
@@ -221,5 +270,25 @@ func TestParseUsageResponsesShape(t *testing.T) {
 	usage := parseUsage([]byte(`{"usage":{"input_tokens":11,"output_tokens":13,"total_tokens":24}}`))
 	if usage.InputTokens != 11 || usage.OutputTokens != 13 || usage.TotalTokens != 24 {
 		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestParseUsageDetails(t *testing.T) {
+	usage := parseUsage([]byte(`{"usage":{"prompt_tokens":11,"completion_tokens":13,"total_tokens":24,"prompt_tokens_details":{"cached_tokens":5,"audio_tokens":2},"completion_tokens_details":{"reasoning_tokens":7,"audio_tokens":3}}}`))
+	if usage.InputTokens != 11 || usage.OutputTokens != 13 || usage.TotalTokens != 24 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if usage.CachedInputTokens != 5 || usage.ReasoningTokens != 7 || usage.AudioInputTokens != 2 || usage.AudioOutputTokens != 3 {
+		t.Fatalf("detail usage = %#v", usage)
+	}
+}
+
+func TestParseUsageResponsesCompletedEvent(t *testing.T) {
+	usage := parseUsage([]byte(`{"type":"response.completed","response":{"usage":{"input_tokens":2,"output_tokens":3,"total_tokens":5,"input_tokens_details":{"cached_tokens":1},"output_tokens_details":{"reasoning_tokens":2}}}}`))
+	if usage.InputTokens != 2 || usage.OutputTokens != 3 || usage.TotalTokens != 5 {
+		t.Fatalf("usage = %#v", usage)
+	}
+	if usage.CachedInputTokens != 1 || usage.ReasoningTokens != 2 {
+		t.Fatalf("detail usage = %#v", usage)
 	}
 }

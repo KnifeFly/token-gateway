@@ -724,6 +724,7 @@ paths:
       tags:
       - OpenAI Compatible
       summary: OpenAI-compatible chat completions
+      description: P5 兼容边界：JSON 字段默认透传，网关只按路由改写 model；支持 tools/tool_choice、multimodal content array、stream usage 和稳定 provider error class。
       operationId: createChatCompletion
       requestBody:
         required: true
@@ -750,6 +751,7 @@ paths:
       tags:
       - OpenAI Compatible
       summary: OpenAI-compatible Responses API
+      description: P5 兼容边界：请求字段默认透传，网关只按路由改写 model；支持 stream event passthrough，并从 response.completed.response.usage 归一化 usage。
       operationId: createResponse
       requestBody:
         required: true
@@ -800,6 +802,7 @@ paths:
       tags:
       - Claude Compatible
       summary: Claude-compatible Messages API
+      description: P5 兼容边界：保留 Anthropic-Version/Anthropic-Beta，JSON 字段默认透传，网关只按路由改写 model；支持 tools、多模态 content block、stream event passthrough、stop/usage 字段和稳定 provider error class。
       operationId: createClaudeMessage
       parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -832,6 +835,7 @@ paths:
       tags:
       - Gemini Compatible
       summary: Gemini-compatible generateContent
+      description: P5 兼容边界：contents、tools、toolConfig、safetySettings、systemInstruction、generationConfig 默认透传；网关使用路由后的 model 构造 upstream URL，并归一化 usageMetadata。
       operationId: geminiGenerateContent
       parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -862,6 +866,7 @@ paths:
       tags:
       - Gemini Compatible
       summary: Gemini-compatible streamGenerateContent
+      description: P5 兼容边界：SSE event 透传，stream 关闭时归一化 usageMetadata；请求体字段行为与 generateContent 一致。
       operationId: geminiStreamGenerateContent
       parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -1629,6 +1634,12 @@ components:
           - rate_limited
           - content_policy_violation
           - provider_error
+          - provider_request_invalid
+          - provider_auth_failed
+          - provider_not_found
+          - provider_rate_limited
+          - provider_timeout
+          - provider_unavailable
           - service_error
           - service_unavailable
           - generation_timeout
@@ -2848,7 +2859,7 @@ components:
             type: object
             required:
             - role
-            - content
+            additionalProperties: true
             properties:
               role:
                 type: string
@@ -2869,6 +2880,14 @@ components:
                 type: string
               tool_call_id:
                 type: string
+              tool_calls:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+              function_call:
+                type: object
+                additionalProperties: true
         temperature:
           type: number
         top_p:
@@ -2913,6 +2932,9 @@ components:
           type: object
           additionalProperties:
             type: string
+        stream_options:
+          type: object
+          additionalProperties: true
     OpenAIChatCompletionResponse:
       type: object
       properties:
@@ -3042,6 +3064,22 @@ components:
         cached_input_tokens:
           type: integer
         reasoning_tokens:
+          type: integer
+        cache_creation_input_tokens:
+          type: integer
+        cache_read_input_tokens:
+          type: integer
+        audio_input_tokens:
+          type: integer
+        audio_output_tokens:
+          type: integer
+        image_input_tokens:
+          type: integer
+        image_output_tokens:
+          type: integer
+        video_input_tokens:
+          type: integer
+        video_output_tokens:
           type: integer
     ClaudeMessageRequest:
       type: object
