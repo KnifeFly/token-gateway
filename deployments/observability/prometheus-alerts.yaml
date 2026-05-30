@@ -33,6 +33,30 @@ groups:
         annotations:
           summary: Provider rate limiting detected.
           description: Provider 429 responses are occurring repeatedly.
+      - alert: TokenGatewayProvider5xx
+        expr: sum(rate(token_gateway_provider_attempts_total{status_class="5xx"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: Provider 5xx errors detected.
+          description: Upstream provider 5xx responses are repeatedly affecting gateway requests.
+      - alert: TokenGatewaySnapshotPublishErrors
+        expr: increase(token_gateway_snapshot_publish_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warn
+        annotations:
+          summary: Snapshot publish or reload errors detected.
+          description: Configd or gateway watcher failed to load, validate, or publish a runtime snapshot.
+      - alert: TokenGatewayWorkerJobFailures
+        expr: sum(rate(token_gateway_worker_job_runs_total{outcome=~"error|panic"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Worker job failures detected.
+          description: At least one production worker job is failing or panicking.
       - alert: TokenGatewayCallbackRetries
         expr: sum(rate(token_gateway_callback_retries_total[10m])) > 0
         for: 10m
