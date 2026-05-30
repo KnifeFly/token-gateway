@@ -21,12 +21,14 @@
 | v1.2 design capabilities | P1 | 补齐多维限流、策略路由、显式 policy 和模型目录能力 |
 | v1.3 architecture advanced | P2 | 补齐独立 configd、插件能力、分类器增强，并固化 Realtime disabled contract 边界 |
 | v1.4 production hardening | P3 | 补齐限流算法语义、账务计费策略、native media、真实路由信号和生产集成验收 |
+| v1.5 release candidate | P4 | 完成干净依赖环境、真实 provider、后台 job、OpenAPI 合同、运维演练和灰度上线验收 |
 
 ## 交付物
 
 - `docs/plan/01-m0-foundation.md` 到 `docs/plan/10-m9-commercial-ops.md` 作为阶段规划。
 - `docs/plan/11-p0-production-closure.md` 到 `docs/plan/13-p2-architecture-advanced.md` 作为设计差距补齐规划。
 - `docs/plan/14-p3-production-hardening.md` 作为生产语义补齐与商用硬化规划。
+- `docs/plan/15-p4-release-candidate-readiness.md` 作为发布候选与商用上线验收规划。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -46,6 +48,7 @@
 12. P1 补齐设计能力：多维限流/预算、策略路由、显式 policy stage 和 model catalog/schema/alias。
 13. P2 补齐架构一致性和高级能力：独立 configd、剩余插件、协议分类器增强，并固化 Realtime disabled contract。
 14. P3 补齐生产语义和商用硬化：限流算法语义、账务计费策略、native media、真实路由信号、configd 分发验证和生产集成验收。
+15. P4 完成发布候选验收：干净 compose/staging、真实 provider、后台运营 job、OpenAPI 管理面、SLO/告警和灰度回滚演练。
 
 ## 关键设计约束
 
@@ -58,17 +61,18 @@
 - 流式响应必须在 stream close 时做最终 accounting。
 - 异步媒体任务和扣费型写操作必须支持 `Idempotency-Key`，避免重复任务和重复扣费。
 - API key、provider key、原始 prompt、原始 response 默认不得进入日志、metrics label 和 trace attribute。
-- P0-P3 是 M0-M9 之后的设计差距补齐和商用硬化阶段，不重新定义已完成阶段的历史范围。
+- P0-P4 是 M0-M9 之后的设计差距补齐、商用硬化和发布候选验收阶段，不重新定义已完成阶段的历史范围。
 - P0 必须先补齐生产运行闭环；P1 才扩展设计能力；P2 再追齐架构一致性和非 MVP 能力。
 - 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - P3 优先处理已实现能力的生产语义缺口，不新增大范围产品面。
+- P4 不再扩大协议面，优先把已有能力放到干净依赖环境和真实上游中验收，并形成可重复 release gate。
 
 ## 验收标准
 
 - 每个阶段都有明确目标、交付物、实现顺序、设计约束、验收标准和风险处理。
 - `docs/tasks.md` 能直接指导第一轮 P0 开发。
 - M0-M9 的先后关系与最终设计包一致。
-- P0-P3 能直接指导设计差距补齐和商用硬化开发，且每个阶段都有可验证的完成标准。
+- P0-P4 能直接指导设计差距补齐、商用硬化和发布候选验收，且每个阶段都有可验证的完成标准。
 - 所有 public API 变更都回到 OpenAPI 合同维护。
 
 ## 风险与处理
@@ -85,6 +89,7 @@
 | 后续补齐阶段一次性过大 | 按 P0 生产闭环、P1 设计能力、P2 架构一致性拆分执行 |
 | 文档声明能力超过实现 | 每个 P 阶段完成时回查 OpenAPI、任务看板、测试和运行文档 |
 | 商用硬化变成零散修补 | P3 按限流、账务、native media、路由信号、configd 验证和生产验收六条主线推进 |
+| 发布候选只停留在本地单进程验证 | P4 必须使用干净 Docker volume 或 staging 依赖运行四进程、迁移、snapshot、worker 和真实 provider 验收 |
 
 ## 设计来源
 
