@@ -20,11 +20,13 @@
 | v1.1 production closure | P0 | 补齐 worker、异步任务、公开 API、snapshot 安全和紧急禁用生产闭环 |
 | v1.2 design capabilities | P1 | 补齐多维限流、策略路由、显式 policy 和模型目录能力 |
 | v1.3 architecture advanced | P2 | 补齐独立 configd、插件能力、分类器增强和完整 Realtime 后续边界 |
+| v1.4 realtime full | P3 | 单独实现完整 Realtime 会话、双向音视频、provider adapter 和 realtime billing |
 
 ## 交付物
 
 - `docs/plan/01-m0-foundation.md` 到 `docs/plan/10-m9-commercial-ops.md` 作为阶段规划。
 - `docs/plan/11-p0-production-closure.md` 到 `docs/plan/13-p2-architecture-advanced.md` 作为设计差距补齐规划。
+- `docs/plan/14-p3-realtime-full.md` 作为完整 Realtime 的后续独立阶段入口。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -43,6 +45,7 @@
 11. P0 补齐生产闭环缺口：worker 进程、真实异步 provider task、公开 API、snapshot stale policy 和 emergency disable。
 12. P1 补齐设计能力：多维限流/预算、策略路由、显式 policy stage 和 model catalog/schema/alias。
 13. P2 补齐架构一致性和高级能力：独立 configd、剩余插件、协议分类器增强和完整 Realtime 后续阶段。
+14. P3 单独实现完整 Realtime：WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter 和 realtime billing。
 
 ## 关键设计约束
 
@@ -57,6 +60,7 @@
 - API key、provider key、原始 prompt、原始 response 默认不得进入日志、metrics label 和 trace attribute。
 - P0-P2 是 M0-M9 之后的设计差距补齐阶段，不重新定义已完成阶段的历史范围。
 - P0 必须先补齐生产运行闭环；P1 才扩展设计能力；P2 再追齐完整架构蓝图和非 MVP 能力。
+- 完整 Realtime 不属于 P2，必须在 P3 单独验收。
 
 ## 验收标准
 

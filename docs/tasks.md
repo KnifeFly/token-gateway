@@ -192,19 +192,30 @@
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | P2/E12-T01/P1 | P1 | 实现独立 `cmd/configd` | `cmd/configd`, `internal/bootstrap` | configd 可独立启动并接入 DB、Redis、logger、metrics、tracing |
-| [ ] | P2/E12-T02/P1 | P1 | 迁移 snapshot build/validate/publish 职责 | `internal/controlplane/snapshot`, `cmd/configd` | configd 负责发布 active snapshot，坏配置不切换版本 |
-| [ ] | P2/E12-T03/P1 | P1 | 实现 snapshot watch/rollback/diagnostics | `cmd/configd`, `internal/dataplane/snapshot` | gateway 可热更新，rollback 和 staleness 可观测 |
-| [ ] | P2/E12-T04/P1 | P1 | 补齐 IP allowlist plugin | `internal/dataplane/plugin/builtin` | 命中允许/拒绝路径有测试，敏感 IP 不进入不安全 label |
-| [ ] | P2/E12-T05/P1 | P1 | 补齐 Model ACL plugin | `internal/dataplane/plugin/builtin` | 模型权限可通过插件链阻断，且不绕过核心 policy |
-| [ ] | P2/E12-T06/P1 | P1 | 补齐 RouteOverride plugin | `internal/dataplane/plugin/builtin`, `internal/dataplane/router` | 插件可输出受约束 route decision，不绕过 billing 或 ACL |
-| [ ] | P2/E12-T07/P1 | P1 | 补齐 Callback plugin | `internal/dataplane/plugin/builtin`, `internal/task` | callback 行为可按 scope 配置并进入 outbox |
-| [ ] | P2/E12-T08/P1 | P1 | 升级 CostGuard decision | `internal/dataplane/plugin/builtin`, `internal/dataplane/policy` | CostGuard 可触发 deny、degrade 或 route decision |
-| [ ] | P2/E12-T09/P1 | P1 | 增强 classifier registry hint | `internal/dataplane/classifier` | 协议判断可读取 model registry hint |
-| [ ] | P2/E12-T10/P1 | P1 | 增强 classifier body schema inference | `internal/dataplane/classifier`, `internal/dataplane/parser` | native/unified 重叠请求可通过 schema 消歧 |
-| [ ] | P2/E12-T11/P1 | P1 | 补齐 `ambiguous_protocol` 场景测试 | `internal/dataplane/classifier`, `internal/dataplane/engine` | 无法判断协议时稳定返回 `ambiguous_protocol` |
-| [ ] | P2/E12-T12/P2 | P2 | 固化 Realtime disabled contract | `internal/dataplane/realtime`, `internal/transport/realtimehttp` | 未启用时 session API 和 WebSocket stub 稳定返回 501/feature_not_enabled |
-| [ ] | P2/E12-T13/P2 | P2 | 建立完整 Realtime 后续阶段入口 | `docs/plan`, `docs/tasks.md` | WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter、realtime billing 明确另行规划 |
+| [x] | P2/E12-T01/P1 | P1 | 实现独立 `cmd/configd` | `cmd/configd`, `internal/bootstrap` | configd 可独立启动并接入 DB、Redis、logger、metrics、tracing |
+| [x] | P2/E12-T02/P1 | P1 | 迁移 snapshot build/validate/publish 职责 | `internal/controlplane/snapshot`, `cmd/configd` | configd 负责发布 active snapshot，坏配置不切换版本 |
+| [x] | P2/E12-T03/P1 | P1 | 实现 snapshot watch/rollback/diagnostics | `cmd/configd`, `internal/dataplane/snapshot` | gateway 可热更新，rollback 和 staleness 可观测 |
+| [x] | P2/E12-T04/P1 | P1 | 补齐 IP allowlist plugin | `internal/dataplane/plugin/builtin` | 命中允许/拒绝路径有测试，敏感 IP 不进入不安全 label |
+| [x] | P2/E12-T05/P1 | P1 | 补齐 Model ACL plugin | `internal/dataplane/plugin/builtin` | 模型权限可通过插件链阻断，且不绕过核心 policy |
+| [x] | P2/E12-T06/P1 | P1 | 补齐 RouteOverride plugin | `internal/dataplane/plugin/builtin`, `internal/dataplane/router` | 插件可输出受约束 route decision，不绕过 billing 或 ACL |
+| [x] | P2/E12-T07/P1 | P1 | 补齐 Callback plugin | `internal/dataplane/plugin/builtin`, `internal/task` | callback 行为可按 scope 配置并进入 outbox |
+| [x] | P2/E12-T08/P1 | P1 | 升级 CostGuard decision | `internal/dataplane/plugin/builtin`, `internal/dataplane/policy` | CostGuard 可触发 deny、degrade 或 route decision |
+| [x] | P2/E12-T09/P1 | P1 | 增强 classifier registry hint | `internal/dataplane/classifier` | 协议判断可读取 model registry hint |
+| [x] | P2/E12-T10/P1 | P1 | 增强 classifier body schema inference | `internal/dataplane/classifier`, `internal/dataplane/parser` | native/unified 重叠请求可通过 schema 消歧 |
+| [x] | P2/E12-T11/P1 | P1 | 补齐 `ambiguous_protocol` 场景测试 | `internal/dataplane/classifier`, `internal/dataplane/engine` | 无法判断协议时稳定返回 `ambiguous_protocol` |
+| [x] | P2/E12-T12/P2 | P2 | 固化 Realtime disabled contract | `internal/dataplane/realtime`, `internal/transport/realtimehttp` | 未启用时 session API 和 WebSocket stub 稳定返回 501/feature_not_enabled |
+| [x] | P2/E12-T13/P2 | P2 | 建立完整 Realtime 后续阶段入口 | `docs/plan`, `docs/tasks.md` | WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter、realtime billing 明确另行规划 |
+
+## P3 Realtime Full
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | P3/E13-T01/P1 | P1 | 扩展 RealtimeEngine lifecycle | `internal/dataplane/realtime` | create、relay、close、usage finalize 边界明确 |
+| [ ] | P3/E13-T02/P1 | P1 | 实现 WebSocket/WebRTC 会话入口 | `internal/transport/realtimehttp` | 双入口共享 session lifecycle，未启用时保留 P2 disabled contract |
+| [ ] | P3/E13-T03/P1 | P1 | 建立 provider realtime adapter | `internal/provider`, `internal/dataplane/realtime` | 至少一个 mock adapter 通过端到端测试 |
+| [ ] | P3/E13-T04/P1 | P1 | 接入 session memory 和资源限制 | `internal/dataplane/realtime`, `internal/infra` | 会话上下文隔离、TTL、限流和清理可验证 |
+| [ ] | P3/E13-T05/P1 | P1 | 接入 realtime billing 和 repair | `internal/billing`, `internal/dataplane/realtime` | 断线、异常关闭和 provider usage 回传均可结算或修复 |
+| [ ] | P3/E13-T06/P2 | P2 | 完成 realtime observability 和协议文档 | `docs/design`, `docs/plan`, `internal/dataplane/observe` | session metrics、trace、audit、close reason 和客户端事件合同完整 |
 
 ## 阶段验收总览
 
@@ -223,3 +234,4 @@
 | P0 | worker、异步任务、公开 API、snapshot stale policy 和 emergency disable 形成生产闭环 |
 | P1 | 多维限流、策略路由、显式 policy stage 和 model catalog 达到设计能力要求 |
 | P2 | 独立 configd、剩余插件、分类器增强和 Realtime 后续边界与完整架构蓝图一致 |
+| P3 | 完整 Realtime 会话、双向音视频、provider realtime adapter 和 realtime billing 单独验收 |

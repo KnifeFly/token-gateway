@@ -14,6 +14,7 @@ const (
 	metadataDegradeModel     = "policy.degrade_model"
 	metadataOverrideChannel  = "policy.route_override.channel_id"
 	metadataOverrideProvider = "policy.route_override.provider_type"
+	metadataOverridePublic   = "policy.route_override.public_model"
 	metadataOverrideModel    = "policy.route_override.upstream_model"
 )
 
@@ -57,7 +58,7 @@ func routeOverridePlan(state *engine.RequestState) (*engine.RoutePlan, error) {
 	channelID := state.Metadata[metadataOverrideChannel]
 	providerType := state.Metadata[metadataOverrideProvider]
 	upstreamModel := state.Metadata[metadataOverrideModel]
-	publicModel := state.RequestedModel
+	publicModel := firstNonEmpty(state.Metadata[metadataOverridePublic], state.RequestedModel)
 	if state.ResolvedModel.PublicModel != "" {
 		publicModel = state.ResolvedModel.PublicModel
 	}
