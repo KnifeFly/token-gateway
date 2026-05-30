@@ -126,6 +126,9 @@ type FileAsset struct {
 	FileURL      string
 	DownloadURL  string
 	Source       string
+	ContentHash  string
+	SourceURL    string
+	Transient    bool
 	CreatedAt    time.Time
 	ExpiresAt    *time.Time
 }
@@ -157,17 +160,30 @@ type CallbackEvent struct {
 
 // ProviderTask is the upstream async task handle returned by a provider.
 type ProviderTask struct {
-	ExternalID string
-	Status     Status
-	Progress   int
+	ExternalID       string
+	Status           Status
+	Progress         int
+	ProviderMetadata map[string]string
 }
 
 // ProviderTaskResult is the normalized provider polling result.
 type ProviderTaskResult struct {
-	Status       Status
-	Progress     int
-	Result       json.RawMessage
-	Usage        tokenusage.Actual
-	ErrorCode    string
-	ErrorMessage string
+	Status           Status
+	Progress         int
+	Result           json.RawMessage
+	Assets           []ResultAsset
+	Usage            tokenusage.Actual
+	ErrorCode        string
+	ErrorMessage     string
+	ProviderMetadata map[string]string
+}
+
+// ResultAsset describes one provider-hosted media result.
+type ResultAsset struct {
+	URL       string            `json:"url"`
+	Type      string            `json:"type,omitempty"`
+	MIMEType  string            `json:"mime_type,omitempty"`
+	Provider  string            `json:"provider,omitempty"`
+	ExpiresAt string            `json:"expires_at,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
 }

@@ -1,0 +1,4 @@
+ALTER TABLE file_assets
+  ADD COLUMN content_hash VARCHAR(128) NOT NULL DEFAULT '' AFTER source,
+  ADD COLUMN source_url VARCHAR(2048) NOT NULL DEFAULT '' AFTER content_hash,
+  ADD COLUMN transient BOOLEAN NOT NULL DEFAULT TRUE AFTER source_url;

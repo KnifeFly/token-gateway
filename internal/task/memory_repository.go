@@ -121,6 +121,9 @@ func (r *MemoryRepository) UpdateTaskStatus(_ context.Context, update TaskStatus
 	task.Usage = update.Usage
 	task.ErrorCode = update.ErrorCode
 	task.ErrorMessage = update.ErrorMessage
+	if update.Metadata != nil {
+		task.Metadata = cloneMetadata(update.Metadata)
+	}
 	task.CompletedAt = update.CompletedAt
 	task.UpdatedAt = time.Now().UTC()
 	r.tasks[task.ID] = task

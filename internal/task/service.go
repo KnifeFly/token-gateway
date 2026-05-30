@@ -190,10 +190,12 @@ func (s *Service) CancelTask(ctx context.Context, tenantID, projectID, taskID st
 // CompleteTask marks a task terminal and enqueues callback when configured.
 func (s *Service) CompleteTask(ctx context.Context, task Task, result ProviderTaskResult) (*Task, error) {
 	now := s.now()
+	result = NormalizeProviderTaskResult(result)
 	progress := result.Progress
 	if progress <= 0 && IsTerminal(result.Status) {
 		progress = 100
 	}
+	metadata := mergeProviderMetadata(task.Metadata, result.ProviderMetadata)
 	updated, err := s.repo.UpdateTaskStatus(ctx, TaskStatusUpdate{
 		TaskID:       task.ID,
 		Status:       result.Status,
@@ -202,6 +204,7 @@ func (s *Service) CompleteTask(ctx context.Context, task Task, result ProviderTa
 		Usage:        result.Usage,
 		ErrorCode:    result.ErrorCode,
 		ErrorMessage: result.ErrorMessage,
+		Metadata:     metadata,
 		CompletedAt:  &now,
 	})
 	if err != nil {
@@ -247,4 +250,15 @@ func cloneMetadata(metadata map[string]string) map[string]string {
 		cloned[key] = value
 	}
 	return cloned
+}
+
+func mergeProviderMetadata(base map[string]string, provider map[string]string) map[string]string {
+	merged := cloneMetadata(base)
+	if merged == nil {
+		merged = map[string]string{}
+	}
+	for key, value := range cleanMetadata(provider) {
+		merged["provider."+key] = value
+	}
+	return merged
 }

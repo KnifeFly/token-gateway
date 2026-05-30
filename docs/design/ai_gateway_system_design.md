@@ -65,7 +65,7 @@ GET  /v1/credits
 
 统一媒体协议采用“**统一 URI + model 参数 + 动态模型 schema**”机制。
 
-`/v1/files/*` 在当前路线中只表达 transient input asset：系统可接收 URL、base64 或 multipart 输入，用于请求归一化、幂等校验、大小限制和转发给上游 provider。Gateway 不做对象存储，不承诺文件持久化、下载地址、生命周期管理、病毒扫描或存储 SLA。生成结果也优先透传 provider result URL 或客户自有存储 URL。
+`/v1/files/*` 在当前路线中只表达 transient input asset：系统可接收 URL、base64 或 multipart 输入，用于请求归一化、幂等校验、大小限制和转发给上游 provider。Gateway 不做对象存储，不承诺文件持久化、下载地址、生命周期管理、病毒扫描或存储 SLA。生成结果优先透传 provider result URL 或客户自有存储 URL，并通过 task `results`、`assets`、`usage` 和非敏感 `provider_metadata` 进入查询、callback 和结算。
 
 示例：
 

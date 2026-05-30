@@ -35,5 +35,6 @@ type TaskStatusUpdate struct {
 	Usage        tokenusage.Actual
 	ErrorCode    string
 	ErrorMessage string
+	Metadata     map[string]string
 	CompletedAt  *time.Time
 }

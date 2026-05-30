@@ -334,6 +334,8 @@ type FileRequest struct {
 	SizeBytes    int64
 	MIMEType     string
 	UploadPath   string
+	ContentHash  string
+	SourceURL    string
 }
 
 // OpenAIChatMessage is a minimal OpenAI-compatible chat message.

@@ -2452,14 +2452,28 @@ components:
           type: string
         upload_path:
           type: string
+        source:
+          type: string
+          description: Upload source, for example upload_base64, upload_url, or upload_stream.
+        content_hash:
+          type: string
+          description: SHA-256 hash for inline or multipart input when the gateway can inspect bytes.
+          example: sha256:8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
+        source_url:
+          type: string
+          format: uri
+          description: Original URL for URL-based input assets. Empty for inline or multipart inputs.
+        transient:
+          type: boolean
+          description: Always true for current file APIs; these assets are not gateway object storage.
         file_url:
           type: string
           format: uri
-          description: Transient reference only; not a durable gateway-hosted object URL.
+          description: Optional transient provider-facing reference. For inline and multipart inputs this field is omitted because the gateway does not host bytes.
         download_url:
           type: string
           format: uri
-          description: Transient reference only; clients should not rely on gateway storage.
+          description: Deprecated/optional transient reference. Clients must not rely on gateway download hosting.
         upload_time:
           type: string
           format: date-time
@@ -2487,6 +2501,36 @@ components:
             used_bytes:
               type: integer
               format: int64
+            quota_kind:
+              type: string
+              enum:
+              - transient_input_asset
+    TaskResultAsset:
+      type: object
+      description: Provider-hosted media result metadata. URLs are returned by the provider or customer storage, not by gateway object storage.
+      properties:
+        url:
+          type: string
+          format: uri
+        type:
+          type: string
+          enum:
+          - image
+          - video
+          - audio
+          - music
+          - text
+        mime_type:
+          type: string
+        provider:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
     TaskObject:
       type: object
       required:
@@ -2535,11 +2579,30 @@ components:
           - image
           - audio
           - video
+        provider_task_id:
+          type: string
+          description: Upstream provider task/prediction id when dispatched.
+        provider_type:
+          type: string
+          description: Provider adapter name used for the task.
+        channel_id:
+          type: string
+          description: Gateway provider channel id selected for this task.
         results:
           type: array
+          description: Provider result URLs normalized from provider output or result assets.
           items:
             type: string
             format: uri
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskResultAsset'
+        provider_metadata:
+          type: object
+          description: Non-secret provider metadata such as prediction id, provider status, or provider self links.
+          additionalProperties:
+            type: string
         error:
           $ref: '#/components/schemas/TaskError'
         task_info:

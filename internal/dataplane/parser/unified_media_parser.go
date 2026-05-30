@@ -2,8 +2,11 @@ package parser
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -142,6 +145,7 @@ func (p *Parser) parseFileBase64(state *engine.RequestState, body []byte) error 
 			SizeBytes:    int64(len(content)),
 			MIMEType:     mimeType,
 			UploadPath:   req.UploadPath,
+			ContentHash:  hashBytes(content),
 		},
 	}
 	return nil
@@ -156,6 +160,9 @@ func (p *Parser) parseFileURL(state *engine.RequestState, body []byte) error {
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return apperr.InvalidArgument("url is invalid")
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return apperr.InvalidArgument("url must use http or https")
+	}
 	fileName := req.FileName
 	if fileName == "" {
 		fileName = filepath.Base(parsed.Path)
@@ -163,6 +170,7 @@ func (p *Parser) parseFileURL(state *engine.RequestState, body []byte) error {
 	if fileName == "." || fileName == "/" || fileName == "" {
 		fileName = "remote"
 	}
+	mimeType := mime.TypeByExtension(filepath.Ext(fileName))
 	state.IdempotencyKey = strings.TrimSpace(state.Incoming.Header.Get("Idempotency-Key"))
 	state.Parsed = engine.ParsedRequest{
 		RawBody: body,
@@ -170,7 +178,9 @@ func (p *Parser) parseFileURL(state *engine.RequestState, body []byte) error {
 			Operation:    engine.FileOperationUploadURL,
 			FileName:     fileName,
 			OriginalName: fileName,
+			MIMEType:     mimeType,
 			UploadPath:   req.UploadPath,
+			SourceURL:    parsed.String(),
 		},
 	}
 	return nil
@@ -192,9 +202,16 @@ func (p *Parser) parseFileStream(state *engine.RequestState, body []byte) error 
 		return apperr.InvalidArgument("file is required")
 	}
 	header := files[0]
+	sizeBytes, mimeType, contentHash, err := inspectMultipartFile(header)
+	if err != nil {
+		return err
+	}
 	fileName := firstFormValue(form, "file_name", "fileName")
 	if fileName == "" {
 		fileName = header.Filename
+	}
+	if mimeType == "" {
+		mimeType = header.Header.Get("Content-Type")
 	}
 	state.IdempotencyKey = strings.TrimSpace(state.Incoming.Header.Get("Idempotency-Key"))
 	state.Parsed = engine.ParsedRequest{
@@ -203,9 +220,10 @@ func (p *Parser) parseFileStream(state *engine.RequestState, body []byte) error 
 			Operation:    engine.FileOperationUploadStream,
 			FileName:     fileName,
 			OriginalName: header.Filename,
-			SizeBytes:    header.Size,
-			MIMEType:     header.Header.Get("Content-Type"),
+			SizeBytes:    sizeBytes,
+			MIMEType:     mimeType,
 			UploadPath:   firstFormValue(form, "upload_path", "uploadPath"),
+			ContentHash:  contentHash,
 		},
 	}
 	return nil
@@ -305,6 +323,28 @@ func detectMIME(sample []byte) string {
 		sample = sample[:512]
 	}
 	return http.DetectContentType(sample)
+}
+
+func inspectMultipartFile(header *multipart.FileHeader) (int64, string, string, error) {
+	file, err := header.Open()
+	if err != nil {
+		return 0, "", "", apperr.InvalidArgument("file could not be read", apperr.WithCause(err))
+	}
+	defer file.Close()
+	content, err := io.ReadAll(file)
+	if err != nil {
+		return 0, "", "", apperr.InvalidArgument("file could not be read", apperr.WithCause(err))
+	}
+	mimeType := strings.TrimSpace(header.Header.Get("Content-Type"))
+	if mimeType == "" {
+		mimeType = detectMIME(content)
+	}
+	return int64(len(content)), mimeType, hashBytes(content), nil
+}
+
+func hashBytes(content []byte) string {
+	sum := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func firstFormValue(form *multipart.Form, names ...string) string {

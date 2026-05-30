@@ -36,10 +36,15 @@ func NewTaskAdapter(client *http.Client, credentials tasksvc.ProviderCredentialR
 // Submit creates a Replicate prediction.
 func (a *TaskAdapter) Submit(ctx context.Context, request tasksvc.ProviderTaskRequest) (*tasksvc.ProviderTask, error) {
 	if strings.HasPrefix(request.Channel.BaseURL, "mock://") {
+		externalID := fmt.Sprintf("replicate_%s_%s", request.Candidate.ChannelID, request.Task.ID)
 		return &tasksvc.ProviderTask{
-			ExternalID: fmt.Sprintf("replicate_%s_%s", request.Candidate.ChannelID, request.Task.ID),
+			ExternalID: externalID,
 			Status:     tasksvc.StatusRunning,
 			Progress:   1,
+			ProviderMetadata: map[string]string{
+				"provider":      "replicate",
+				"prediction_id": externalID,
+			},
 		}, nil
 	}
 	if strings.TrimSpace(request.Candidate.UpstreamModel) == "" {
@@ -70,21 +75,34 @@ func (a *TaskAdapter) Submit(ctx context.Context, request tasksvc.ProviderTaskRe
 		return nil, apperr.ProviderError("replicate prediction response is missing id")
 	}
 	return &tasksvc.ProviderTask{
-		ExternalID: out.ID,
-		Status:     replicateStatus(out.Status),
-		Progress:   replicateProgress(out.Status),
+		ExternalID:       out.ID,
+		Status:           replicateStatus(out.Status),
+		Progress:         replicateProgress(out.Status),
+		ProviderMetadata: replicateMetadata(out),
 	}, nil
 }
 
 // Poll fetches a Replicate prediction and normalizes terminal results.
 func (a *TaskAdapter) Poll(ctx context.Context, task tasksvc.Task, channel engine.ChannelView) (*tasksvc.ProviderTaskResult, error) {
 	if strings.HasPrefix(channel.BaseURL, "mock://") {
-		result, _ := json.Marshal(map[string]any{"provider": "replicate", "id": task.ProviderTaskID, "output": []string{"mock://replicate/" + task.ID}})
+		resultURL := "https://replicate.example/mock-results/" + task.ID
+		asset := tasksvc.ResultAsset{URL: resultURL, Type: mediaType(task), Provider: "replicate"}
+		metadata := map[string]string{"provider": "replicate", "prediction_id": task.ProviderTaskID}
+		result, _ := json.Marshal(map[string]any{
+			"provider":          "replicate",
+			"id":                task.ProviderTaskID,
+			"output":            []string{resultURL},
+			"results":           []string{resultURL},
+			"assets":            []tasksvc.ResultAsset{asset},
+			"provider_metadata": metadata,
+		})
 		return &tasksvc.ProviderTaskResult{
-			Status:   tasksvc.StatusSucceeded,
-			Progress: 100,
-			Result:   result,
-			Usage:    estimatedUsage(task.Input, result),
+			Status:           tasksvc.StatusSucceeded,
+			Progress:         100,
+			Result:           result,
+			Assets:           []tasksvc.ResultAsset{asset},
+			Usage:            estimatedUsage(task.Input, result),
+			ProviderMetadata: metadata,
 		}, nil
 	}
 	endpoint, err := predictionURL(channel.BaseURL, "/predictions/"+url.PathEscape(task.ProviderTaskID))
@@ -99,17 +117,21 @@ func (a *TaskAdapter) Poll(ctx context.Context, task tasksvc.Task, channel engin
 	if status == "" {
 		return nil, apperr.ProviderError("replicate prediction response has invalid status")
 	}
-	result, err := normalizedResult(out)
+	assets := replicateResultAssets(task, out)
+	metadata := replicateMetadata(out)
+	result, err := normalizedResult(out, assets, metadata)
 	if err != nil {
 		return nil, err
 	}
 	return &tasksvc.ProviderTaskResult{
-		Status:       status,
-		Progress:     replicateProgress(out.Status),
-		Result:       result,
-		Usage:        estimatedUsage(task.Input, result),
-		ErrorCode:    errorCode(status, out.Error),
-		ErrorMessage: errorMessage(out.Error),
+		Status:           status,
+		Progress:         replicateProgress(out.Status),
+		Result:           result,
+		Assets:           assets,
+		Usage:            estimatedUsage(task.Input, result),
+		ErrorCode:        errorCode(status, out.Error),
+		ErrorMessage:     errorMessage(out.Error),
+		ProviderMetadata: metadata,
 	}, nil
 }
 
@@ -239,18 +261,93 @@ func replicateProgress(status string) int {
 	}
 }
 
-func normalizedResult(out predictionResponse) (json.RawMessage, error) {
+func normalizedResult(out predictionResponse, assets []tasksvc.ResultAsset, metadata map[string]string) (json.RawMessage, error) {
 	result, err := json.Marshal(map[string]any{
-		"provider": "replicate",
-		"id":       out.ID,
-		"output":   out.Output,
-		"urls":     out.URLs,
-		"metrics":  out.Metrics,
+		"provider":          "replicate",
+		"id":                out.ID,
+		"output":            out.Output,
+		"results":           replicateResultURLs(out.Output),
+		"assets":            assets,
+		"provider_metadata": metadata,
+		"urls":              out.URLs,
+		"metrics":           out.Metrics,
 	})
 	if err != nil {
 		return nil, apperr.ProviderError("replicate prediction result could not be encoded", apperr.WithCause(err))
 	}
 	return result, nil
+}
+
+func replicateResultAssets(task tasksvc.Task, out predictionResponse) []tasksvc.ResultAsset {
+	resultURLs := replicateResultURLs(out.Output)
+	assets := make([]tasksvc.ResultAsset, 0, len(resultURLs))
+	for _, resultURL := range resultURLs {
+		assets = append(assets, tasksvc.ResultAsset{
+			URL:      resultURL,
+			Type:     mediaType(task),
+			Provider: "replicate",
+			Metadata: map[string]string{
+				"prediction_id": out.ID,
+			},
+		})
+	}
+	return assets
+}
+
+func replicateResultURLs(output any) []string {
+	var urls []string
+	collectReplicateURLs(output, &urls)
+	return urls
+}
+
+func collectReplicateURLs(value any, urls *[]string) {
+	switch typed := value.(type) {
+	case string:
+		typed = strings.TrimSpace(typed)
+		if typed != "" && hasURLScheme(typed) {
+			*urls = append(*urls, typed)
+		}
+	case []string:
+		for _, item := range typed {
+			collectReplicateURLs(item, urls)
+		}
+	case []any:
+		for _, item := range typed {
+			collectReplicateURLs(item, urls)
+		}
+	case map[string]any:
+		for _, item := range typed {
+			collectReplicateURLs(item, urls)
+		}
+	}
+}
+
+func replicateMetadata(out predictionResponse) map[string]string {
+	metadata := map[string]string{
+		"provider":      "replicate",
+		"prediction_id": out.ID,
+		"status":        out.Status,
+	}
+	if getURL, ok := out.URLs["get"].(string); ok && strings.TrimSpace(getURL) != "" {
+		metadata["get_url"] = strings.TrimSpace(getURL)
+	}
+	return metadata
+}
+
+func mediaType(task tasksvc.Task) string {
+	if strings.TrimSpace(task.MediaType) != "" {
+		return strings.TrimSpace(task.MediaType)
+	}
+	kind := string(task.Kind)
+	if idx := strings.Index(kind, "."); idx >= 0 {
+		return kind[:idx]
+	}
+	return ""
+}
+
+func hasURLScheme(value string) bool {
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme != ""
 }
 
 func estimatedUsage(input json.RawMessage, result json.RawMessage) tokenusage.Actual {
