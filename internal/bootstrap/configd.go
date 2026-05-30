@@ -13,6 +13,7 @@ import (
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	"github.com/KnifeFly/token-gateway/internal/snapshotdist"
 	"github.com/KnifeFly/token-gateway/internal/transport/configdhttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 )
@@ -52,7 +53,13 @@ func NewConfigdApp(ctx context.Context, cfg Config) (*ConfigdApp, error) {
 	if cfg.Database.Enabled && database.DB() != nil {
 		repo = admin.NewMySQLRepository(database.DB())
 	}
-	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
+	publisherOpts := []cpsnapshot.PublisherOption{}
+	if redisClient.Raw() != nil {
+		publisherOpts = append(publisherOpts, cpsnapshot.WithDistributor(
+			snapshotdist.NewRedisDistribution(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix),
+		))
+	}
+	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo), publisherOpts...)
 	if cfg.Configd.PublishOnStart {
 		if _, err := publisher.Publish(ctx); err != nil {
 			logger.Warn("initial snapshot publish failed", "error", err)

@@ -286,6 +286,7 @@ echo "rc_smoke=configd_publish"
 curl -fsS -X POST -H "X-Admin-Token: ${ADMIN_TOKEN}" "http://127.0.0.1:${CONFIGD_PORT}/configd/snapshots/publish" >/dev/null
 curl -fsS -X POST -H "X-Admin-Token: ${ADMIN_TOKEN}" "http://127.0.0.1:${CONFIGD_PORT}/configd/snapshots/publish" >/dev/null
 curl -fsS -H "Authorization: Bearer ${ADMIN_TOKEN}" "http://127.0.0.1:${CONFIGD_PORT}/configd/snapshots/diagnostics" | grep -q '"active"'
+docker_compose exec -T redis redis-cli GET "${PROJECT_NAME}:snapshot:active" | grep -q '"version":"snap-'
 
 echo "rc_smoke=gateway_snapshot_watch"
 wait_for "gateway active snapshot" bash -c "headers=\$(mktemp); body=\$(mktemp); code=\$(curl -sS -D \"\$headers\" -o \"\$body\" -w '%{http_code}' -H 'Authorization: Bearer ${API_KEY}' -H 'Content-Type: application/json' -d '{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"rc smoke\"}]}' 'http://127.0.0.1:${GATEWAY_PORT}/v1/chat/completions'); grep -qi '^X-Gateway-Snapshot-Version: snap-' \"\$headers\" && grep -q 'chat.completion' \"\$body\" && test \"\$code\" = 200"

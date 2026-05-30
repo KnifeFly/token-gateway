@@ -36,6 +36,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/provider/gemini"
 	"github.com/KnifeFly/token-gateway/internal/provider/openai"
 	"github.com/KnifeFly/token-gateway/internal/provider/replicate"
+	"github.com/KnifeFly/token-gateway/internal/snapshotdist"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 	"github.com/KnifeFly/token-gateway/internal/transport/publichttp"
@@ -138,7 +139,14 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	}
 	if cfg.Database.Enabled && database != nil && database.DB() != nil {
 		adminRepo := admin.NewMySQLRepository(database.DB())
-		if active, ok, err := cpsnapshot.ActiveRuntimeSnapshot(ctx, adminRepo); err == nil && ok {
+		activeProvider := dpsnapshot.ActiveRuntimeProvider(cpsnapshot.NewActiveProvider(adminRepo))
+		var watcherOpts []dpsnapshot.WatcherOption
+		if redisClient.Raw() != nil {
+			redisSnapshots := snapshotdist.NewRedisDistribution(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
+			activeProvider = dpsnapshot.NewFallbackActiveProvider(redisSnapshots, activeProvider)
+			watcherOpts = append(watcherOpts, dpsnapshot.WithEventSource(redisSnapshots))
+		}
+		if active, ok, err := activeProvider.ActiveRuntimeSnapshot(ctx); err == nil && ok {
 			if activeIndexed, buildErr := dpsnapshot.Build(*active); buildErr == nil {
 				_ = snapshotStore.Replace(activeIndexed)
 			} else {
@@ -147,7 +155,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		} else if err != nil {
 			logger.Warn("active runtime snapshot unavailable", "error", err)
 		}
-		watcher := dpsnapshot.NewWatcher(cpsnapshot.NewActiveProvider(adminRepo), snapshotStore, snapshotMetrics, cfg.Control.SnapshotPollInterval.Duration, logger)
+		watcher := dpsnapshot.NewWatcher(activeProvider, snapshotStore, snapshotMetrics, cfg.Control.SnapshotPollInterval.Duration, logger, watcherOpts...)
 		go watcher.Start(ctx)
 	}
 	registry := provider.NewRegistry()

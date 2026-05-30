@@ -101,10 +101,88 @@ func TestWatcherKeepsCurrentSnapshotWhenConfigdUnavailableAndStalePolicyApplies(
 	}
 }
 
+func TestFallbackActiveProviderUsesFallbackWhenPrimaryUnavailable(t *testing.T) {
+	createdAt := time.Now().UTC()
+	fallback := staticActiveProvider{runtime: &cpsnapshot.RuntimeSnapshot{
+		Version:   "fallback",
+		CreatedAt: createdAt,
+		Models: []cpsnapshot.ModelRuntime{{
+			PublicModel: "gpt-4o-mini",
+			Protocol:    string(engine.ProtocolNativeOpenAI),
+			Capability:  "chat",
+			Enabled:     true,
+		}},
+	}}
+	provider := NewFallbackActiveProvider(failingActiveProvider{}, fallback)
+	runtime, ok, err := provider.ActiveRuntimeSnapshot(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveRuntimeSnapshot() error = %v", err)
+	}
+	if !ok || runtime.Version != "fallback" {
+		t.Fatalf("runtime = %#v ok = %v", runtime, ok)
+	}
+}
+
+func TestWatcherPollsOnSnapshotEvent(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	repo := admin.NewMemoryRepository()
+	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	seedWatcherSnapshotConfig(t, ctx, service, "gpt-4o-mini")
+	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
+	first, err := publisher.Publish(ctx)
+	if err != nil {
+		t.Fatalf("Publish(first) error = %v", err)
+	}
+	store := NewStore(nil)
+	events := newManualSnapshotEvents()
+	watcher := NewWatcher(cpsnapshot.NewActiveProvider(repo), store, nil, time.Hour, nil, WithEventSource(events))
+	go watcher.Start(ctx)
+	waitForSnapshot(t, store, first.Version)
+
+	upsertWatcherSnapshotModel(t, ctx, service, "gpt-4.1-mini")
+	second, err := publisher.Publish(ctx)
+	if err != nil {
+		t.Fatalf("Publish(second) error = %v", err)
+	}
+	events.notify()
+	waitForSnapshot(t, store, second.Version)
+}
+
 type failingActiveProvider struct{}
 
 func (failingActiveProvider) ActiveRuntimeSnapshot(context.Context) (*cpsnapshot.RuntimeSnapshot, bool, error) {
 	return nil, false, errors.New("configd unavailable")
+}
+
+type staticActiveProvider struct {
+	runtime *cpsnapshot.RuntimeSnapshot
+}
+
+func (p staticActiveProvider) ActiveRuntimeSnapshot(context.Context) (*cpsnapshot.RuntimeSnapshot, bool, error) {
+	if p.runtime == nil {
+		return nil, false, nil
+	}
+	return p.runtime, true, nil
+}
+
+type manualSnapshotEvents struct {
+	ch chan struct{}
+}
+
+func newManualSnapshotEvents() *manualSnapshotEvents {
+	return &manualSnapshotEvents{ch: make(chan struct{}, 1)}
+}
+
+func (e *manualSnapshotEvents) SnapshotEvents(context.Context) (<-chan struct{}, func() error, error) {
+	return e.ch, func() error { return nil }, nil
+}
+
+func (e *manualSnapshotEvents) notify() {
+	select {
+	case e.ch <- struct{}{}:
+	default:
+	}
 }
 
 func seedWatcherSnapshotConfig(t *testing.T, ctx context.Context, service *admin.Service, model string) {
@@ -155,4 +233,21 @@ func assertCurrentSnapshotModel(t *testing.T, store *Store, version string, mode
 	if ok != want {
 		t.Fatalf("LookupModel(%q) ok = %v, want %v", model, ok, want)
 	}
+}
+
+func waitForSnapshot(t *testing.T, store *Store, version string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		current, err := store.Current()
+		if err == nil && current.Ref().Version == version {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	current, err := store.Current()
+	if err != nil {
+		t.Fatalf("Current() error = %v", err)
+	}
+	t.Fatalf("current version = %q, want %q", current.Ref().Version, version)
 }

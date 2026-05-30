@@ -55,6 +55,7 @@ P4 继续保持完整 Realtime 不进入当前路线。Realtime 只维护已有 
 | P4/E14-T01 干净依赖环境 RC smoke | 已完成 | `tests/rc/clean_env_smoke.sh` 使用独立 Docker compose project/volume 和自动避让端口完成 MySQL、Redis、migration、gateway、control-api、configd、worker、snapshot publish/watch/rollback、gateway chat 和 metrics 验证，输出 `rc_smoke=passed` |
 | P4/E14-T02 worker 生产运营 job | 已完成 | 新增 balance hold reaper、reconciliation scheduled job、worker 配置项和 MySQL hold expiry 索引；`go test ./internal/billing ./internal/worker ./internal/worker/jobs ./internal/bootstrap` 通过 |
 | P4/E14-T03 真实 provider release channel | 已完成 | 新增 Replicate Unified Media prediction adapter，并在 gateway/worker 注册；补 provider release 示例 payload 和 runbook；`go test ./internal/provider/replicate ./internal/task ./internal/bootstrap` 通过 |
+| P4/E14-T04 configd 生产分发 | 已完成 | configd 在 DB activate 后写 Redis active key 并发布 pubsub event，gateway watcher 优先 Redis、回落 DB polling；`go test ./internal/controlplane/snapshot ./internal/dataplane/snapshot ./internal/snapshotdist ./internal/bootstrap` 和 `bash tests/rc/clean_env_smoke.sh` 通过 |
 
 ## 风险与处理
 

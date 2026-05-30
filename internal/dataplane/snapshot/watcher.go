@@ -16,6 +16,11 @@ type ActiveRuntimeProvider interface {
 	ActiveRuntimeSnapshot(ctx context.Context) (*cpsnapshot.RuntimeSnapshot, bool, error)
 }
 
+// EventSource notifies the watcher that a new active snapshot may be available.
+type EventSource interface {
+	SnapshotEvents(ctx context.Context) (<-chan struct{}, func() error, error)
+}
+
 // Watcher polls the active snapshot and atomically replaces the data-plane store.
 type Watcher struct {
 	provider ActiveRuntimeProvider
@@ -23,17 +28,65 @@ type Watcher struct {
 	metrics  *Metrics
 	interval time.Duration
 	logger   *slog.Logger
+	events   EventSource
+}
+
+// WatcherOption configures watcher behavior.
+type WatcherOption func(*Watcher)
+
+// WithEventSource adds push-triggered polling to the watcher.
+func WithEventSource(events EventSource) WatcherOption {
+	return func(w *Watcher) {
+		w.events = events
+	}
 }
 
 // NewWatcher returns a snapshot watcher.
-func NewWatcher(provider ActiveRuntimeProvider, store *Store, metrics *Metrics, interval time.Duration, logger *slog.Logger) *Watcher {
+func NewWatcher(provider ActiveRuntimeProvider, store *Store, metrics *Metrics, interval time.Duration, logger *slog.Logger, opts ...WatcherOption) *Watcher {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Watcher{provider: provider, store: store, metrics: metrics, interval: interval, logger: logger}
+	watcher := &Watcher{provider: provider, store: store, metrics: metrics, interval: interval, logger: logger}
+	for _, opt := range opts {
+		opt(watcher)
+	}
+	return watcher
+}
+
+// FallbackActiveProvider reads primary first and falls back to the secondary provider.
+type FallbackActiveProvider struct {
+	primary  ActiveRuntimeProvider
+	fallback ActiveRuntimeProvider
+}
+
+// NewFallbackActiveProvider returns an active snapshot provider with fallback.
+func NewFallbackActiveProvider(primary ActiveRuntimeProvider, fallback ActiveRuntimeProvider) *FallbackActiveProvider {
+	return &FallbackActiveProvider{primary: primary, fallback: fallback}
+}
+
+// ActiveRuntimeSnapshot loads the active runtime snapshot from primary or fallback.
+func (p *FallbackActiveProvider) ActiveRuntimeSnapshot(ctx context.Context) (*cpsnapshot.RuntimeSnapshot, bool, error) {
+	if p == nil {
+		return nil, false, nil
+	}
+	var primaryErr error
+	if p.primary != nil {
+		runtime, ok, err := p.primary.ActiveRuntimeSnapshot(ctx)
+		if err == nil && ok {
+			return runtime, true, nil
+		}
+		primaryErr = err
+	}
+	if p.fallback != nil {
+		runtime, ok, err := p.fallback.ActiveRuntimeSnapshot(ctx)
+		if err != nil || ok {
+			return runtime, ok, err
+		}
+	}
+	return nil, false, primaryErr
 }
 
 // Start runs the watcher until ctx is canceled.
@@ -43,17 +96,43 @@ func (w *Watcher) Start(ctx context.Context) {
 	}
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
+	eventCh, closeEvents := w.subscribeEvents(ctx)
+	defer func() {
+		if closeEvents != nil {
+			_ = closeEvents()
+		}
+	}()
 	_ = w.Poll(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case _, ok := <-eventCh:
+			if !ok {
+				eventCh = nil
+				continue
+			}
+			if err := w.Poll(ctx); err != nil {
+				w.logger.Warn("snapshot event poll failed", "error", err)
+			}
 		case <-ticker.C:
 			if err := w.Poll(ctx); err != nil {
 				w.logger.Warn("snapshot poll failed", "error", err)
 			}
 		}
 	}
+}
+
+func (w *Watcher) subscribeEvents(ctx context.Context) (<-chan struct{}, func() error) {
+	if w == nil || w.events == nil {
+		return nil, nil
+	}
+	events, closeEvents, err := w.events.SnapshotEvents(ctx)
+	if err != nil {
+		w.logger.Warn("snapshot event subscription failed", "error", err)
+		return nil, nil
+	}
+	return events, closeEvents
 }
 
 // Poll loads and swaps the active snapshot if it changed.
