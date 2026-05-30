@@ -111,6 +111,37 @@ func TestDispatcherFallsBackOnRetryableProviderError(t *testing.T) {
 	}
 }
 
+func TestDispatcherAppliesAttemptLimiterPerCandidate(t *testing.T) {
+	registry := provider.NewRegistry()
+	adapter := &channelAdapter{results: map[string]relayResult{
+		"channel_2": {response: okRelayResponse()},
+	}}
+	if err := registry.Register("fake", adapter); err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	limiter := &candidateLimiter{deny: map[string]error{
+		"channel_1": apperr.RateLimited("channel limit exceeded", apperr.WithTemporary()),
+	}}
+	state := dispatchStateWithCandidates("channel_1", "channel_2")
+
+	result, err := New(registry, nil, nil, nil).WithAttemptLimiter(limiter).Dispatch(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if result.Candidate.ChannelID != "channel_2" {
+		t.Fatalf("channel = %q", result.Candidate.ChannelID)
+	}
+	if len(adapter.calls) != 1 || adapter.calls[0] != "channel_2" {
+		t.Fatalf("adapter calls = %#v", adapter.calls)
+	}
+	if got := limiter.calls; len(got) != 2 || got[0] != "channel_1" || got[1] != "channel_2" {
+		t.Fatalf("limiter calls = %#v", got)
+	}
+	if len(state.LimitReleases) != 1 {
+		t.Fatalf("limit releases = %#v", state.LimitReleases)
+	}
+}
+
 func TestDispatcherDoesNotFallbackOnNonRetryableProviderError(t *testing.T) {
 	registry := provider.NewRegistry()
 	adapter := &channelAdapter{results: map[string]relayResult{
@@ -243,6 +274,25 @@ type captureReliability struct {
 
 func (r *captureReliability) RecordProviderAttempt(_ context.Context, _ *engine.RequestState, attempt engine.ProviderAttempt) {
 	r.attempts = append(r.attempts, attempt)
+}
+
+type candidateLimiter struct {
+	deny  map[string]error
+	calls []string
+}
+
+func (l *candidateLimiter) AcquireForCandidate(_ context.Context, _ *engine.RequestState, candidate engine.ProviderCandidate) (engine.LimitRelease, error) {
+	l.calls = append(l.calls, candidate.ChannelID)
+	if err := l.deny[candidate.ChannelID]; err != nil {
+		return nil, err
+	}
+	return noopCandidateRelease{}, nil
+}
+
+type noopCandidateRelease struct{}
+
+func (noopCandidateRelease) Release(context.Context) error {
+	return nil
 }
 
 func dispatchState() *engine.RequestState {

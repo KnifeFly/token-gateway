@@ -75,6 +75,39 @@ func TestOperationsIncludeAllP1LimitTypes(t *testing.T) {
 	}
 }
 
+func TestRequestScopeSeparatesProviderCandidateScope(t *testing.T) {
+	state := &engine.RequestState{
+		TenantID:       "tenant_1",
+		ProjectID:      "project_1",
+		APIKeyID:       "key_1",
+		RequestedModel: "gpt-4o-mini",
+		RoutePlan: &engine.RoutePlan{Candidates: []engine.ProviderCandidate{{
+			ProviderType: "openai_compatible",
+			ChannelID:    "channel_1",
+		}}},
+	}
+
+	scope := requestScope(state)
+	if scope.ProviderType != "" || scope.ChannelID != "" {
+		t.Fatalf("request scope = %#v", scope)
+	}
+	candidateScope := requestScopeForCandidate(state, state.RoutePlan.Candidates[0])
+	if candidateScope.ProviderType != "openai_compatible" || candidateScope.ChannelID != "channel_1" {
+		t.Fatalf("candidate scope = %#v", candidateScope)
+	}
+}
+
+func TestProviderChannelRulesFiltersGlobalRules(t *testing.T) {
+	rules := providerChannelRules([]engine.LimitRuleView{
+		{ID: "global", Scope: engine.LimitScope{TenantID: "tenant_1"}},
+		{ID: "provider", Scope: engine.LimitScope{TenantID: "tenant_1", ProviderType: "openai_compatible"}},
+		{ID: "channel", Scope: engine.LimitScope{TenantID: "tenant_1", ChannelID: "channel_1"}},
+	})
+	if len(rules) != 2 || rules[0].ID != "provider" || rules[1].ID != "channel" {
+		t.Fatalf("rules = %#v", rules)
+	}
+}
+
 func TestAcquireUsesLocalDenyCacheBeforeRedis(t *testing.T) {
 	client := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:0"})
 	t.Cleanup(func() { _ = client.Close() })

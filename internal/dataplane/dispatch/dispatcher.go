@@ -23,6 +23,7 @@ type Dispatcher struct {
 	attempts    AttemptRecorder
 	credentials CredentialResolver
 	disable     DisableChecker
+	limits      AttemptLimiter
 	reliability ReliabilityRecorder
 	retry       RetryPolicy
 	logger      *slog.Logger
@@ -42,6 +43,11 @@ type CredentialResolver interface {
 type DisableChecker interface {
 	IsProviderDisabled(ctx context.Context, providerType string) (bool, error)
 	IsChannelDisabled(ctx context.Context, channelID string) (bool, error)
+}
+
+// AttemptLimiter reserves provider/channel-scoped capacity for one dispatch attempt.
+type AttemptLimiter interface {
+	AcquireForCandidate(ctx context.Context, state *engine.RequestState, candidate engine.ProviderCandidate) (engine.LimitRelease, error)
 }
 
 // ReliabilityRecorder observes attempts for circuit breakers and hot signals.
@@ -86,6 +92,15 @@ func (d *Dispatcher) WithReliability(recorder ReliabilityRecorder) *Dispatcher {
 		return d
 	}
 	d.reliability = recorder
+	return d
+}
+
+// WithAttemptLimiter configures provider/channel-scoped per-attempt limits.
+func (d *Dispatcher) WithAttemptLimiter(limiter AttemptLimiter) *Dispatcher {
+	if d == nil {
+		return d
+	}
+	d.limits = limiter
 	return d
 }
 
@@ -147,6 +162,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			}
 			apiKey = resolved
 		}
+		attemptRelease, err := d.acquireAttemptLimit(ctx, state, candidate)
+		if err != nil {
+			if !candidateLimitFallback(err) {
+				return nil, err
+			}
+			lastErr = err
+			continue
+		}
+		releaseAttempt := true
 
 		// Step 2: relay the request and build an auditable provider attempt.
 		started := time.Now()
@@ -205,12 +229,18 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 				firstFailed = &failed
 			}
 			if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
+				if releaseAttempt {
+					_ = attemptRelease.Release(ctx)
+				}
 				span.RecordError(recordErr)
 				span.End()
 				return nil, recordErr
 			}
 			d.recordReliability(ctx, state, attempt)
 			span.End()
+			if releaseAttempt {
+				_ = attemptRelease.Release(ctx)
+			}
 			retryBudget = nextBudget
 			if !eligible {
 				return nil, lastErr
@@ -225,12 +255,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		state.ActualUsage = response.Usage
 		state.Attempts = append(state.Attempts, attempt)
 		if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
+			if releaseAttempt {
+				_ = attemptRelease.Release(ctx)
+			}
 			span.RecordError(recordErr)
 			span.End()
 			return nil, recordErr
 		}
 		d.recordReliability(ctx, state, attempt)
 		span.End()
+		state.AddLimitRelease(attemptRelease)
+		releaseAttempt = false
 		return &engine.ProviderResult{
 			Candidate: candidate,
 			Response: &engine.GatewayResponse{
@@ -248,6 +283,28 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 	}
 	markFinalAttempt(state)
 	return nil, lastErr
+}
+
+func (d *Dispatcher) acquireAttemptLimit(ctx context.Context, state *engine.RequestState, candidate engine.ProviderCandidate) (engine.LimitRelease, error) {
+	if d == nil || d.limits == nil {
+		return noopAttemptRelease{}, nil
+	}
+	release, err := d.limits.AcquireForCandidate(ctx, state, candidate)
+	if release == nil {
+		release = noopAttemptRelease{}
+	}
+	return release, err
+}
+
+func candidateLimitFallback(err error) bool {
+	appErr, ok := apperr.As(err)
+	return ok && appErr.Code == apperr.CodeRateLimited
+}
+
+type noopAttemptRelease struct{}
+
+func (noopAttemptRelease) Release(context.Context) error {
+	return nil
 }
 
 func (d *Dispatcher) retryBudget(candidateCount int) int {

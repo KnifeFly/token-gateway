@@ -7,21 +7,23 @@ import (
 
 // Tenant is a customer account boundary.
 type Tenant struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Enabled    bool      `json:"enabled"`
+	EnabledSet bool      `json:"-"`
+	CreatedAt  time.Time `json:"created_at,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at,omitempty"`
 }
 
 // Project groups API keys and usage under one tenant.
 type Project struct {
-	ID        string    `json:"id"`
-	TenantID  string    `json:"tenant_id"`
-	Name      string    `json:"name"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
+	ID         string    `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	Name       string    `json:"name"`
+	Enabled    bool      `json:"enabled"`
+	EnabledSet bool      `json:"-"`
+	CreatedAt  time.Time `json:"created_at,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at,omitempty"`
 }
 
 // APIKey stores only the hashed customer key.
@@ -49,6 +51,7 @@ type ModelConfig struct {
 	Capability  string          `json:"capability"`
 	Schema      json.RawMessage `json:"schema,omitempty"`
 	Enabled     bool            `json:"enabled"`
+	EnabledSet  bool            `json:"-"`
 }
 
 // ChannelConfig is a provider channel and encrypted credential reference.
@@ -60,6 +63,7 @@ type ChannelConfig struct {
 	CredentialRef   string         `json:"credential_ref"`
 	EncryptedAPIKey string         `json:"encrypted_api_key,omitempty"`
 	Enabled         bool           `json:"enabled"`
+	EnabledSet      bool           `json:"-"`
 	Timeout         time.Duration  `json:"timeout,omitempty"`
 	TimeoutMillis   int64          `json:"timeout_millis,omitempty"`
 	Models          []ChannelModel `json:"models"`
@@ -77,6 +81,7 @@ type RoutePolicyConfig struct {
 	PublicModel string           `json:"public_model"`
 	Strategy    string           `json:"strategy"`
 	Enabled     bool             `json:"enabled"`
+	EnabledSet  bool             `json:"-"`
 	Candidates  []RouteCandidate `json:"candidates"`
 }
 
@@ -95,6 +100,7 @@ type PriceRuleConfig struct {
 	OutputMicrosPerToken  int64  `json:"output_micros_per_token"`
 	EstimatedOutputTokens int64  `json:"estimated_output_tokens"`
 	Enabled               bool   `json:"enabled"`
+	EnabledSet            bool   `json:"-"`
 }
 
 // LimitRuleConfig pins request limits for one multi-dimensional scope.
@@ -113,6 +119,7 @@ type LimitRuleConfig struct {
 	DailyBudgetMicros   int64  `json:"daily_budget_micros,omitempty"`
 	CostPerMinuteMicros int64  `json:"cost_per_minute_micros,omitempty"`
 	Enabled             bool   `json:"enabled"`
+	EnabledSet          bool   `json:"-"`
 }
 
 // PluginBindingConfig binds one built-in plugin to a runtime phase and scope.
@@ -125,6 +132,7 @@ type PluginBindingConfig struct {
 	Model         string          `json:"model,omitempty"`
 	Priority      int             `json:"priority"`
 	Enabled       bool            `json:"enabled"`
+	EnabledSet    bool            `json:"-"`
 	FailurePolicy string          `json:"failure_policy"`
 	Config        json.RawMessage `json:"config"`
 	CreatedAt     time.Time       `json:"created_at,omitempty"`
@@ -140,6 +148,7 @@ type ModelMarketplaceConfig struct {
 	DisplayName string          `json:"display_name"`
 	Description string          `json:"description,omitempty"`
 	Enabled     bool            `json:"enabled"`
+	EnabledSet  bool            `json:"-"`
 	SortOrder   int             `json:"sort_order"`
 	Metadata    json.RawMessage `json:"metadata"`
 	CreatedAt   time.Time       `json:"created_at,omitempty"`
@@ -185,4 +194,121 @@ type SnapshotConfig struct {
 	Limits      []LimitRuleConfig
 	Plugins     []PluginBindingConfig
 	RevokedKeys []APIKey
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (t *Tenant) UnmarshalJSON(data []byte) error {
+	type alias Tenant
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*t = Tenant(value)
+	t.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (p *Project) UnmarshalJSON(data []byte) error {
+	type alias Project
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*p = Project(value)
+	p.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (m *ModelConfig) UnmarshalJSON(data []byte) error {
+	type alias ModelConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*m = ModelConfig(value)
+	m.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (c *ChannelConfig) UnmarshalJSON(data []byte) error {
+	type alias ChannelConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*c = ChannelConfig(value)
+	c.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (r *RoutePolicyConfig) UnmarshalJSON(data []byte) error {
+	type alias RoutePolicyConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*r = RoutePolicyConfig(value)
+	r.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (p *PriceRuleConfig) UnmarshalJSON(data []byte) error {
+	type alias PriceRuleConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*p = PriceRuleConfig(value)
+	p.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (l *LimitRuleConfig) UnmarshalJSON(data []byte) error {
+	type alias LimitRuleConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*l = LimitRuleConfig(value)
+	l.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (b *PluginBindingConfig) UnmarshalJSON(data []byte) error {
+	type alias PluginBindingConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*b = PluginBindingConfig(value)
+	b.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+// UnmarshalJSON records whether enabled was explicitly present.
+func (m *ModelMarketplaceConfig) UnmarshalJSON(data []byte) error {
+	type alias ModelMarketplaceConfig
+	var value alias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*m = ModelMarketplaceConfig(value)
+	m.EnabledSet = jsonFieldPresent(data, "enabled")
+	return nil
+}
+
+func jsonFieldPresent(data []byte, field string) bool {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return false
+	}
+	_, ok := raw[field]
+	return ok
 }

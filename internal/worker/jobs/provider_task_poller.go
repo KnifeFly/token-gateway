@@ -86,13 +86,9 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 		settlementTask.Usage = result.Usage
 		settlementTask.ErrorCode = result.ErrorCode
 		settlementTask.ErrorMessage = result.ErrorMessage
-		if result.Status == tasksvc.StatusSucceeded {
-			// Step 2: settle successful provider work before completing the task.
-			if err := j.settlement.Settle(ctx, settlementTask, result.Usage); err != nil {
-				if recordErr := j.settlement.RecordFailed(ctx, settlementTask, result.Usage, err); recordErr != nil {
-					return recordErr
-				}
-			}
+		// Step 2: settle or release terminal provider work before completing the task.
+		if err := tasksvc.SettleTerminalTask(ctx, j.settlement, settlementTask, result.Usage); err != nil {
+			return err
 		}
 		if _, err := j.tasks.CompleteTask(ctx, task, *result); err != nil {
 			return err

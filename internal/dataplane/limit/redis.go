@@ -156,8 +156,54 @@ func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState)
 	return &redisRelease{client: e.client, keys: keys, member: state.RequestID}, nil
 }
 
+// AcquireForCandidate reserves provider/channel-scoped capacity for one dispatch attempt.
+func (e *RedisEnforcer) AcquireForCandidate(ctx context.Context, state *engine.RequestState, candidate engine.ProviderCandidate) (engine.LimitRelease, error) {
+	if e == nil || !e.cfg.Enabled || e.client == nil {
+		return noopRelease{}, nil
+	}
+	now := time.Now().UTC()
+	rules := providerChannelRules(e.rulesForScope(state, requestScopeForCandidate(state, candidate)))
+	if len(rules) == 0 {
+		return noopRelease{}, nil
+	}
+
+	buckets, counters, leases := e.operationsFor(state, rules, now)
+	if len(buckets) == 0 && len(counters) == 0 && len(leases) == 0 {
+		return noopRelease{}, nil
+	}
+	if reason, ok := e.cachedDeny(now, buckets, counters, leases); ok {
+		return nil, apperr.RateLimited(reason, apperr.WithTemporary())
+	}
+
+	requestID := ""
+	if state != nil {
+		requestID = state.RequestID
+	}
+	member := requestID + ":" + candidate.ProviderType + ":" + candidate.ChannelID
+	result, err := e.runScript(ctx, member, buckets, counters, leases, now)
+	if err != nil {
+		return nil, err
+	}
+	if !result.allowed {
+		e.cacheDeny(result, now)
+		return nil, apperr.RateLimited(result.reason, apperr.WithTemporary())
+	}
+	if len(leases) == 0 {
+		return noopRelease{}, nil
+	}
+
+	keys := make([]string, 0, len(leases))
+	for _, lease := range leases {
+		keys = append(keys, lease.key)
+	}
+	return &redisRelease{client: e.client, keys: keys, member: member}, nil
+}
+
 func (e *RedisEnforcer) rulesFor(state *engine.RequestState) []engine.LimitRuleView {
-	scope := requestScope(state)
+	return e.rulesForScope(state, requestScope(state))
+}
+
+func (e *RedisEnforcer) rulesForScope(state *engine.RequestState, scope engine.LimitScope) []engine.LimitRuleView {
 	if state != nil && state.Snapshot != nil {
 		rules := state.Snapshot.LookupLimits(scope)
 		if len(rules) > 0 {
@@ -336,11 +382,25 @@ func requestScope(state *engine.RequestState) engine.LimitScope {
 	if state.ResolvedModel.PublicModel != "" {
 		scope.PublicModel = state.ResolvedModel.PublicModel
 	}
-	if state.RoutePlan != nil && len(state.RoutePlan.Candidates) > 0 {
-		scope.ProviderType = state.RoutePlan.Candidates[0].ProviderType
-		scope.ChannelID = state.RoutePlan.Candidates[0].ChannelID
-	}
 	return scope
+}
+
+func requestScopeForCandidate(state *engine.RequestState, candidate engine.ProviderCandidate) engine.LimitScope {
+	scope := requestScope(state)
+	scope.ProviderType = candidate.ProviderType
+	scope.ChannelID = candidate.ChannelID
+	return scope
+}
+
+func providerChannelRules(rules []engine.LimitRuleView) []engine.LimitRuleView {
+	var out []engine.LimitRuleView
+	for _, rule := range rules {
+		if rule.Scope.ProviderType == "" && rule.Scope.ChannelID == "" {
+			continue
+		}
+		out = append(out, rule)
+	}
+	return out
 }
 
 func estimatedTokens(state *engine.RequestState) int64 {

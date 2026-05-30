@@ -23,11 +23,31 @@ type Service struct {
 	admin     *admin.Service
 	reporting *reporting.Service
 	tasks     tasksvc.Repository
+	snapshots SnapshotRefresher
+}
+
+// SnapshotRefresher activates customer-visible control-plane changes in the runtime snapshot.
+type SnapshotRefresher interface {
+	RefreshSnapshot(ctx context.Context) error
+}
+
+// ServiceOption configures Portal service dependencies.
+type ServiceOption func(*Service)
+
+// WithSnapshotRefresher publishes and swaps the runtime snapshot after mutable Portal changes.
+func WithSnapshotRefresher(refresher SnapshotRefresher) ServiceOption {
+	return func(s *Service) {
+		s.snapshots = refresher
+	}
 }
 
 // NewService returns a Portal service.
-func NewService(adminService *admin.Service, reportingService *reporting.Service, tasks tasksvc.Repository) *Service {
-	return &Service{admin: adminService, reporting: reportingService, tasks: tasks}
+func NewService(adminService *admin.Service, reportingService *reporting.Service, tasks tasksvc.Repository, opts ...ServiceOption) *Service {
+	service := &Service{admin: adminService, reporting: reportingService, tasks: tasks}
+	for _, opt := range opts {
+		opt(service)
+	}
+	return service
 }
 
 // ListModels returns enabled models visible to the current principal.
@@ -143,6 +163,9 @@ func (s *Service) CreateAPIKey(ctx context.Context, principal Principal, request
 	if err != nil {
 		return APIKeyCreateResponse{}, err
 	}
+	if err := s.refreshSnapshot(ctx); err != nil {
+		return APIKeyCreateResponse{}, err
+	}
 	return APIKeyCreateResponse{APIKey: safeAPIKey(*key), PlaintextKey: key.PlaintextKey}, nil
 }
 
@@ -174,6 +197,9 @@ func (s *Service) DisableAPIKey(ctx context.Context, principal Principal, keyID 
 	}
 	disabled, err := s.admin.DisableAPIKey(ctx, keyID)
 	if err != nil {
+		return APIKey{}, err
+	}
+	if err := s.refreshSnapshot(ctx); err != nil {
 		return APIKey{}, err
 	}
 	return safeAPIKey(*disabled), nil
@@ -513,4 +539,11 @@ func normalizeLimit(limit int) int {
 		return maxPortalLimit
 	}
 	return limit
+}
+
+func (s *Service) refreshSnapshot(ctx context.Context) error {
+	if s == nil || s.snapshots == nil {
+		return nil
+	}
+	return s.snapshots.RefreshSnapshot(ctx)
 }

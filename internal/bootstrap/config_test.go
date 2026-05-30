@@ -87,3 +87,13 @@ func TestValidateBillingRequiresDatabase(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestValidateRequiresControlAdminToken(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Control.AdminToken = " "
+	cfg.Normalize()
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
