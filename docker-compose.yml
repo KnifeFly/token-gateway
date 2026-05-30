@@ -23,3 +23,104 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+
+  migrate:
+    image: token-gateway:local
+    build:
+      context: .
+    command: ["migrate", "-config", "configs/local.yaml", "-direction", "up"]
+    environment: &app-env
+      TOKEN_GATEWAY_DATABASE_ENABLED: "true"
+      TOKEN_GATEWAY_DATABASE_DSN: "token_gateway:token_gateway@tcp(mysql:3306)/token_gateway?parseTime=true&multiStatements=true"
+      TOKEN_GATEWAY_REDIS_ENABLED: "true"
+      TOKEN_GATEWAY_REDIS_ADDR: "redis:6379"
+      TOKEN_GATEWAY_BILLING_ENABLED: "true"
+      TOKEN_GATEWAY_LIMITS_ENABLED: "true"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  control-api:
+    image: token-gateway:local
+    build:
+      context: .
+    command: ["control-api", "-config", "configs/local.yaml"]
+    environment: *app-env
+    ports:
+      - "9502:9502"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9502/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  configd:
+    image: token-gateway:local
+    build:
+      context: .
+    command: ["configd", "-config", "configs/local.yaml"]
+    environment: *app-env
+    ports:
+      - "9504:9504"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9504/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  worker:
+    image: token-gateway:local
+    build:
+      context: .
+    command: ["worker", "-config", "configs/local.yaml"]
+    environment:
+      <<: *app-env
+      TOKEN_GATEWAY_WORKER_ENABLED: "true"
+    ports:
+      - "9503:9503"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9503/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  gateway:
+    image: token-gateway:local
+    build:
+      context: .
+    command: ["gateway", "-config", "configs/local.yaml"]
+    environment: *app-env
+    ports:
+      - "9501:9501"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9501/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
