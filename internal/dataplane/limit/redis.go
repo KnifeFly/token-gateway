@@ -13,6 +13,8 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
+// redis.go compiles request limit rules into atomic Redis bucket and lease operations.
+
 // Config controls Redis-backed token bucket, budget, and concurrency limits.
 type Config struct {
 	Enabled             bool
@@ -96,6 +98,7 @@ func (c *DenyCache) Set(key, reason string, expiresAt time.Time) {
 	c.entries[key] = denyEntry{reason: reason, expiresAt: expiresAt}
 }
 
+// NewRedisEnforcer returns a Redis-backed distributed limit enforcer.
 func NewRedisEnforcer(client *goredis.Client, cfg Config) *RedisEnforcer {
 	if cfg.Window <= 0 {
 		cfg.Window = time.Second
@@ -112,6 +115,7 @@ func NewRedisEnforcer(client *goredis.Client, cfg Config) *RedisEnforcer {
 	return &RedisEnforcer{client: client, cfg: cfg, deny: NewDenyCache()}
 }
 
+// Acquire reserves request rate, token, budget, and concurrency capacity.
 func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState) (engine.LimitRelease, error) {
 	if e == nil || !e.cfg.Enabled || e.client == nil {
 		return noopRelease{}, nil
@@ -121,6 +125,8 @@ func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState)
 	if len(rules) == 0 {
 		return noopRelease{}, nil
 	}
+
+	// Step 1: compile matching limit rules into Redis bucket and lease operations.
 	buckets, counters, leases := e.operationsFor(state, rules, now)
 	if len(buckets) == 0 && len(counters) == 0 && len(leases) == 0 {
 		return noopRelease{}, nil
@@ -128,6 +134,8 @@ func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState)
 	if reason, ok := e.cachedDeny(now, buckets, counters, leases); ok {
 		return nil, apperr.RateLimited(reason, apperr.WithTemporary())
 	}
+
+	// Step 2: execute the atomic Redis script and cache negative decisions.
 	result, err := e.runScript(ctx, state.RequestID, buckets, counters, leases, now)
 	if err != nil {
 		return nil, err
@@ -139,6 +147,8 @@ func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState)
 	if len(leases) == 0 {
 		return noopRelease{}, nil
 	}
+
+	// Step 3: return a release handle for concurrency leases.
 	keys := make([]string, 0, len(leases))
 	for _, lease := range leases {
 		keys = append(keys, lease.key)

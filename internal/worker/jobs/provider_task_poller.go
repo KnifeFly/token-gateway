@@ -40,22 +40,27 @@ func NewProviderTaskPoller(repo tasksvc.Repository, dispatcher tasksvc.ProviderT
 	}
 }
 
+// Name returns the stable worker job name.
 func (j *ProviderTaskPoller) Name() string {
 	return "provider_task_poller"
 }
 
+// Interval returns how often the job should run.
 func (j *ProviderTaskPoller) Interval() time.Duration {
 	return j.interval
 }
 
+// Timeout returns the maximum runtime for one job execution.
 func (j *ProviderTaskPoller) Timeout() time.Duration {
 	return j.timeout
 }
 
+// MaxConcurrency returns the maximum parallel executions for this job.
 func (j *ProviderTaskPoller) MaxConcurrency() int {
 	return 1
 }
 
+// Run polls provider tasks, settles completed work, and updates task state.
 func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 	if j == nil || j.repo == nil || j.dispatcher == nil || j.tasks == nil {
 		return nil
@@ -65,6 +70,7 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 		return err
 	}
 	for _, task := range tasks {
+		// Step 1: ask the provider adapter for current terminal state.
 		result, err := j.dispatcher.Poll(ctx, task)
 		if err != nil {
 			return err
@@ -79,6 +85,7 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 		settlementTask.ErrorCode = result.ErrorCode
 		settlementTask.ErrorMessage = result.ErrorMessage
 		if result.Status == tasksvc.StatusSucceeded {
+			// Step 2: settle successful provider work before completing the task.
 			if err := j.settlement.Settle(ctx, settlementTask, result.Usage); err != nil {
 				if recordErr := j.settlement.RecordFailed(ctx, settlementTask, result.Usage, err); recordErr != nil {
 					return recordErr

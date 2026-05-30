@@ -12,6 +12,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
+// finalizer.go wraps provider streams so usage and settlement happen exactly once at close.
+
 // Finalizer wraps provider streams and performs close-time settlement.
 type Finalizer struct {
 	settlement engine.SettlementService

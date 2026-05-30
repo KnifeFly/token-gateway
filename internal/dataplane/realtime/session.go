@@ -11,10 +11,14 @@ import (
 type SessionStatus string
 
 const (
+	// SessionStatusPending marks a session created but not yet connected.
 	SessionStatusPending SessionStatus = "pending"
-	SessionStatusActive  SessionStatus = "active"
+	// SessionStatusActive marks a session with an active realtime connection.
+	SessionStatusActive SessionStatus = "active"
+	// SessionStatusExpired marks a session that aged past its lease.
 	SessionStatusExpired SessionStatus = "expired"
-	SessionStatusClosed  SessionStatus = "closed"
+	// SessionStatusClosed marks a session closed by client or server policy.
+	SessionStatusClosed SessionStatus = "closed"
 )
 
 // SessionRequest is the authenticated, tenant-scoped realtime session input.

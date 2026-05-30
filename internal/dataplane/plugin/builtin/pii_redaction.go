@@ -16,19 +16,23 @@ type piiRedactionConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+// Name returns the PII redaction plugin name.
 func (PIIRedaction) Name() string {
 	return "pii_redaction"
 }
 
+// Phase returns the default pre-prompt redaction phase.
 func (PIIRedaction) Phase() plugin.Phase {
 	return plugin.PhasePrePrompt
 }
 
+// Validate verifies PII redaction plugin configuration.
 func (PIIRedaction) Validate(config json.RawMessage) error {
 	var cfg piiRedactionConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute redacts PII in prompt or response payloads for the current phase.
 func (PIIRedaction) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg piiRedactionConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

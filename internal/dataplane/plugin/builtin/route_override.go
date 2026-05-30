@@ -19,14 +19,17 @@ type routeOverrideConfig struct {
 	Reason        string `json:"reason"`
 }
 
+// Name returns the route override plugin name.
 func (RouteOverride) Name() string {
 	return "route_override"
 }
 
+// Phase returns the pre-route override phase.
 func (RouteOverride) Phase() plugin.Phase {
 	return plugin.PhasePreRoute
 }
 
+// Validate verifies route override plugin configuration.
 func (RouteOverride) Validate(config json.RawMessage) error {
 	var cfg routeOverrideConfig
 	if err := decodeConfig(config, &cfg); err != nil {
@@ -38,6 +41,7 @@ func (RouteOverride) Validate(config json.RawMessage) error {
 	return nil
 }
 
+// Execute emits a route override decision for the engine to validate.
 func (RouteOverride) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg routeOverrideConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

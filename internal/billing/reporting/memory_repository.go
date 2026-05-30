@@ -47,6 +47,7 @@ func NewMemoryRepository() *MemoryRepository {
 	}
 }
 
+// TenantUsageReport returns balance, usage, and ledger rows from memory.
 func (r *MemoryRepository) TenantUsageReport(_ context.Context, filter TenantUsageFilter) (*TenantUsageReport, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -96,6 +97,7 @@ func (r *MemoryRepository) TenantUsageReport(_ context.Context, filter TenantUsa
 	return report, nil
 }
 
+// UpsertProviderCostProfile creates or updates a provider cost profile.
 func (r *MemoryRepository) UpsertProviderCostProfile(_ context.Context, profile ProviderCostProfile) (*ProviderCostProfile, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -114,6 +116,7 @@ func (r *MemoryRepository) UpsertProviderCostProfile(_ context.Context, profile 
 	return clone(profile), nil
 }
 
+// ProviderProfitReport aggregates revenue and provider cost estimates.
 func (r *MemoryRepository) ProviderProfitReport(_ context.Context, filter ProviderProfitFilter) (*ProviderProfitReport, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -161,6 +164,7 @@ func (r *MemoryRepository) ProviderProfitReport(_ context.Context, filter Provid
 	return report, nil
 }
 
+// ReconciliationReport returns balance mismatches and failed settlement backlog.
 func (r *MemoryRepository) ReconciliationReport(context.Context) (*ReconciliationReport, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -194,6 +198,7 @@ func (r *MemoryRepository) ReconciliationReport(context.Context) (*Reconciliatio
 	return &ReconciliationReport{GeneratedAt: time.Now().UTC(), Issues: issues, FailedSettlements: append([]FailedSettlementSummary(nil), r.failed...)}, nil
 }
 
+// CreateManualAdjustment writes an idempotent balance adjustment and ledger line.
 func (r *MemoryRepository) CreateManualAdjustment(_ context.Context, request ManualAdjustmentRequest) (*ManualAdjustment, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -217,10 +222,14 @@ func (r *MemoryRepository) CreateManualAdjustment(_ context.Context, request Man
 	if nextAvailable < 0 {
 		return nil, apperr.InsufficientBalance("manual adjustment would make balance negative")
 	}
+
+	// Step 1: update the operator-visible balance snapshot.
 	now := time.Now().UTC()
 	balance.AvailableMicros = nextAvailable
 	balance.UpdatedAt = now
 	r.balances[key] = balance
+
+	// Step 2: create the adjustment record and matching ledger entry.
 	adjustment := ManualAdjustment{
 		ID:             newID("adj"),
 		IdempotencyKey: request.IdempotencyKey,
@@ -252,6 +261,7 @@ func (r *MemoryRepository) CreateManualAdjustment(_ context.Context, request Man
 	return clone(adjustment), nil
 }
 
+// AgentMetadataReport aggregates async task metadata for commercial reports.
 func (r *MemoryRepository) AgentMetadataReport(_ context.Context, filter AgentMetadataFilter) (*AgentMetadataReport, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -46,22 +46,27 @@ func NewCallbackDispatcherWithMetrics(repo tasksvc.Repository, client *http.Clie
 	}
 }
 
+// Name returns the stable worker job name.
 func (j *CallbackDispatcher) Name() string {
 	return "callback_dispatcher"
 }
 
+// Interval returns how often the job should run.
 func (j *CallbackDispatcher) Interval() time.Duration {
 	return j.interval
 }
 
+// Timeout returns the maximum runtime for one job execution.
 func (j *CallbackDispatcher) Timeout() time.Duration {
 	return j.timeout
 }
 
+// MaxConcurrency returns the maximum parallel executions for this job.
 func (j *CallbackDispatcher) MaxConcurrency() int {
 	return 4
 }
 
+// Run delivers due callback events and schedules retries for failures.
 func (j *CallbackDispatcher) Run(ctx context.Context) error {
 	if j == nil || j.repo == nil || j.client == nil {
 		return nil

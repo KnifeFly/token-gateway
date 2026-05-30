@@ -16,10 +16,12 @@ type PriceEstimator struct {
 	defaultOutputTokens int64
 }
 
+// NewPriceEstimator returns a request price estimator.
 func NewPriceEstimator(price pricing.TokenPrice, defaultOutputTokens int64) *PriceEstimator {
 	return &PriceEstimator{price: price, defaultOutputTokens: defaultOutputTokens}
 }
 
+// Estimate quotes the request and records normalized estimated usage.
 func (e *PriceEstimator) Estimate(state *engine.RequestState) money.Amount {
 	estimate := state.EstimatedUsage
 	if estimate.OutputTokens == 0 {
@@ -46,6 +48,7 @@ type Controller struct {
 	holdTTL time.Duration
 }
 
+// NewController returns an admission controller that reserves billing holds.
 func NewController(balance *billing.BalanceService, quoter *PriceEstimator, holdTTL time.Duration) *Controller {
 	if holdTTL <= 0 {
 		holdTTL = 10 * time.Minute
@@ -53,6 +56,7 @@ func NewController(balance *billing.BalanceService, quoter *PriceEstimator, hold
 	return &Controller{balance: balance, quoter: quoter, holdTTL: holdTTL}
 }
 
+// Reserve estimates cost and creates a balance hold before provider dispatch.
 func (c *Controller) Reserve(ctx context.Context, state *engine.RequestState) error {
 	if c == nil || c.balance == nil || c.quoter == nil {
 		return nil
@@ -77,6 +81,7 @@ func (c *Controller) Reserve(ctx context.Context, state *engine.RequestState) er
 	return nil
 }
 
+// Release releases the balance hold when the request does not settle normally.
 func (c *Controller) Release(ctx context.Context, state *engine.RequestState, cause error) error {
 	if c == nil || c.balance == nil || state.BalanceHoldID == "" {
 		return nil

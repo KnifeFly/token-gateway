@@ -17,19 +17,23 @@ type requestSizeConfig struct {
 	MaxFiles       int   `json:"max_files"`
 }
 
+// Name returns the request size plugin name.
 func (RequestSize) Name() string {
 	return "request_size"
 }
 
+// Phase returns the pre-request size validation phase.
 func (RequestSize) Phase() plugin.Phase {
 	return plugin.PhasePreRequest
 }
 
+// Validate verifies request size plugin configuration.
 func (RequestSize) Validate(config json.RawMessage) error {
 	var cfg requestSizeConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute denies requests that exceed configured header, body, or file limits.
 func (RequestSize) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg requestSizeConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

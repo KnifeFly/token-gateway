@@ -9,6 +9,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
+// publisher.go coordinates snapshot build, persistence, activation, rollback, and diagnostics.
+
 // Publisher validates and publishes runtime snapshots.
 type Publisher struct {
 	repo    ConfigRepository

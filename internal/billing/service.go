@@ -10,15 +10,19 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
+// service.go owns balance holds, provider attempt writes, final settlement, and repair replay.
+
 // BalanceService creates and releases balance holds.
 type BalanceService struct {
 	repo Repository
 }
 
+// NewBalanceService returns a balance service backed by repo.
 func NewBalanceService(repo Repository) *BalanceService {
 	return &BalanceService{repo: repo}
 }
 
+// CreateHold creates or returns an existing idempotent balance hold.
 func (s *BalanceService) CreateHold(ctx context.Context, request HoldRequest) (*BalanceHold, error) {
 	if s == nil || s.repo == nil {
 		return nil, apperr.ConfigUnavailable("billing repository is unavailable")
@@ -34,6 +38,7 @@ func (s *BalanceService) CreateHold(ctx context.Context, request HoldRequest) (*
 	return s.repo.CreateHold(ctx, request)
 }
 
+// ReleaseHold releases a previously created hold when a request does not settle.
 func (s *BalanceService) ReleaseHold(ctx context.Context, holdID string, reason string) error {
 	if holdID == "" || s == nil || s.repo == nil {
 		return nil
@@ -46,10 +51,12 @@ type AttemptWriter struct {
 	repo Repository
 }
 
+// NewAttemptWriter returns a writer for durable provider attempts.
 func NewAttemptWriter(repo Repository) *AttemptWriter {
 	return &AttemptWriter{repo: repo}
 }
 
+// RecordProviderAttempt persists one provider attempt for auditing and reports.
 func (w *AttemptWriter) RecordProviderAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) error {
 	if w == nil || w.repo == nil {
 		return nil
@@ -79,6 +86,7 @@ type SettlementPlanner struct {
 	policy BillabilityPolicy
 }
 
+// NewSettlementPlanner returns a planner using the default billability policy.
 func NewSettlementPlanner(price pricing.TokenPrice) *SettlementPlanner {
 	return NewSettlementPlannerWithPolicy(price, NewBillabilityPolicy())
 }
@@ -88,7 +96,9 @@ func NewSettlementPlannerWithPolicy(price pricing.TokenPrice, policy Billability
 	return &SettlementPlanner{price: price, policy: policy}
 }
 
+// Plan converts the final request state into a replayable settlement plan.
 func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
+	// Step 1: decide billability before calculating the final charge.
 	decision := p.policy.Decide(RequestBillabilityContext(state))
 	amount := p.price.QuoteActual(state.ActualUsage)
 	if state.PriceRule.Enabled {
@@ -104,6 +114,8 @@ func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
 		amount.Micros = state.EstimatedChargeMicros
 		amount.Currency = state.Currency
 	}
+
+	// Step 2: copy provider selection and usage into a durable replay payload.
 	candidate := engine.ProviderCandidate{}
 	if state.ProviderResult != nil {
 		candidate = state.ProviderResult.Candidate
@@ -132,10 +144,12 @@ type SettlementService struct {
 	metrics *Metrics
 }
 
+// NewSettlementService returns a service that settles completed requests.
 func NewSettlementService(repo Repository, planner *SettlementPlanner, metrics *Metrics) *SettlementService {
 	return &SettlementService{repo: repo, planner: planner, metrics: metrics}
 }
 
+// Settle writes usage, ledger movement, and request charge metadata.
 func (s *SettlementService) Settle(ctx context.Context, state *engine.RequestState) error {
 	if s == nil || s.repo == nil || s.planner == nil {
 		return nil
@@ -152,6 +166,7 @@ func (s *SettlementService) Settle(ctx context.Context, state *engine.RequestSta
 	return nil
 }
 
+// RecordFailed persists a settlement plan for repair when final settlement fails.
 func (s *SettlementService) RecordFailed(ctx context.Context, state *engine.RequestState, cause error) error {
 	if s == nil || s.repo == nil || s.planner == nil {
 		return cause
@@ -187,14 +202,17 @@ type FailedSettlementService struct {
 	metrics *Metrics
 }
 
+// NewFailedSettlementService returns a replay service without metrics.
 func NewFailedSettlementService(repo Repository) *FailedSettlementService {
 	return NewFailedSettlementServiceWithMetrics(repo, nil)
 }
 
+// NewFailedSettlementServiceWithMetrics returns a replay service with optional metrics.
 func NewFailedSettlementServiceWithMetrics(repo Repository, metrics *Metrics) *FailedSettlementService {
 	return &FailedSettlementService{repo: repo, metrics: metrics}
 }
 
+// ReplayPending retries pending settlement repair records up to limit.
 func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) (int, error) {
 	if s == nil || s.repo == nil {
 		return 0, nil
@@ -208,6 +226,7 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 	}
 	replayed := 0
 	for _, failed := range pending {
+		// Step 1: decode the original settlement plan exactly as recorded.
 		var plan SettlementPlan
 		if err := json.Unmarshal(failed.Payload, &plan); err != nil {
 			if markErr := s.repo.MarkFailedSettlementFailed(ctx, failed.ID, time.Now().UTC().Add(time.Minute), err.Error()); markErr != nil {
@@ -215,6 +234,8 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 			}
 			continue
 		}
+
+		// Step 2: retry settlement and move failures to a later repair window.
 		if _, err := s.repo.Settle(ctx, plan); err != nil {
 			next := time.Now().UTC().Add(time.Duration(failed.RetryCount+1) * time.Minute)
 			if markErr := s.repo.MarkFailedSettlementFailed(ctx, failed.ID, next, err.Error()); markErr != nil {
@@ -222,6 +243,8 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 			}
 			continue
 		}
+
+		// Step 3: mark successful replays so the repair worker is idempotent.
 		if err := s.repo.MarkFailedSettlementReplayed(ctx, failed.ID); err != nil {
 			return replayed, err
 		}

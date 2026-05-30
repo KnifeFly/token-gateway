@@ -6,9 +6,12 @@ import (
 )
 
 const (
-	SnapshotStatusActive   = "active"
+	// SnapshotStatusActive marks the runtime snapshot currently served by data-plane.
+	SnapshotStatusActive = "active"
+	// SnapshotStatusInactive marks a retained runtime snapshot that is not current.
 	SnapshotStatusInactive = "inactive"
-	SnapshotStatusFailed   = "failed"
+	// SnapshotStatusFailed marks a snapshot build or publish failure.
+	SnapshotStatusFailed = "failed"
 )
 
 // Repository persists control-plane configuration.

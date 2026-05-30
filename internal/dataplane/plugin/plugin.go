@@ -11,10 +11,15 @@ import (
 type Action string
 
 const (
-	ActionAllow   Action = "allow"
-	ActionDeny    Action = "deny"
-	ActionRedact  Action = "redact"
-	ActionAudit   Action = "audit"
+	// ActionAllow permits the request to continue.
+	ActionAllow Action = "allow"
+	// ActionDeny blocks the request.
+	ActionDeny Action = "deny"
+	// ActionRedact indicates the plugin changed sensitive payload content.
+	ActionRedact Action = "redact"
+	// ActionAudit emits audit metadata without changing flow.
+	ActionAudit Action = "audit"
+	// ActionDegrade suggests a cheaper or safer model.
 	ActionDegrade Action = "degrade"
 )
 
@@ -22,8 +27,11 @@ const (
 type MutationTarget string
 
 const (
-	MutationMetadata       MutationTarget = "metadata"
-	MutationInternal       MutationTarget = "internal"
+	// MutationMetadata writes a key into request metadata.
+	MutationMetadata MutationTarget = "metadata"
+	// MutationInternal writes a key into internal request state.
+	MutationInternal MutationTarget = "internal"
+	// MutationRequestedModel changes the requested public model.
 	MutationRequestedModel MutationTarget = "requested_model"
 )
 
@@ -31,8 +39,10 @@ const (
 type FailurePolicy string
 
 const (
+	// FailurePolicyFailClosed makes plugin errors block the request.
 	FailurePolicyFailClosed FailurePolicy = "fail_closed"
-	FailurePolicyFailOpen   FailurePolicy = "fail_open"
+	// FailurePolicyFailOpen makes plugin errors auditable but non-blocking.
+	FailurePolicyFailOpen FailurePolicy = "fail_open"
 )
 
 // Plugin is the interface implemented by built-in data-plane plugins.

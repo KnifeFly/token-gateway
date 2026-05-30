@@ -15,19 +15,23 @@ type promptTokenLimitConfig struct {
 	MaxPromptTokens int64 `json:"max_prompt_tokens"`
 }
 
+// Name returns the prompt token limit plugin name.
 func (PromptTokenLimit) Name() string {
 	return "prompt_token_limit"
 }
 
+// Phase returns the pre-prompt token limit phase.
 func (PromptTokenLimit) Phase() plugin.Phase {
 	return plugin.PhasePrePrompt
 }
 
+// Validate verifies prompt token limit plugin configuration.
 func (PromptTokenLimit) Validate(config json.RawMessage) error {
 	var cfg promptTokenLimitConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute denies prompts above the configured token estimate.
 func (PromptTokenLimit) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg promptTokenLimitConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

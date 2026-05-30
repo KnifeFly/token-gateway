@@ -16,19 +16,23 @@ type modelACLConfig struct {
 	DeniedModels  []string `json:"denied_models"`
 }
 
+// Name returns the model ACL plugin name.
 func (ModelACL) Name() string {
 	return "model_acl"
 }
 
+// Phase returns the post-auth model ACL phase.
 func (ModelACL) Phase() plugin.Phase {
 	return plugin.PhasePostAuth
 }
 
+// Validate verifies model ACL plugin configuration.
 func (ModelACL) Validate(config json.RawMessage) error {
 	var cfg modelACLConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute enforces allow and deny model lists for the authenticated request.
 func (ModelACL) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg modelACLConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

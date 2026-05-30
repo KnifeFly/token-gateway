@@ -14,19 +14,23 @@ type auditLogConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+// Name returns the audit log plugin name.
 func (AuditLog) Name() string {
 	return "audit_log"
 }
 
+// Phase returns the audit phase for audit logging.
 func (AuditLog) Phase() plugin.Phase {
 	return plugin.PhaseAudit
 }
 
+// Validate verifies audit log plugin configuration.
 func (AuditLog) Validate(config json.RawMessage) error {
 	var cfg auditLogConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute emits redacted audit fields into the plugin result.
 func (AuditLog) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	if input.State == nil {
 		return plugin.Result{}, nil

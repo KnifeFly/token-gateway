@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	// Register the MySQL driver for sql.Open.
 	_ "github.com/go-sql-driver/mysql"
 )
 

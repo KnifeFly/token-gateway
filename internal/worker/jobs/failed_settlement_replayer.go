@@ -15,6 +15,7 @@ type FailedSettlementReplayer struct {
 	limit    int
 }
 
+// NewFailedSettlementReplayer returns a worker job for settlement repair.
 func NewFailedSettlementReplayer(service *billing.FailedSettlementService, interval time.Duration, limit int) *FailedSettlementReplayer {
 	if interval <= 0 {
 		interval = time.Minute
@@ -30,22 +31,27 @@ func NewFailedSettlementReplayer(service *billing.FailedSettlementService, inter
 	}
 }
 
+// Name returns the stable worker job name.
 func (j *FailedSettlementReplayer) Name() string {
 	return "failed_settlement_replayer"
 }
 
+// Interval returns how often the job should run.
 func (j *FailedSettlementReplayer) Interval() time.Duration {
 	return j.interval
 }
 
+// Timeout returns the maximum runtime for one job execution.
 func (j *FailedSettlementReplayer) Timeout() time.Duration {
 	return j.timeout
 }
 
+// MaxConcurrency returns the maximum parallel executions for this job.
 func (j *FailedSettlementReplayer) MaxConcurrency() int {
 	return 1
 }
 
+// Run replays pending settlement repair records.
 func (j *FailedSettlementReplayer) Run(ctx context.Context) error {
 	if j == nil || j.service == nil {
 		return nil

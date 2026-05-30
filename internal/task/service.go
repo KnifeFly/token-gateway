@@ -8,6 +8,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
+// service.go owns async task idempotency, lifecycle transitions, callbacks, and cancellation.
+
 // Service owns task creation, idempotency, status updates, and cancel state.
 type Service struct {
 	repo    Repository

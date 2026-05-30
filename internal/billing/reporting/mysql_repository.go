@@ -21,6 +21,7 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+// TenantUsageReport reads balance, usage, and ledger rows from MySQL.
 func (r *MySQLRepository) TenantUsageReport(ctx context.Context, filter TenantUsageFilter) (*TenantUsageReport, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("reporting database is unavailable")
@@ -47,6 +48,7 @@ func (r *MySQLRepository) TenantUsageReport(ctx context.Context, filter TenantUs
 	return report, nil
 }
 
+// UpsertProviderCostProfile creates or updates provider cost assumptions.
 func (r *MySQLRepository) UpsertProviderCostProfile(ctx context.Context, profile ProviderCostProfile) (*ProviderCostProfile, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("reporting database is unavailable")
@@ -76,6 +78,7 @@ ON DUPLICATE KEY UPDATE
 	return r.getProviderCostProfile(ctx, profile.ProviderType, profile.ChannelID, profile.PublicModel, profile.Currency)
 }
 
+// ProviderProfitReport aggregates revenue, provider cost, and profit by channel.
 func (r *MySQLRepository) ProviderProfitReport(ctx context.Context, filter ProviderProfitFilter) (*ProviderProfitReport, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("reporting database is unavailable")
@@ -125,6 +128,7 @@ FROM usage_records`
 	return report, rows.Err()
 }
 
+// ReconciliationReport returns balance mismatches and failed settlement state.
 func (r *MySQLRepository) ReconciliationReport(ctx context.Context) (*ReconciliationReport, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("reporting database is unavailable")
@@ -140,6 +144,7 @@ func (r *MySQLRepository) ReconciliationReport(ctx context.Context) (*Reconcilia
 	return &ReconciliationReport{GeneratedAt: time.Now().UTC(), Issues: issues, FailedSettlements: failed}, nil
 }
 
+// CreateManualAdjustment writes an idempotent operator balance adjustment.
 func (r *MySQLRepository) CreateManualAdjustment(ctx context.Context, request ManualAdjustmentRequest) (*ManualAdjustment, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("reporting database is unavailable")
@@ -154,6 +159,8 @@ func (r *MySQLRepository) CreateManualAdjustment(ctx context.Context, request Ma
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// Step 1: lock or create the target balance account.
 	account, err := selectBalanceForAdjustment(ctx, tx, request.TenantID, request.ProjectID, request.Currency)
 	if errors.Is(err, sql.ErrNoRows) {
 		if request.AmountMicros < 0 {
@@ -181,6 +188,8 @@ VALUES (?, ?, ?, ?, 0, 0, 0)`,
 	}
 	adjustmentID := newID("adj")
 	ledgerID := newID("ledger")
+
+	// Step 2: update balance and write the matching immutable ledger row.
 	if _, err := tx.ExecContext(ctx, `
 UPDATE balance_accounts
 SET available_micros = ?, updated_at = CURRENT_TIMESTAMP
@@ -217,6 +226,7 @@ INSERT INTO manual_adjustments (
 	return adjustment, nil
 }
 
+// AgentMetadataReport aggregates task metadata for workflow and scene reports.
 func (r *MySQLRepository) AgentMetadataReport(ctx context.Context, filter AgentMetadataFilter) (*AgentMetadataReport, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("reporting database is unavailable")

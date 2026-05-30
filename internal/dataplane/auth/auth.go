@@ -16,6 +16,7 @@ const hashPrefix = "sha256:"
 // CredentialExtractor extracts customer API keys from supported headers.
 type CredentialExtractor struct{}
 
+// Extract returns the API key from Authorization or X-API-Key headers.
 func (CredentialExtractor) Extract(header http.Header) (string, error) {
 	bearer := bearerToken(headerValue(header, "Authorization"))
 	apiKey := strings.TrimSpace(headerValue(header, "X-API-Key"))
@@ -42,6 +43,7 @@ type RevocationChecker interface {
 	IsRevoked(ctx context.Context, keyHash string) (bool, error)
 }
 
+// NewSnapshotAuthenticator returns an authenticator with optional fast revocation checks.
 func NewSnapshotAuthenticator(revocation ...RevocationChecker) *SnapshotAuthenticator {
 	auth := &SnapshotAuthenticator{extractor: CredentialExtractor{}}
 	if len(revocation) > 0 {
@@ -50,6 +52,7 @@ func NewSnapshotAuthenticator(revocation ...RevocationChecker) *SnapshotAuthenti
 	return auth
 }
 
+// Authenticate validates the caller against snapshot and revocation state.
 func (a *SnapshotAuthenticator) Authenticate(ctx context.Context, state *engine.RequestState) error {
 	if state.Snapshot == nil {
 		return apperr.ConfigUnavailable("runtime snapshot is unavailable")

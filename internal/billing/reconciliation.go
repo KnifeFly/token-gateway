@@ -7,10 +7,12 @@ type ReconciliationService struct {
 	repo Repository
 }
 
+// NewReconciliationService returns a service for ledger consistency checks.
 func NewReconciliationService(repo Repository) *ReconciliationService {
 	return &ReconciliationService{repo: repo}
 }
 
+// FindIssues returns current reconciliation mismatches.
 func (s *ReconciliationService) FindIssues(ctx context.Context) ([]ReconciliationIssue, error) {
 	if s == nil || s.repo == nil {
 		return nil, nil

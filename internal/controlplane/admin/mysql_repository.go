@@ -18,6 +18,7 @@ func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+// UpsertTenant creates or updates a tenant row.
 func (r *MySQLRepository) UpsertTenant(ctx context.Context, tenant Tenant) (*Tenant, error) {
 	if tenant.ID == "" {
 		tenant.ID = newID("tenant")
@@ -32,6 +33,7 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), enabled = VALUES(enabled), updated_
 	return r.getTenant(ctx, tenant.ID)
 }
 
+// UpsertProject creates or updates a project row.
 func (r *MySQLRepository) UpsertProject(ctx context.Context, project Project) (*Project, error) {
 	if project.ID == "" {
 		project.ID = newID("project")
@@ -46,6 +48,7 @@ ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), name = VALUES(name), enab
 	return r.getProject(ctx, project.ID)
 }
 
+// CreateAPIKey stores a hashed API key row.
 func (r *MySQLRepository) CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error) {
 	if key.ID == "" {
 		key.ID = newID("key")
@@ -61,6 +64,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 	return r.getAPIKey(ctx, key.ID)
 }
 
+// ListAPIKeys returns API key metadata for the requested scope.
 func (r *MySQLRepository) ListAPIKeys(ctx context.Context, tenantID, projectID string) ([]APIKey, error) {
 	query := `SELECT id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, revoked_at, created_at, updated_at FROM cp_api_keys WHERE 1=1`
 	var args []any
@@ -89,6 +93,7 @@ func (r *MySQLRepository) ListAPIKeys(ctx context.Context, tenantID, projectID s
 	return keys, rows.Err()
 }
 
+// DisableAPIKey disables an API key and records revocation time.
 func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revokedAt *time.Time) (*APIKey, error) {
 	_, err := r.db.ExecContext(ctx, `UPDATE cp_api_keys SET enabled = FALSE, revoked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, revokedAt, keyID)
 	if err != nil {
@@ -97,6 +102,7 @@ func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revok
 	return r.getAPIKey(ctx, keyID)
 }
 
+// UpsertModel creates or updates public model configuration.
 func (r *MySQLRepository) UpsertModel(ctx context.Context, model ModelConfig) (*ModelConfig, error) {
 	aliases, _ := json.Marshal(model.Aliases)
 	schema := []byte(model.Schema)
@@ -116,6 +122,7 @@ ON DUPLICATE KEY UPDATE aliases_json = VALUES(aliases_json), display_name = VALU
 	return &model, nil
 }
 
+// UpsertChannel creates or updates a provider channel and its model mappings.
 func (r *MySQLRepository) UpsertChannel(ctx context.Context, channel ChannelConfig) (*ChannelConfig, error) {
 	if channel.ID == "" {
 		channel.ID = newID("channel")
@@ -152,6 +159,7 @@ INSERT INTO cp_channel_models (channel_id, public_model, upstream_model) VALUES 
 	return &channel, nil
 }
 
+// UpsertRoute creates or updates a route policy and candidate order.
 func (r *MySQLRepository) UpsertRoute(ctx context.Context, route RoutePolicyConfig) (*RoutePolicyConfig, error) {
 	if route.ID == "" {
 		route.ID = "route_" + route.PublicModel
@@ -183,6 +191,7 @@ INSERT INTO cp_route_candidates (route_id, channel_id, priority, weight) VALUES 
 	return &route, nil
 }
 
+// UpsertPrice creates or updates a model price rule.
 func (r *MySQLRepository) UpsertPrice(ctx context.Context, price PriceRuleConfig) (*PriceRuleConfig, error) {
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO cp_price_rules (public_model, currency, input_micros_per_token, output_micros_per_token, estimated_output_tokens, enabled)
@@ -197,6 +206,7 @@ ON DUPLICATE KEY UPDATE currency = VALUES(currency), input_micros_per_token = VA
 	return &price, nil
 }
 
+// UpsertLimit creates or updates a scoped limit rule.
 func (r *MySQLRepository) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error) {
 	if limit.ID == "" {
 		limit.ID = limitRuleID(limit)
@@ -219,6 +229,7 @@ ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), project_id = VALUES(proje
 	return &limit, nil
 }
 
+// UpsertPluginBinding creates or updates a built-in plugin binding.
 func (r *MySQLRepository) UpsertPluginBinding(ctx context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error) {
 	if binding.ID == "" {
 		binding.ID = newID("plugin")
@@ -236,6 +247,7 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), phase = VALUES(phase), tenant_id = 
 	return r.getPluginBinding(ctx, binding.ID)
 }
 
+// UpsertModelMarketplace creates or updates a tenant-visible catalog row.
 func (r *MySQLRepository) UpsertModelMarketplace(ctx context.Context, config ModelMarketplaceConfig) (*ModelMarketplaceConfig, error) {
 	if config.ID == "" {
 		config.ID = marketplaceID(config)
@@ -261,6 +273,7 @@ ON DUPLICATE KEY UPDATE
 	return r.getModelMarketplace(ctx, config.ID)
 }
 
+// ListVisibleModels returns model catalog rows visible to tenantID and projectID.
 func (r *MySQLRepository) ListVisibleModels(ctx context.Context, tenantID, projectID string) ([]VisibleModel, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT
@@ -296,6 +309,7 @@ ORDER BY market.sort_order, market.public_model, market.tenant_id DESC, market.p
 	return out, rows.Err()
 }
 
+// LoadSnapshotConfig loads the complete config graph for snapshot building.
 func (r *MySQLRepository) LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error) {
 	cfg := &SnapshotConfig{}
 	keys, err := r.ListAPIKeys(ctx, "", "")
@@ -331,6 +345,7 @@ func (r *MySQLRepository) LoadSnapshotConfig(ctx context.Context) (*SnapshotConf
 	return cfg, nil
 }
 
+// SaveSnapshot persists a built runtime snapshot record.
 func (r *MySQLRepository) SaveSnapshot(ctx context.Context, record SnapshotRecord) (*SnapshotRecord, error) {
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO cp_runtime_snapshots (version, checksum, status, payload_json, error, created_at, active_at)
@@ -343,10 +358,12 @@ ON DUPLICATE KEY UPDATE checksum = VALUES(checksum), status = VALUES(status), pa
 	return &record, nil
 }
 
+// ActiveSnapshot returns the currently active snapshot record.
 func (r *MySQLRepository) ActiveSnapshot(ctx context.Context) (*SnapshotRecord, bool, error) {
 	return r.snapshotByStatus(ctx, SnapshotStatusActive)
 }
 
+// PreviousSnapshot returns the most recently inactive snapshot record.
 func (r *MySQLRepository) PreviousSnapshot(ctx context.Context) (*SnapshotRecord, bool, error) {
 	record, err := scanSnapshot(r.db.QueryRowContext(ctx, `
 SELECT version, checksum, status, payload_json, error, created_at, active_at
@@ -363,15 +380,20 @@ LIMIT 1`, SnapshotStatusInactive))
 	return record, true, nil
 }
 
+// ActivateSnapshot marks version active and demotes any previous active snapshot.
 func (r *MySQLRepository) ActivateSnapshot(ctx context.Context, version string) (*SnapshotRecord, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	// Step 1: demote any active snapshot before promoting the target version.
 	if _, err := tx.ExecContext(ctx, `UPDATE cp_runtime_snapshots SET status = ? WHERE status = ?`, SnapshotStatusInactive, SnapshotStatusActive); err != nil {
 		return nil, err
 	}
+
+	// Step 2: activate the target version inside the same transaction.
 	if _, err := tx.ExecContext(ctx, `UPDATE cp_runtime_snapshots SET status = ?, active_at = ? WHERE version = ?`, SnapshotStatusActive, time.Now().UTC(), version); err != nil {
 		return nil, err
 	}

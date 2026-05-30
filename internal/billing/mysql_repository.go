@@ -16,10 +16,12 @@ type MySQLRepository struct {
 	db *sql.DB
 }
 
+// NewMySQLRepository returns a MySQL-backed billing repository.
 func NewMySQLRepository(db *sql.DB) *MySQLRepository {
 	return &MySQLRepository{db: db}
 }
 
+// EnsureBalanceAccount inserts the balance account if it does not already exist.
 func (r *MySQLRepository) EnsureBalanceAccount(ctx context.Context, account BalanceAccount) error {
 	if r == nil || r.db == nil {
 		return apperr.ConfigUnavailable("billing database is unavailable")
@@ -41,6 +43,7 @@ ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
 	return err
 }
 
+// CreateHold reserves balance in a transaction and returns an idempotent hold.
 func (r *MySQLRepository) CreateHold(ctx context.Context, request HoldRequest) (*BalanceHold, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("billing database is unavailable")
@@ -102,6 +105,7 @@ INSERT INTO balance_holds (
 	return hold, nil
 }
 
+// GetHoldByRequestID finds the hold associated with requestID.
 func (r *MySQLRepository) GetHoldByRequestID(ctx context.Context, requestID string) (*BalanceHold, bool, error) {
 	if r == nil || r.db == nil {
 		return nil, false, apperr.ConfigUnavailable("billing database is unavailable")
@@ -119,6 +123,7 @@ FROM balance_holds WHERE request_id = ?`, requestID))
 	return hold, true, nil
 }
 
+// ReleaseHold returns active held funds to available balance.
 func (r *MySQLRepository) ReleaseHold(ctx context.Context, holdID string, reason string) error {
 	if holdID == "" || r == nil || r.db == nil {
 		return nil
@@ -153,6 +158,7 @@ WHERE id = ?`, HoldStatusReleased, reason, holdID); err != nil {
 	return tx.Commit()
 }
 
+// RecordUsageAttempt upserts one provider attempt for the request.
 func (r *MySQLRepository) RecordUsageAttempt(ctx context.Context, attempt UsageAttempt) error {
 	if r == nil || r.db == nil {
 		return nil
@@ -175,6 +181,7 @@ ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
 	return err
 }
 
+// Settle applies a settlement plan with ledger and usage writes in one transaction.
 func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*SettlementResult, error) {
 	if r == nil || r.db == nil {
 		return nil, apperr.ConfigUnavailable("billing database is unavailable")
@@ -190,6 +197,8 @@ func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*Set
 		result.AlreadyDone = true
 		return result, tx.Commit()
 	}
+
+	// Step 1: lock the hold and balance row to keep settlement idempotent.
 	hold, err := selectHoldForUpdate(ctx, tx, plan.HoldID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("balance hold %q not found", plan.HoldID)
@@ -207,6 +216,8 @@ func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*Set
 	if err != nil {
 		return nil, err
 	}
+
+	// Step 2: calculate held-fund consumption, refund, and extra debit.
 	charge := plan.AmountMicros
 	if !plan.Billable {
 		charge = 0
@@ -228,6 +239,8 @@ func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*Set
 	}
 	usageRecordID := newID("usage")
 	ledgerEntryID := newID("ledger")
+
+	// Step 3: persist usage, ledger, account, and hold state atomically.
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO usage_records (
   id, request_id, tenant_id, project_id, api_key_id, model, provider_type, channel_id,
@@ -272,6 +285,7 @@ WHERE id = ?`, HoldStatusSettled, hold.ID); err != nil {
 	}, nil
 }
 
+// SaveFailedSettlement stores a failed settlement for repair replay.
 func (r *MySQLRepository) SaveFailedSettlement(ctx context.Context, failed FailedSettlement) error {
 	if r == nil || r.db == nil {
 		return apperr.ConfigUnavailable("billing database is unavailable")
@@ -302,6 +316,7 @@ ON DUPLICATE KEY UPDATE
 	return err
 }
 
+// ListPendingFailedSettlements returns due failed settlements ordered by retry time.
 func (r *MySQLRepository) ListPendingFailedSettlements(ctx context.Context, limit int) ([]FailedSettlement, error) {
 	if r == nil || r.db == nil {
 		return nil, nil
@@ -332,6 +347,7 @@ LIMIT ?`, FailedSettlementPending, FailedSettlementFailed, limit)
 	return out, rows.Err()
 }
 
+// MarkFailedSettlementReplayed marks a failed settlement as successfully repaired.
 func (r *MySQLRepository) MarkFailedSettlementReplayed(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `
 UPDATE failed_settlements
@@ -340,6 +356,7 @@ WHERE id = ?`, FailedSettlementReplayed, id)
 	return err
 }
 
+// MarkFailedSettlementFailed records a failed replay attempt and retry schedule.
 func (r *MySQLRepository) MarkFailedSettlementFailed(ctx context.Context, id string, nextRetryAt time.Time, lastError string) error {
 	_, err := r.db.ExecContext(ctx, `
 UPDATE failed_settlements
@@ -348,6 +365,7 @@ WHERE id = ?`, FailedSettlementFailed, nextRetryAt, lastError, id)
 	return err
 }
 
+// Reconcile reports balance accounts whose totals diverge from ledger movement.
 func (r *MySQLRepository) Reconcile(ctx context.Context) ([]ReconciliationIssue, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT a.id, a.currency, a.opening_micros, a.available_micros, a.held_micros,

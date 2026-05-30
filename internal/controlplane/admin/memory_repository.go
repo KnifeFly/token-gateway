@@ -43,6 +43,7 @@ func NewMemoryRepository() *MemoryRepository {
 	}
 }
 
+// UpsertTenant creates or updates a tenant in memory.
 func (r *MemoryRepository) UpsertTenant(_ context.Context, tenant Tenant) (*Tenant, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -60,6 +61,7 @@ func (r *MemoryRepository) UpsertTenant(_ context.Context, tenant Tenant) (*Tena
 	return clone(tenant), nil
 }
 
+// UpsertProject creates or updates a project in memory.
 func (r *MemoryRepository) UpsertProject(_ context.Context, project Project) (*Project, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -77,6 +79,7 @@ func (r *MemoryRepository) UpsertProject(_ context.Context, project Project) (*P
 	return clone(project), nil
 }
 
+// CreateAPIKey stores a hashed API key record.
 func (r *MemoryRepository) CreateAPIKey(_ context.Context, key APIKey) (*APIKey, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -90,6 +93,7 @@ func (r *MemoryRepository) CreateAPIKey(_ context.Context, key APIKey) (*APIKey,
 	return clone(key), nil
 }
 
+// ListAPIKeys returns safe API key metadata for a tenant or project scope.
 func (r *MemoryRepository) ListAPIKeys(_ context.Context, tenantID, projectID string) ([]APIKey, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -107,6 +111,7 @@ func (r *MemoryRepository) ListAPIKeys(_ context.Context, tenantID, projectID st
 	return keys, nil
 }
 
+// DisableAPIKey disables a stored API key and records revocation time.
 func (r *MemoryRepository) DisableAPIKey(_ context.Context, keyID string, revokedAt *time.Time) (*APIKey, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -118,6 +123,7 @@ func (r *MemoryRepository) DisableAPIKey(_ context.Context, keyID string, revoke
 	return clone(key), nil
 }
 
+// UpsertModel creates or updates public model configuration.
 func (r *MemoryRepository) UpsertModel(_ context.Context, model ModelConfig) (*ModelConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -128,6 +134,7 @@ func (r *MemoryRepository) UpsertModel(_ context.Context, model ModelConfig) (*M
 	return clone(model), nil
 }
 
+// UpsertChannel creates or updates provider channel configuration.
 func (r *MemoryRepository) UpsertChannel(_ context.Context, channel ChannelConfig) (*ChannelConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -135,6 +142,7 @@ func (r *MemoryRepository) UpsertChannel(_ context.Context, channel ChannelConfi
 	return clone(channel), nil
 }
 
+// UpsertRoute creates or updates a route policy.
 func (r *MemoryRepository) UpsertRoute(_ context.Context, route RoutePolicyConfig) (*RoutePolicyConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -142,6 +150,7 @@ func (r *MemoryRepository) UpsertRoute(_ context.Context, route RoutePolicyConfi
 	return clone(route), nil
 }
 
+// UpsertPrice creates or updates a model price rule.
 func (r *MemoryRepository) UpsertPrice(_ context.Context, price PriceRuleConfig) (*PriceRuleConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -149,6 +158,7 @@ func (r *MemoryRepository) UpsertPrice(_ context.Context, price PriceRuleConfig)
 	return clone(price), nil
 }
 
+// UpsertLimit creates or updates a scoped limit rule.
 func (r *MemoryRepository) UpsertLimit(_ context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -159,6 +169,7 @@ func (r *MemoryRepository) UpsertLimit(_ context.Context, limit LimitRuleConfig)
 	return clone(limit), nil
 }
 
+// UpsertPluginBinding creates or updates a plugin binding.
 func (r *MemoryRepository) UpsertPluginBinding(_ context.Context, binding PluginBindingConfig) (*PluginBindingConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -176,6 +187,7 @@ func (r *MemoryRepository) UpsertPluginBinding(_ context.Context, binding Plugin
 	return clone(binding), nil
 }
 
+// UpsertModelMarketplace creates or updates a tenant-visible catalog row.
 func (r *MemoryRepository) UpsertModelMarketplace(_ context.Context, config ModelMarketplaceConfig) (*ModelMarketplaceConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -193,6 +205,7 @@ func (r *MemoryRepository) UpsertModelMarketplace(_ context.Context, config Mode
 	return clone(config), nil
 }
 
+// ListVisibleModels returns enabled catalog rows visible to tenantID and projectID.
 func (r *MemoryRepository) ListVisibleModels(_ context.Context, tenantID, projectID string) ([]VisibleModel, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -226,6 +239,7 @@ func (r *MemoryRepository) ListVisibleModels(_ context.Context, tenantID, projec
 	return out, nil
 }
 
+// LoadSnapshotConfig returns all configuration needed to build a runtime snapshot.
 func (r *MemoryRepository) LoadSnapshotConfig(context.Context) (*SnapshotConfig, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -259,6 +273,7 @@ func (r *MemoryRepository) LoadSnapshotConfig(context.Context) (*SnapshotConfig,
 	return cfg, nil
 }
 
+// SaveSnapshot stores a built runtime snapshot record.
 func (r *MemoryRepository) SaveSnapshot(_ context.Context, record SnapshotRecord) (*SnapshotRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -269,6 +284,7 @@ func (r *MemoryRepository) SaveSnapshot(_ context.Context, record SnapshotRecord
 	return clone(record), nil
 }
 
+// ActiveSnapshot returns the currently active runtime snapshot record.
 func (r *MemoryRepository) ActiveSnapshot(context.Context) (*SnapshotRecord, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -276,6 +292,7 @@ func (r *MemoryRepository) ActiveSnapshot(context.Context) (*SnapshotRecord, boo
 	return clone(record), ok, nil
 }
 
+// PreviousSnapshot returns the most recently deactivated snapshot record.
 func (r *MemoryRepository) PreviousSnapshot(context.Context) (*SnapshotRecord, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -283,17 +300,21 @@ func (r *MemoryRepository) PreviousSnapshot(context.Context) (*SnapshotRecord, b
 	return clone(record), ok, nil
 }
 
+// ActivateSnapshot marks version active and preserves the previous active version.
 func (r *MemoryRepository) ActivateSnapshot(_ context.Context, version string) (*SnapshotRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	record := r.snapshots[version]
 	now := time.Now().UTC()
+	// Step 1: demote the existing active snapshot before promotion.
 	if r.active != "" && r.active != version {
 		old := r.snapshots[r.active]
 		old.Status = SnapshotStatusInactive
 		r.snapshots[old.Version] = old
 		r.previous = r.active
 	}
+
+	// Step 2: promote the requested snapshot as the active runtime version.
 	record.Status = SnapshotStatusActive
 	record.ActiveAt = &now
 	r.snapshots[version] = record

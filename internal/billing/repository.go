@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+// ErrAlreadySettled indicates an idempotent settlement has already completed.
 var ErrAlreadySettled = errors.New("request already settled")
 
 // Repository persists billing state.

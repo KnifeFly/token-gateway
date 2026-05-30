@@ -25,6 +25,7 @@ type MemoryRepository struct {
 	FailNextSettle bool
 }
 
+// NewMemoryRepository returns an in-memory billing repository.
 func NewMemoryRepository() *MemoryRepository {
 	return &MemoryRepository{
 		accounts:      make(map[string]BalanceAccount),
@@ -37,6 +38,7 @@ func NewMemoryRepository() *MemoryRepository {
 	}
 }
 
+// EnsureBalanceAccount stores or replaces a balance account.
 func (r *MemoryRepository) EnsureBalanceAccount(_ context.Context, account BalanceAccount) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -50,6 +52,7 @@ func (r *MemoryRepository) EnsureBalanceAccount(_ context.Context, account Balan
 	return nil
 }
 
+// CreateHold reserves available balance for a request.
 func (r *MemoryRepository) CreateHold(_ context.Context, request HoldRequest) (*BalanceHold, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -85,6 +88,7 @@ func (r *MemoryRepository) CreateHold(_ context.Context, request HoldRequest) (*
 	return &hold, nil
 }
 
+// GetHoldByRequestID returns the hold already associated with requestID.
 func (r *MemoryRepository) GetHoldByRequestID(_ context.Context, requestID string) (*BalanceHold, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -96,6 +100,7 @@ func (r *MemoryRepository) GetHoldByRequestID(_ context.Context, requestID strin
 	return &hold, true, nil
 }
 
+// ReleaseHold returns an active hold to available balance.
 func (r *MemoryRepository) ReleaseHold(_ context.Context, holdID string, reason string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -117,6 +122,7 @@ func (r *MemoryRepository) ReleaseHold(_ context.Context, holdID string, reason 
 	return nil
 }
 
+// RecordUsageAttempt records one provider attempt.
 func (r *MemoryRepository) RecordUsageAttempt(_ context.Context, attempt UsageAttempt) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -127,6 +133,7 @@ func (r *MemoryRepository) RecordUsageAttempt(_ context.Context, attempt UsageAt
 	return nil
 }
 
+// Settle applies a final settlement plan idempotently.
 func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*SettlementResult, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -144,6 +151,8 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 			AlreadyDone:   true,
 		}, nil
 	}
+
+	// Step 1: lock the active hold and locate the matching balance account.
 	hold := r.holds[plan.HoldID]
 	if hold.ID == "" {
 		return nil, fmt.Errorf("hold not found")
@@ -160,6 +169,8 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 			break
 		}
 	}
+
+	// Step 2: compute final charge, held-fund usage, refund, and extra debit.
 	charge := plan.AmountMicros
 	if !plan.Billable {
 		charge = 0
@@ -178,6 +189,8 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 	r.accounts[accountKeyValue] = account
 	hold.Status = HoldStatusSettled
 	r.holds[hold.ID] = hold
+
+	// Step 3: write the usage record and immutable ledger entry together.
 	record := UsageRecord{
 		ID:           newID("usage"),
 		RequestID:    plan.RequestID,
@@ -207,6 +220,7 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 	return &SettlementResult{UsageRecordID: record.ID, LedgerEntryID: entry.ID, AccountID: account.ID, Amount: record.Amount}, nil
 }
 
+// SaveFailedSettlement stores a replayable failed settlement record.
 func (r *MemoryRepository) SaveFailedSettlement(_ context.Context, failed FailedSettlement) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -224,6 +238,7 @@ func (r *MemoryRepository) SaveFailedSettlement(_ context.Context, failed Failed
 	return nil
 }
 
+// ListPendingFailedSettlements returns due settlement repair records.
 func (r *MemoryRepository) ListPendingFailedSettlements(_ context.Context, limit int) ([]FailedSettlement, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -240,6 +255,7 @@ func (r *MemoryRepository) ListPendingFailedSettlements(_ context.Context, limit
 	return out, nil
 }
 
+// MarkFailedSettlementReplayed marks a failed settlement as repaired.
 func (r *MemoryRepository) MarkFailedSettlementReplayed(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -249,6 +265,7 @@ func (r *MemoryRepository) MarkFailedSettlementReplayed(_ context.Context, id st
 	return nil
 }
 
+// MarkFailedSettlementFailed records a failed replay attempt and next retry time.
 func (r *MemoryRepository) MarkFailedSettlementFailed(_ context.Context, id string, nextRetryAt time.Time, lastError string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -261,6 +278,7 @@ func (r *MemoryRepository) MarkFailedSettlementFailed(_ context.Context, id stri
 	return nil
 }
 
+// Reconcile compares balance totals with ledger movement.
 func (r *MemoryRepository) Reconcile(_ context.Context) ([]ReconciliationIssue, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

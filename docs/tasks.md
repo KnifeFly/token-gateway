@@ -8,7 +8,7 @@
 - 未开始：无。
 - 阻塞：无。
 - 下一步建议：进入真实依赖环境做 release candidate dry run，重点复跑 Redis integration、compose smoke、load test、failure drills 和真实 upstream channel 验证。
-- 最近验证：2026-05-30 `go test ./...`、`make lint`、`make build`、`git diff --check` 均通过；Redis 集成 `TOKEN_GATEWAY_REDIS_ADDR=127.0.0.1:6379 go test ./internal/dataplane/limit -run TestRedisEnforcerIntegrationCoversP1LimitTypes -count=1` 通过；本地 gateway smoke 在 DB/billing/limits disabled、seed snapshot 和 mock upstream 下通过 `/healthz`、`/readyz`、`/v1/chat/completions`；`tests/failure/drills.sh` 通过；`go run ./tools/loadtest -requests 50 -concurrency 10` 通过。完整 compose MySQL smoke 未执行成功：本机已有 Docker MySQL 数据目录来自 8.4，当前 compose 镜像为 8.0.44，MySQL 拒绝 downgrade；未删除用户 volume。
+- 最近验证：2026-05-30 本轮注释补齐后 `go test ./...` 通过，`golint ./...` 已无缺失注释告警，剩余为既有 stutter/context 参数顺序建议，`git diff --check` 通过；此前 `make lint`、`make build` 均通过；Redis 集成 `TOKEN_GATEWAY_REDIS_ADDR=127.0.0.1:6379 go test ./internal/dataplane/limit -run TestRedisEnforcerIntegrationCoversP1LimitTypes -count=1` 通过；本地 gateway smoke 在 DB/billing/limits disabled、seed snapshot 和 mock upstream 下通过 `/healthz`、`/readyz`、`/v1/chat/completions`；`tests/failure/drills.sh` 通过；`go run ./tools/loadtest -requests 50 -concurrency 10` 通过。完整 compose MySQL smoke 未执行成功：本机已有 Docker MySQL 数据目录来自 8.4，当前 compose 镜像为 8.0.44，MySQL 拒绝 downgrade；未删除用户 volume。
 
 ## 使用规则
 

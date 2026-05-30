@@ -10,21 +10,36 @@ import (
 type Code string
 
 const (
-	CodeUnauthorized        Code = "unauthorized"
-	CodeForbidden           Code = "forbidden"
-	CodeInvalidArgument     Code = "invalid_argument"
-	CodeNotFound            Code = "not_found"
-	CodeRateLimited         Code = "rate_limited"
+	// CodeUnauthorized identifies missing or invalid authentication.
+	CodeUnauthorized Code = "unauthorized"
+	// CodeForbidden identifies authenticated callers without permission.
+	CodeForbidden Code = "forbidden"
+	// CodeInvalidArgument identifies malformed client input.
+	CodeInvalidArgument Code = "invalid_argument"
+	// CodeNotFound identifies a missing requested resource.
+	CodeNotFound Code = "not_found"
+	// CodeRateLimited identifies requests rejected by a limit.
+	CodeRateLimited Code = "rate_limited"
+	// CodeInsufficientBalance identifies requests without enough prepaid balance.
 	CodeInsufficientBalance Code = "insufficient_balance"
-	CodeProviderError       Code = "provider_error"
-	CodeAmbiguousProtocol   Code = "ambiguous_protocol"
+	// CodeProviderError identifies upstream provider failures.
+	CodeProviderError Code = "provider_error"
+	// CodeAmbiguousProtocol identifies requests that match more than one protocol.
+	CodeAmbiguousProtocol Code = "ambiguous_protocol"
+	// CodeIdempotencyConflict identifies reused idempotency keys with different payloads.
 	CodeIdempotencyConflict Code = "idempotency_conflict"
-	CodePolicyDenied        Code = "policy_denied"
-	CodeSnapshotStale       Code = "snapshot_stale"
-	CodeFeatureNotEnabled   Code = "feature_not_enabled"
-	CodeConfigUnavailable   Code = "config_unavailable"
-	CodeServiceUnavailable  Code = "service_unavailable"
-	CodeInternal            Code = "internal_error"
+	// CodePolicyDenied identifies requests blocked by policy.
+	CodePolicyDenied Code = "policy_denied"
+	// CodeSnapshotStale identifies requests rejected because runtime config is too old.
+	CodeSnapshotStale Code = "snapshot_stale"
+	// CodeFeatureNotEnabled identifies explicitly disabled product capabilities.
+	CodeFeatureNotEnabled Code = "feature_not_enabled"
+	// CodeConfigUnavailable identifies missing runtime configuration.
+	CodeConfigUnavailable Code = "config_unavailable"
+	// CodeServiceUnavailable identifies transient service failures.
+	CodeServiceUnavailable Code = "service_unavailable"
+	// CodeInternal identifies unexpected internal failures.
+	CodeInternal Code = "internal_error"
 )
 
 // Error is the application error type returned across transport boundaries.
@@ -114,30 +129,37 @@ func As(err error) (*Error, bool) {
 	return nil, false
 }
 
+// Unauthorized returns a 401 application error.
 func Unauthorized(message string, opts ...Option) *Error {
 	return New(CodeUnauthorized, message, http.StatusUnauthorized, opts...)
 }
 
+// Forbidden returns a 403 application error.
 func Forbidden(message string, opts ...Option) *Error {
 	return New(CodeForbidden, message, http.StatusForbidden, opts...)
 }
 
+// InvalidArgument returns a 400 application error.
 func InvalidArgument(message string, opts ...Option) *Error {
 	return New(CodeInvalidArgument, message, http.StatusBadRequest, opts...)
 }
 
+// NotFound returns a 404 application error.
 func NotFound(message string, opts ...Option) *Error {
 	return New(CodeNotFound, message, http.StatusNotFound, opts...)
 }
 
+// RateLimited returns a 429 application error.
 func RateLimited(message string, opts ...Option) *Error {
 	return New(CodeRateLimited, message, http.StatusTooManyRequests, opts...)
 }
 
+// InsufficientBalance returns a 402 application error.
 func InsufficientBalance(message string, opts ...Option) *Error {
 	return New(CodeInsufficientBalance, message, http.StatusPaymentRequired, opts...)
 }
 
+// ProviderError returns a 502 application error for upstream provider failures.
 func ProviderError(message string, opts ...Option) *Error {
 	return New(CodeProviderError, message, http.StatusBadGateway, opts...)
 }
@@ -152,10 +174,12 @@ func PolicyDenied(message string, opts ...Option) *Error {
 	return New(CodePolicyDenied, message, http.StatusForbidden, opts...)
 }
 
+// ConfigUnavailable returns a 503 application error for missing runtime configuration.
 func ConfigUnavailable(message string, opts ...Option) *Error {
 	return New(CodeConfigUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
 
+// ServiceUnavailable returns a 503 application error for transient service failures.
 func ServiceUnavailable(message string, opts ...Option) *Error {
 	return New(CodeServiceUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
@@ -170,6 +194,7 @@ func FeatureNotEnabled(message string, opts ...Option) *Error {
 	return New(CodeFeatureNotEnabled, message, http.StatusNotImplemented, opts...)
 }
 
+// Internal returns a 500 application error.
 func Internal(message string, opts ...Option) *Error {
 	return New(CodeInternal, message, http.StatusInternalServerError, opts...)
 }

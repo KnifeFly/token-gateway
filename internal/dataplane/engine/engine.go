@@ -11,6 +11,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+// engine.go keeps the request lifecycle readable: snapshot, auth, policy, route, dispatch, stream, and settlement.
+
 // GatewayEngine coordinates the data-plane request lifecycle.
 type GatewayEngine struct {
 	snapshot   SnapshotProvider

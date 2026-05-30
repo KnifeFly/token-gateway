@@ -13,6 +13,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
+// index.go builds and serves the immutable snapshot indexes used on the data-plane hot path.
+
 // IndexedSnapshot is the data-plane hot-path view of a runtime snapshot.
 type IndexedSnapshot struct {
 	ref            engine.SnapshotRef
@@ -51,6 +53,8 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		pluginsByPhase: make(map[string][]engine.PluginBindingView),
 		revokedHashes:  make(map[string]struct{}, len(runtime.RevokedKeys)),
 	}
+
+	// Step 1: validate identity-bearing records and build direct lookup maps.
 	for _, apiKey := range runtime.APIKeys {
 		if apiKey.KeyHash == "" {
 			return nil, fmt.Errorf("api key %q hash is required", apiKey.ID)
@@ -108,6 +112,8 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			indexed.modelAliases[alias] = model.PublicModel
 		}
 	}
+
+	// Step 2: index provider channels, routes, prices, and limits for hot-path reads.
 	for _, channel := range runtime.Channels {
 		if channel.ID == "" {
 			return nil, errors.New("channel id is required")
@@ -199,6 +205,8 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 	sort.SliceStable(indexed.limitRules, func(i, j int) bool {
 		return limitSpecificity(indexed.limitRules[i].Scope) > limitSpecificity(indexed.limitRules[j].Scope)
 	})
+
+	// Step 3: index plugin bindings and revocations by hot-path lookup key.
 	for _, binding := range runtime.PluginBindings {
 		if binding.Name == "" || binding.Phase == "" || !binding.Enabled {
 			continue
@@ -228,10 +236,12 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 	return indexed, nil
 }
 
+// Ref returns the immutable snapshot reference.
 func (s *IndexedSnapshot) Ref() engine.SnapshotRef {
 	return s.ref
 }
 
+// ListModels returns enabled model views sorted by public model.
 func (s *IndexedSnapshot) ListModels() []engine.ModelView {
 	models := make([]engine.ModelView, 0, len(s.modelsByName))
 	for _, model := range s.modelsByName {
@@ -243,11 +253,13 @@ func (s *IndexedSnapshot) ListModels() []engine.ModelView {
 	return models
 }
 
+// LookupAPIKeyHash returns API key metadata by hashed key.
 func (s *IndexedSnapshot) LookupAPIKeyHash(hash string) (engine.APIKeyView, bool) {
 	value, ok := s.apiKeysByHash[hash]
 	return value, ok
 }
 
+// LookupModel returns a model by public name or alias.
 func (s *IndexedSnapshot) LookupModel(publicModel string) (engine.ModelView, bool) {
 	if canonical := s.modelAliases[publicModel]; canonical != "" {
 		publicModel = canonical
@@ -256,26 +268,31 @@ func (s *IndexedSnapshot) LookupModel(publicModel string) (engine.ModelView, boo
 	return value, ok
 }
 
+// LookupRoute returns the route policy for a public model.
 func (s *IndexedSnapshot) LookupRoute(publicModel string) (engine.RoutePolicyView, bool) {
 	value, ok := s.routesByModel[publicModel]
 	return value, ok
 }
 
+// LookupChannel returns provider channel configuration by ID.
 func (s *IndexedSnapshot) LookupChannel(channelID string) (engine.ChannelView, bool) {
 	value, ok := s.channelsByID[channelID]
 	return value, ok
 }
 
+// LookupPrice returns the price rule for a public model.
 func (s *IndexedSnapshot) LookupPrice(publicModel string) (engine.PriceRuleView, bool) {
 	value, ok := s.pricesByModel[publicModel]
 	return value, ok
 }
 
+// LookupLimit returns the model-level limit rule for a public model.
 func (s *IndexedSnapshot) LookupLimit(publicModel string) (engine.LimitRuleView, bool) {
 	value, ok := s.limitsByModel[publicModel]
 	return value, ok
 }
 
+// LookupLimits returns all scoped limit rules matching a request scope.
 func (s *IndexedSnapshot) LookupLimits(scope engine.LimitScope) []engine.LimitRuleView {
 	var out []engine.LimitRuleView
 	for _, rule := range s.limitRules {
@@ -286,10 +303,12 @@ func (s *IndexedSnapshot) LookupLimits(scope engine.LimitScope) []engine.LimitRu
 	return out
 }
 
+// LookupPluginBindings returns plugin bindings for a phase.
 func (s *IndexedSnapshot) LookupPluginBindings(phase string) []engine.PluginBindingView {
 	return s.pluginsByPhase[phase]
 }
 
+// IsAPIKeyRevoked reports whether hash is in the snapshot revocation set.
 func (s *IndexedSnapshot) IsAPIKeyRevoked(hash string) bool {
 	_, ok := s.revokedHashes[hash]
 	return ok
@@ -306,6 +325,7 @@ type StoreDiagnostics struct {
 	StalenessSeconds float64
 }
 
+// NewStore returns an atomic snapshot store seeded with initial.
 func NewStore(initial *IndexedSnapshot) *Store {
 	store := &Store{}
 	if initial != nil {
@@ -314,6 +334,7 @@ func NewStore(initial *IndexedSnapshot) *Store {
 	return store
 }
 
+// Current returns the currently indexed snapshot.
 func (s *Store) Current() (*IndexedSnapshot, error) {
 	current := s.current.Load()
 	if current == nil {
@@ -322,6 +343,7 @@ func (s *Store) Current() (*IndexedSnapshot, error) {
 	return current, nil
 }
 
+// Replace swaps the current indexed snapshot atomically.
 func (s *Store) Replace(next *IndexedSnapshot) error {
 	if next == nil {
 		return errors.New("snapshot is nil")
@@ -417,6 +439,7 @@ type Provider struct {
 	metrics *Metrics
 }
 
+// NewProvider returns a snapshot provider backed by store.
 func NewProvider(store *Store, opts ...ProviderOption) *Provider {
 	p := &Provider{store: store}
 	for _, opt := range opts {
@@ -425,6 +448,7 @@ func NewProvider(store *Store, opts ...ProviderOption) *Provider {
 	return p
 }
 
+// Attach pins the current indexed snapshot on the request state.
 func (p *Provider) Attach(_ context.Context, state *engine.RequestState) error {
 	if p == nil || p.store == nil {
 		return apperr.ConfigUnavailable("runtime snapshot is unavailable")

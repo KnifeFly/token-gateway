@@ -35,6 +35,7 @@ type Recorder struct {
 	idempotencyHits  *prometheus.CounterVec
 }
 
+// NewRecorder registers data-plane metrics and returns an observe recorder.
 func NewRecorder(registry *prometheus.Registry, logger *slog.Logger) (*Recorder, error) {
 	if logger == nil {
 		logger = slog.Default()
@@ -129,6 +130,7 @@ func (r *Recorder) collectors() []prometheus.Collector {
 	}
 }
 
+// StartSpan starts a named data-plane span with safe attributes.
 func (r *Recorder) StartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, trace.Span) {
 	if r == nil || r.tracer == nil {
 		return ctx, trace.SpanFromContext(ctx)
@@ -136,6 +138,7 @@ func (r *Recorder) StartSpan(ctx context.Context, name string, attrs ...attribut
 	return r.tracer.Start(ctx, name, trace.WithAttributes(attrs...))
 }
 
+// RecordProviderAttempt records metrics and logs for one provider attempt.
 func (r *Recorder) RecordProviderAttempt(_ context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) {
 	if r == nil {
 		return
@@ -188,6 +191,7 @@ func (r *Recorder) RecordProviderAttempt(_ context.Context, state *engine.Reques
 	)
 }
 
+// FinishRequest records final request metrics and logs the safe outcome.
 func (r *Recorder) FinishRequest(_ context.Context, state *engine.RequestState, response *engine.GatewayResponse, err error) {
 	if r == nil || r.logger == nil || state == nil {
 		return

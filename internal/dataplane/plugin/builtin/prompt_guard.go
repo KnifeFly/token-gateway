@@ -14,19 +14,23 @@ type promptGuardConfig struct {
 	DenyTerms []string `json:"deny_terms"`
 }
 
+// Name returns the prompt guard plugin name.
 func (PromptGuard) Name() string {
 	return "prompt_guard"
 }
 
+// Phase returns the pre-prompt guard phase.
 func (PromptGuard) Phase() plugin.Phase {
 	return plugin.PhasePrePrompt
 }
 
+// Validate verifies prompt guard plugin configuration.
 func (PromptGuard) Validate(config json.RawMessage) error {
 	var cfg promptGuardConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute blocks prompts containing configured deny terms.
 func (PromptGuard) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg promptGuardConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

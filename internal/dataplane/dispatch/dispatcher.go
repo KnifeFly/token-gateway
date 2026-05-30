@@ -14,6 +14,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
+// dispatcher.go owns provider fallback, attempt telemetry, and adapter boundary calls.
+
 // Dispatcher calls registered provider adapters and records attempts.
 type Dispatcher struct {
 	registry    *provider.Registry
@@ -40,10 +42,12 @@ type DisableChecker interface {
 	IsChannelDisabled(ctx context.Context, channelID string) (bool, error)
 }
 
+// New returns a dispatcher without external credential resolution.
 func New(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, logger *slog.Logger) *Dispatcher {
 	return NewWithCredentials(registry, observe, attempts, nil, logger)
 }
 
+// NewWithCredentials returns a dispatcher with optional credential and disable checks.
 func NewWithCredentials(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, credentials CredentialResolver, logger *slog.Logger, disable ...DisableChecker) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
@@ -58,12 +62,14 @@ func NewWithCredentials(registry *provider.Registry, observe engine.ObserveRecor
 	return d
 }
 
+// Dispatch tries provider candidates in order and returns the first successful response.
 func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (*engine.ProviderResult, error) {
 	if state.RoutePlan == nil || len(state.RoutePlan.Candidates) == 0 {
 		return nil, apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
 	}
 	var lastErr error
 	for _, candidate := range state.RoutePlan.Candidates {
+		// Step 1: resolve adapter, channel, disable state, and credential.
 		adapter, ok := d.registry.Adapter(candidate.ProviderType)
 		if !ok {
 			lastErr = apperr.ServiceUnavailable("provider adapter is unavailable", apperr.WithTemporary())
@@ -92,6 +98,8 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			}
 			apiKey = resolved
 		}
+
+		// Step 2: relay the request and build an auditable provider attempt.
 		started := time.Now()
 		spanCtx, span := d.observe.StartSpan(ctx, "gateway.provider_attempt",
 			attribute.String("gateway.provider", candidate.ProviderType),
@@ -123,6 +131,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			Duration:     time.Since(started),
 		}
 		if err != nil {
+			// Step 3: record failed attempts before moving to fallback candidates.
 			span.RecordError(err)
 			lastErr = mapProviderError(err)
 			attempt.ErrorCode = providerErrorCode(err)
@@ -140,6 +149,8 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			}
 			continue
 		}
+
+		// Step 4: record success and stop fallback.
 		attempt.Success = true
 		attempt.StatusCode = response.StatusCode
 		state.ActualUsage = response.Usage

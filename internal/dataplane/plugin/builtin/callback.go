@@ -19,14 +19,17 @@ type callbackConfig struct {
 	AllowedHosts []string `json:"allowed_hosts"`
 }
 
+// Name returns the callback plugin name.
 func (Callback) Name() string {
 	return "callback"
 }
 
+// Phase returns the callback validation phase.
 func (Callback) Phase() plugin.Phase {
 	return plugin.PhasePrePrompt
 }
 
+// Validate verifies callback plugin configuration.
 func (Callback) Validate(config json.RawMessage) error {
 	var cfg callbackConfig
 	if err := decodeConfig(config, &cfg); err != nil {
@@ -42,6 +45,7 @@ func (Callback) Validate(config json.RawMessage) error {
 	return nil
 }
 
+// Execute normalizes, requires, disables, or validates async callback URLs.
 func (Callback) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg callbackConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

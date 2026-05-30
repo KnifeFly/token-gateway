@@ -15,19 +15,23 @@ type llmMetricConfig struct {
 	Enabled bool `json:"enabled"`
 }
 
+// Name returns the LLM metric plugin name.
 func (LLMMetric) Name() string {
 	return "llm_metric"
 }
 
+// Phase returns the audit phase for metric extraction.
 func (LLMMetric) Phase() plugin.Phase {
 	return plugin.PhaseAudit
 }
 
+// Validate verifies LLM metric plugin configuration.
 func (LLMMetric) Validate(config json.RawMessage) error {
 	var cfg llmMetricConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute records safe usage and cost fields in request-local state.
 func (LLMMetric) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	if input.State == nil {
 		return plugin.Result{}, nil

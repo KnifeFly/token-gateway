@@ -8,27 +8,46 @@ import (
 )
 
 const (
-	StatusQueued    Status = "queued"
-	StatusRunning   Status = "running"
+	// StatusQueued marks a task accepted but not yet dispatched.
+	StatusQueued Status = "queued"
+	// StatusRunning marks a task dispatched to a provider.
+	StatusRunning Status = "running"
+	// StatusSucceeded marks a task completed successfully.
 	StatusSucceeded Status = "succeeded"
-	StatusFailed    Status = "failed"
-	StatusCanceled  Status = "canceled"
-	StatusExpired   Status = "expired"
+	// StatusFailed marks a task completed with provider or gateway failure.
+	StatusFailed Status = "failed"
+	// StatusCanceled marks a task canceled before successful completion.
+	StatusCanceled Status = "canceled"
+	// StatusExpired marks a task that passed its retention or provider deadline.
+	StatusExpired Status = "expired"
 
-	KindImageGeneration       Kind              = "image.generation"
-	KindImageEdit             Kind              = "image.edit"
-	KindVideoGeneration       Kind              = "video.generation"
-	KindAudioSpeech           Kind              = "audio.speech"
-	KindAudioTranscription    Kind              = "audio.transcription"
-	KindMusicGeneration       Kind              = "music.generation"
-	ResourceTask              ResourceType      = "task"
-	ResourceFile              ResourceType      = "file"
+	// KindImageGeneration identifies image generation tasks.
+	KindImageGeneration Kind = "image.generation"
+	// KindImageEdit identifies image editing tasks.
+	KindImageEdit Kind = "image.edit"
+	// KindVideoGeneration identifies video generation tasks.
+	KindVideoGeneration Kind = "video.generation"
+	// KindAudioSpeech identifies text-to-speech tasks.
+	KindAudioSpeech Kind = "audio.speech"
+	// KindAudioTranscription identifies audio transcription tasks.
+	KindAudioTranscription Kind = "audio.transcription"
+	// KindMusicGeneration identifies music generation tasks.
+	KindMusicGeneration Kind = "music.generation"
+	// ResourceTask identifies task idempotency records.
+	ResourceTask ResourceType = "task"
+	// ResourceFile identifies file idempotency records.
+	ResourceFile ResourceType = "file"
+	// IdempotencyStatusReserved marks a key reserved before resource creation.
 	IdempotencyStatusReserved IdempotencyStatus = "reserved"
-	IdempotencyStatusBound    IdempotencyStatus = "bound"
+	// IdempotencyStatusBound marks a key bound to a durable resource.
+	IdempotencyStatusBound IdempotencyStatus = "bound"
 
-	CallbackStatusPending   CallbackStatus = "pending"
+	// CallbackStatusPending marks a callback waiting for delivery.
+	CallbackStatusPending CallbackStatus = "pending"
+	// CallbackStatusDelivered marks a callback delivered successfully.
 	CallbackStatusDelivered CallbackStatus = "delivered"
-	CallbackStatusFailed    CallbackStatus = "failed"
+	// CallbackStatusFailed marks a callback that failed and may retry.
+	CallbackStatusFailed CallbackStatus = "failed"
 )
 
 // Status is the durable internal async task state.

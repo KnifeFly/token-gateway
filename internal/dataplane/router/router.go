@@ -11,6 +11,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
+// router.go resolves public models into ordered provider candidates using snapshot and hot signals.
+
 // RoutePlanner resolves model permissions and ordered provider candidates.
 type RoutePlanner struct {
 	selector *PrioritySelector
@@ -25,6 +27,7 @@ type DisableChecker interface {
 	IsChannelDisabled(ctx context.Context, channelID string) (bool, error)
 }
 
+// NewRoutePlanner returns a route planner with default priority strategies.
 func NewRoutePlanner(selector *PrioritySelector, disable ...DisableChecker) *RoutePlanner {
 	if selector == nil {
 		selector = NewPrioritySelector(nil)
@@ -45,10 +48,13 @@ func (p *RoutePlanner) WithSignals(provider SignalProvider) *RoutePlanner {
 	return p
 }
 
+// Plan validates model access and writes an ordered provider route plan.
 func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) error {
 	if state.Snapshot == nil {
 		return apperr.ConfigUnavailable("runtime snapshot is unavailable")
 	}
+
+	// Step 1: resolve and authorize the requested public model.
 	model, ok := state.Snapshot.LookupModel(state.RequestedModel)
 	if !ok || !model.Enabled {
 		return apperr.NotFound("model not found")
@@ -62,6 +68,8 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	if !protocolMatchesModel(state.ProtocolMode, model.Protocol) {
 		return apperr.InvalidArgument("model protocol does not match endpoint")
 	}
+
+	// Step 2: expand the route policy into provider candidates from the snapshot.
 	route, ok := state.Snapshot.LookupRoute(model.PublicModel)
 	if !ok || len(route.Candidates) == 0 {
 		return apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
@@ -89,6 +97,8 @@ func (p *RoutePlanner) Plan(ctx context.Context, state *engine.RequestState) err
 	if len(candidates) == 0 {
 		return apperr.ServiceUnavailable("no provider channel is available", apperr.WithTemporary())
 	}
+
+	// Step 3: merge hot signals and persist the ordered plan on request state.
 	signals, err := p.routeSignals(ctx, state, candidates)
 	if err != nil {
 		return err
@@ -187,6 +197,7 @@ type PrioritySelector struct {
 	random *WeightedRandomSelector
 }
 
+// NewPrioritySelector returns a priority selector with weighted tie-breaking.
 func NewPrioritySelector(random *WeightedRandomSelector) *PrioritySelector {
 	if random == nil {
 		random = NewWeightedRandomSelector(rand.New(rand.NewSource(time.Now().UnixNano())))
@@ -194,6 +205,7 @@ func NewPrioritySelector(random *WeightedRandomSelector) *PrioritySelector {
 	return &PrioritySelector{random: random}
 }
 
+// Order returns candidates grouped by priority and shuffled by weight within a group.
 func (s *PrioritySelector) Order(candidates []engine.ProviderCandidate) []engine.ProviderCandidate {
 	ordered := append([]engine.ProviderCandidate(nil), candidates...)
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -223,6 +235,7 @@ type WeightedRandomSelector struct {
 	r  *rand.Rand
 }
 
+// NewWeightedRandomSelector returns a selector using r or a time-seeded random source.
 func NewWeightedRandomSelector(r *rand.Rand) *WeightedRandomSelector {
 	if r == nil {
 		r = rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -230,6 +243,7 @@ func NewWeightedRandomSelector(r *rand.Rand) *WeightedRandomSelector {
 	return &WeightedRandomSelector{r: r}
 }
 
+// Pick returns the index selected by positive candidate weights.
 func (s *WeightedRandomSelector) Pick(candidates []engine.ProviderCandidate) int {
 	if len(candidates) <= 1 {
 		return 0

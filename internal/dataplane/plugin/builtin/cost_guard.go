@@ -18,19 +18,23 @@ type costGuardConfig struct {
 	RouteOverride      *routeOverrideConfig `json:"route_override"`
 }
 
+// Name returns the cost guard plugin name.
 func (CostGuard) Name() string {
 	return "cost_guard"
 }
 
+// Phase returns the post-route cost guard phase.
 func (CostGuard) Phase() plugin.Phase {
 	return plugin.PhasePostRoute
 }
 
+// Validate verifies cost guard plugin configuration.
 func (CostGuard) Validate(config json.RawMessage) error {
 	var cfg costGuardConfig
 	return decodeConfig(config, &cfg)
 }
 
+// Execute blocks, degrades, or overrides routes when estimated cost exceeds policy.
 func (CostGuard) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg costGuardConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

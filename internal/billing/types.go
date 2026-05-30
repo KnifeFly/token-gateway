@@ -9,13 +9,19 @@ import (
 )
 
 const (
-	HoldStatusActive   = "active"
+	// HoldStatusActive means reserved balance has not been released or settled.
+	HoldStatusActive = "active"
+	// HoldStatusReleased means reserved balance was returned without settlement.
 	HoldStatusReleased = "released"
-	HoldStatusSettled  = "settled"
+	// HoldStatusSettled means reserved balance has been finalized into usage.
+	HoldStatusSettled = "settled"
 
-	FailedSettlementPending  = "pending"
+	// FailedSettlementPending marks repair records waiting for first replay.
+	FailedSettlementPending = "pending"
+	// FailedSettlementReplayed marks repair records successfully replayed.
 	FailedSettlementReplayed = "replayed"
-	FailedSettlementFailed   = "failed"
+	// FailedSettlementFailed marks repair records whose replay failed and should retry.
+	FailedSettlementFailed = "failed"
 )
 
 // BalanceAccount is a tenant/project balance bucket.

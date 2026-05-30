@@ -53,11 +53,13 @@ type Config struct {
 	Configd     ConfigdConfig   `yaml:"configd"`
 }
 
+// ServiceConfig identifies the running service in logs and telemetry.
 type ServiceConfig struct {
 	Name    string `yaml:"name"`
 	Version string `yaml:"version"`
 }
 
+// HTTPConfig controls public gateway HTTP server timeouts and limits.
 type HTTPConfig struct {
 	Addr              string   `yaml:"addr"`
 	ReadHeaderTimeout Duration `yaml:"read_header_timeout"`
@@ -68,6 +70,7 @@ type HTTPConfig struct {
 	MaxHeaderBytes    int      `yaml:"max_header_bytes"`
 }
 
+// DatabaseConfig controls optional MySQL connectivity and migrations.
 type DatabaseConfig struct {
 	Enabled         bool     `yaml:"enabled"`
 	Driver          string   `yaml:"driver"`
@@ -78,6 +81,7 @@ type DatabaseConfig struct {
 	MigrationsDir   string   `yaml:"migrations_dir"`
 }
 
+// RedisConfig controls optional Redis connectivity.
 type RedisConfig struct {
 	Enabled      bool     `yaml:"enabled"`
 	Addr         string   `yaml:"addr"`
@@ -90,6 +94,7 @@ type RedisConfig struct {
 	WriteTimeout Duration `yaml:"write_timeout"`
 }
 
+// TelemetryConfig controls logging, metrics, and tracing.
 type TelemetryConfig struct {
 	LogLevel       string        `yaml:"log_level"`
 	LogFormat      string        `yaml:"log_format"`
@@ -97,11 +102,13 @@ type TelemetryConfig struct {
 	Tracing        TracingConfig `yaml:"tracing"`
 }
 
+// TracingConfig controls OpenTelemetry tracing export.
 type TracingConfig struct {
 	Enabled  bool   `yaml:"enabled"`
 	Exporter string `yaml:"exporter"`
 }
 
+// GatewayConfig groups data-plane behavior toggles.
 type GatewayConfig struct {
 	Body        BodyConfig         `yaml:"body"`
 	Snapshot    SnapshotConfig     `yaml:"snapshot"`
@@ -112,23 +119,28 @@ type GatewayConfig struct {
 	Limits      LimitsConfig       `yaml:"limits"`
 }
 
+// BodyConfig controls request body limits.
 type BodyConfig struct {
 	MaxBytes int64 `yaml:"max_bytes"`
 }
 
+// SnapshotConfig controls runtime snapshot staleness policy.
 type SnapshotConfig struct {
 	SoftTTL Duration `yaml:"soft_ttl"`
 	HardTTL Duration `yaml:"hard_ttl"`
 }
 
+// ProtocolConfig controls fallback protocol classification.
 type ProtocolConfig struct {
 	DefaultMode string `yaml:"default_mode"`
 }
 
+// IdempotencyConfig controls async task and file idempotency retention.
 type IdempotencyConfig struct {
 	TTL Duration `yaml:"ttl"`
 }
 
+// SeedSnapshotConfig describes the local bootstrap snapshot.
 type SeedSnapshotConfig struct {
 	Enabled         bool     `yaml:"enabled"`
 	APIKey          string   `yaml:"api_key"`
@@ -147,6 +159,7 @@ type SeedSnapshotConfig struct {
 	ChannelTimeout  Duration `yaml:"channel_timeout"`
 }
 
+// BillingConfig controls local billing and balance reservation behavior.
 type BillingConfig struct {
 	Enabled                bool     `yaml:"enabled"`
 	Currency               string   `yaml:"currency"`
@@ -157,6 +170,7 @@ type BillingConfig struct {
 	LocalSeedBalanceMicros int64    `yaml:"local_seed_balance_micros"`
 }
 
+// LimitsConfig controls Redis-backed admission limits.
 type LimitsConfig struct {
 	Enabled             bool     `yaml:"enabled"`
 	RPM                 int64    `yaml:"rpm"`
@@ -171,6 +185,7 @@ type LimitsConfig struct {
 	KeyPrefix           string   `yaml:"key_prefix"`
 }
 
+// ControlConfig controls the admin control API process.
 type ControlConfig struct {
 	Addr                 string   `yaml:"addr"`
 	AdminToken           string   `yaml:"admin_token"`
@@ -179,6 +194,7 @@ type ControlConfig struct {
 	RevocationTTL        Duration `yaml:"revocation_ttl"`
 }
 
+// WorkerConfig controls background worker scheduling.
 type WorkerConfig struct {
 	Enabled                  bool     `yaml:"enabled"`
 	Addr                     string   `yaml:"addr"`
@@ -191,6 +207,7 @@ type WorkerConfig struct {
 	BatchSize                int      `yaml:"batch_size"`
 }
 
+// ConfigdConfig controls the snapshot publishing service.
 type ConfigdConfig struct {
 	Addr            string   `yaml:"addr"`
 	ShutdownTimeout Duration `yaml:"shutdown_timeout"`

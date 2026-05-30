@@ -8,18 +8,29 @@ import (
 )
 
 const (
-	BillabilityOperationSync   = "sync"
+	// BillabilityOperationSync marks a synchronous provider interaction.
+	BillabilityOperationSync = "sync"
+	// BillabilityOperationStream marks a streaming provider interaction.
 	BillabilityOperationStream = "stream"
-	BillabilityOperationTask   = "task"
+	// BillabilityOperationTask marks an async task provider interaction.
+	BillabilityOperationTask = "task"
 
-	BillabilityReasonProviderSuccess                 = "provider_success"
+	// BillabilityReasonProviderSuccess records a fully successful billable request.
+	BillabilityReasonProviderSuccess = "provider_success"
+	// BillabilityReasonPartialOutputClientDisconnected records billable partial stream output after client disconnect.
 	BillabilityReasonPartialOutputClientDisconnected = "partial_output_client_disconnected"
-	BillabilityReasonPartialOutputDownstreamFailed   = "partial_output_downstream_failed"
-	BillabilityReasonNoEffectiveOutput               = "no_effective_output"
-	BillabilityReasonProviderError                   = "provider_error"
-	BillabilityReasonTaskCanceled                    = "task_canceled"
-	BillabilityReasonTaskFailed                      = "task_failed"
-	BillabilityReasonTaskNotSucceeded                = "task_not_succeeded"
+	// BillabilityReasonPartialOutputDownstreamFailed records billable partial stream output after downstream write failure.
+	BillabilityReasonPartialOutputDownstreamFailed = "partial_output_downstream_failed"
+	// BillabilityReasonNoEffectiveOutput records non-billable interactions with no usable output.
+	BillabilityReasonNoEffectiveOutput = "no_effective_output"
+	// BillabilityReasonProviderError records non-billable provider failures.
+	BillabilityReasonProviderError = "provider_error"
+	// BillabilityReasonTaskCanceled records non-billable canceled tasks.
+	BillabilityReasonTaskCanceled = "task_canceled"
+	// BillabilityReasonTaskFailed records non-billable failed tasks.
+	BillabilityReasonTaskFailed = "task_failed"
+	// BillabilityReasonTaskNotSucceeded records non-billable tasks that are not terminal success.
+	BillabilityReasonTaskNotSucceeded = "task_not_succeeded"
 )
 
 // BillabilityPolicy decides whether a completed provider interaction is billable.

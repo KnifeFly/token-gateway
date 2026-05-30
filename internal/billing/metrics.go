@@ -11,6 +11,7 @@ type Metrics struct {
 	failedBacklog      prometheus.Gauge
 }
 
+// NewMetrics registers billing metrics with the provided registry.
 func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	m := &Metrics{
 		settlementFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -37,6 +38,7 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 	return m, nil
 }
 
+// RecordSettlementFailure increments the safe settlement failure counter.
 func (m *Metrics) RecordSettlementFailure() {
 	if m == nil || m.settlementFailures == nil {
 		return
@@ -44,6 +46,7 @@ func (m *Metrics) RecordSettlementFailure() {
 	m.settlementFailures.WithLabelValues("settlement_error").Inc()
 }
 
+// SetFailedBacklog sets the current failed settlement backlog gauge.
 func (m *Metrics) SetFailedBacklog(value int) {
 	if m == nil || m.failedBacklog == nil {
 		return
@@ -51,6 +54,7 @@ func (m *Metrics) SetFailedBacklog(value int) {
 	m.failedBacklog.Set(float64(value))
 }
 
+// IncrementFailedBacklog increments the failed settlement backlog gauge.
 func (m *Metrics) IncrementFailedBacklog() {
 	if m == nil || m.failedBacklog == nil {
 		return
@@ -58,6 +62,7 @@ func (m *Metrics) IncrementFailedBacklog() {
 	m.failedBacklog.Inc()
 }
 
+// DecrementFailedBacklog decrements the failed settlement backlog gauge.
 func (m *Metrics) DecrementFailedBacklog() {
 	if m == nil || m.failedBacklog == nil {
 		return

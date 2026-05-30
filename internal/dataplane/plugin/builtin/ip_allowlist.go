@@ -17,14 +17,17 @@ type ipAllowlistConfig struct {
 	DenyCIDRs  []string `json:"deny_cidrs"`
 }
 
+// Name returns the IP allowlist plugin name.
 func (IPAllowlist) Name() string {
 	return "ip_allowlist"
 }
 
+// Phase returns the pre-request IP allowlist phase.
 func (IPAllowlist) Phase() plugin.Phase {
 	return plugin.PhasePreRequest
 }
 
+// Validate verifies configured CIDR ranges.
 func (IPAllowlist) Validate(config json.RawMessage) error {
 	var cfg ipAllowlistConfig
 	if err := decodeConfig(config, &cfg); err != nil {
@@ -34,6 +37,7 @@ func (IPAllowlist) Validate(config json.RawMessage) error {
 	return err
 }
 
+// Execute enforces allow and deny CIDR policies for the request client IP.
 func (IPAllowlist) Execute(_ context.Context, input plugin.Input) (plugin.Result, error) {
 	var cfg ipAllowlistConfig
 	if err := decodeConfig(input.Config, &cfg); err != nil {

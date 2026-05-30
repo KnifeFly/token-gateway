@@ -17,10 +17,15 @@ import (
 type ProtocolMode string
 
 const (
-	ProtocolAuto         ProtocolMode = "auto"
-	ProtocolUnified      ProtocolMode = "unified"
+	// ProtocolAuto defers protocol selection to classifier and config defaults.
+	ProtocolAuto ProtocolMode = "auto"
+	// ProtocolUnified selects the gateway-native unified API dialect.
+	ProtocolUnified ProtocolMode = "unified"
+	// ProtocolNativeOpenAI selects OpenAI-compatible native APIs.
 	ProtocolNativeOpenAI ProtocolMode = "native_openai"
+	// ProtocolNativeClaude selects Claude-compatible native APIs.
 	ProtocolNativeClaude ProtocolMode = "native_claude"
+	// ProtocolNativeGemini selects Gemini-compatible native APIs.
 	ProtocolNativeGemini ProtocolMode = "native_gemini"
 )
 
@@ -28,31 +33,51 @@ const (
 type CanonicalAPI string
 
 const (
+	// CanonicalOpenAIChatCompletions identifies the OpenAI chat completions operation.
 	CanonicalOpenAIChatCompletions CanonicalAPI = "openai.chat_completions"
-	CanonicalOpenAIResponses       CanonicalAPI = "openai.responses"
-	CanonicalOpenAIEmbeddings      CanonicalAPI = "openai.embeddings"
-	CanonicalOpenAIModerations     CanonicalAPI = "openai.moderations"
-	CanonicalClaudeMessages        CanonicalAPI = "claude.messages"
+	// CanonicalOpenAIResponses identifies the OpenAI responses operation.
+	CanonicalOpenAIResponses CanonicalAPI = "openai.responses"
+	// CanonicalOpenAIEmbeddings identifies the OpenAI embeddings operation.
+	CanonicalOpenAIEmbeddings CanonicalAPI = "openai.embeddings"
+	// CanonicalOpenAIModerations identifies the OpenAI moderations operation.
+	CanonicalOpenAIModerations CanonicalAPI = "openai.moderations"
+	// CanonicalClaudeMessages identifies the Claude messages operation.
+	CanonicalClaudeMessages CanonicalAPI = "claude.messages"
+	// CanonicalGeminiGenerateContent identifies the Gemini generateContent operation.
 	CanonicalGeminiGenerateContent CanonicalAPI = "gemini.generate_content"
-	CanonicalImageGeneration       CanonicalAPI = "unified.image_generation"
-	CanonicalImageEdit             CanonicalAPI = "unified.image_edit"
-	CanonicalVideoGeneration       CanonicalAPI = "unified.video_generation"
-	CanonicalAudioSpeech           CanonicalAPI = "unified.audio_speech"
-	CanonicalAudioTranscription    CanonicalAPI = "unified.audio_transcription"
-	CanonicalMusicGeneration       CanonicalAPI = "unified.music_generation"
-	CanonicalTaskGet               CanonicalAPI = "task.get"
-	CanonicalTaskCancel            CanonicalAPI = "task.cancel"
-	CanonicalFileUploadBase64      CanonicalAPI = "file.upload_base64"
-	CanonicalFileUploadURL         CanonicalAPI = "file.upload_url"
-	CanonicalFileUploadStream      CanonicalAPI = "file.upload_stream"
-	CanonicalFileQuota             CanonicalAPI = "file.quota"
+	// CanonicalImageGeneration identifies unified image generation.
+	CanonicalImageGeneration CanonicalAPI = "unified.image_generation"
+	// CanonicalImageEdit identifies unified image editing.
+	CanonicalImageEdit CanonicalAPI = "unified.image_edit"
+	// CanonicalVideoGeneration identifies unified video generation.
+	CanonicalVideoGeneration CanonicalAPI = "unified.video_generation"
+	// CanonicalAudioSpeech identifies unified text-to-speech.
+	CanonicalAudioSpeech CanonicalAPI = "unified.audio_speech"
+	// CanonicalAudioTranscription identifies unified audio transcription.
+	CanonicalAudioTranscription CanonicalAPI = "unified.audio_transcription"
+	// CanonicalMusicGeneration identifies unified music generation.
+	CanonicalMusicGeneration CanonicalAPI = "unified.music_generation"
+	// CanonicalTaskGet identifies task read operations.
+	CanonicalTaskGet CanonicalAPI = "task.get"
+	// CanonicalTaskCancel identifies task cancellation operations.
+	CanonicalTaskCancel CanonicalAPI = "task.cancel"
+	// CanonicalFileUploadBase64 identifies base64 file uploads.
+	CanonicalFileUploadBase64 CanonicalAPI = "file.upload_base64"
+	// CanonicalFileUploadURL identifies URL file uploads.
+	CanonicalFileUploadURL CanonicalAPI = "file.upload_url"
+	// CanonicalFileUploadStream identifies streamed file uploads.
+	CanonicalFileUploadStream CanonicalAPI = "file.upload_stream"
+	// CanonicalFileQuota identifies file quota checks.
+	CanonicalFileQuota CanonicalAPI = "file.quota"
 )
 
 // TaskOperation identifies a task read/control operation.
 type TaskOperation string
 
 const (
-	TaskOperationGet    TaskOperation = "get"
+	// TaskOperationGet reads async task state.
+	TaskOperationGet TaskOperation = "get"
+	// TaskOperationCancel requests async task cancellation.
 	TaskOperationCancel TaskOperation = "cancel"
 )
 
@@ -60,10 +85,14 @@ const (
 type FileOperation string
 
 const (
+	// FileOperationUploadBase64 uploads a file using an inline base64 body.
 	FileOperationUploadBase64 FileOperation = "upload_base64"
-	FileOperationUploadURL    FileOperation = "upload_url"
+	// FileOperationUploadURL imports a file from a remote URL.
+	FileOperationUploadURL FileOperation = "upload_url"
+	// FileOperationUploadStream uploads a file from a request stream.
 	FileOperationUploadStream FileOperation = "upload_stream"
-	FileOperationQuota        FileOperation = "quota"
+	// FileOperationQuota reads current file quota state.
+	FileOperationQuota FileOperation = "quota"
 )
 
 // EndpointSpec records the matched public endpoint.
@@ -354,9 +383,13 @@ type ProviderResult struct {
 type PolicyAction string
 
 const (
-	PolicyAllow         PolicyAction = "allow"
-	PolicyDeny          PolicyAction = "deny"
-	PolicyDegrade       PolicyAction = "degrade"
+	// PolicyAllow permits the request to continue unchanged.
+	PolicyAllow PolicyAction = "allow"
+	// PolicyDeny blocks the request.
+	PolicyDeny PolicyAction = "deny"
+	// PolicyDegrade changes the request to a different model.
+	PolicyDegrade PolicyAction = "degrade"
+	// PolicyRouteOverride replaces the selected provider route.
 	PolicyRouteOverride PolicyAction = "route_override"
 )
 

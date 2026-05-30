@@ -7,6 +7,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
+// bridge.go translates data-plane async/file operations into durable task service calls.
+
 // ProviderTaskDispatcher submits and controls upstream async tasks.
 type ProviderTaskDispatcher interface {
 	Submit(ctx context.Context, request ProviderTaskRequest) (*ProviderTask, error)
