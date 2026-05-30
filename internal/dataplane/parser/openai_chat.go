@@ -1,10 +1,13 @@
 package parser
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"strings"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
@@ -54,11 +57,18 @@ func (p *Parser) Parse(_ context.Context, state *engine.RequestState) error {
 		return p.parseGemini(state, body)
 	case engine.CanonicalImageGeneration,
 		engine.CanonicalImageEdit,
-		engine.CanonicalVideoGeneration,
-		engine.CanonicalAudioSpeech,
+		engine.CanonicalAudioSpeech:
+		if state.ProtocolMode == engine.ProtocolNativeOpenAI {
+			return p.parseNativeOpenAIMedia(state, body)
+		}
+		return p.parseUnifiedMedia(state, body)
+	case engine.CanonicalVideoGeneration,
 		engine.CanonicalMusicGeneration:
 		return p.parseUnifiedMedia(state, body)
 	case engine.CanonicalAudioTranscription:
+		if state.ProtocolMode == engine.ProtocolNativeOpenAI {
+			return p.parseNativeOpenAIMedia(state, body)
+		}
 		return p.parseAudioTranscription(state, body)
 	case engine.CanonicalFileUploadBase64:
 		return p.parseFileBase64(state, body)
@@ -176,6 +186,25 @@ func (p *Parser) parseModeration(state *engine.RequestState, body []byte) error 
 	return nil
 }
 
+func (p *Parser) parseNativeOpenAIMedia(state *engine.RequestState, body []byte) error {
+	model, err := nativeOpenAIModelFromBody(body, state.Incoming.Header.Get("Content-Type"))
+	if err != nil {
+		return err
+	}
+	if model == "" {
+		return apperr.InvalidArgument("model is required")
+	}
+	state.RequestedModel = model
+	state.Stream = false
+	state.Async = false
+	state.Parsed = engine.ParsedRequest{
+		RawBody: body,
+		Model:   model,
+	}
+	state.EstimatedUsage = tokenusage.EstimateFromBytes(body)
+	return nil
+}
+
 func (p *Parser) parseClaudeMessage(state *engine.RequestState, body []byte) error {
 	var req modelStreamRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -267,6 +296,27 @@ type modelStreamRequest struct {
 type moderationRequest struct {
 	Model string          `json:"model"`
 	Input json.RawMessage `json:"input"`
+}
+
+func nativeOpenAIModelFromBody(body []byte, contentType string) (string, error) {
+	mediaType, params, _ := mime.ParseMediaType(contentType)
+	if strings.HasPrefix(mediaType, "multipart/") {
+		boundary := params["boundary"]
+		if boundary == "" {
+			return "", apperr.InvalidArgument("multipart boundary is required")
+		}
+		form, err := multipart.NewReader(bytes.NewReader(body), boundary).ReadForm(defaultMaxBodyBytes)
+		if err != nil {
+			return "", apperr.InvalidArgument("multipart body is invalid", apperr.WithCause(err))
+		}
+		defer func() { _ = form.RemoveAll() }()
+		return firstFormValue(form, "model"), nil
+	}
+	var req modelStreamRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	return req.Model, nil
 }
 
 func geminiModelFromPath(path string) string {

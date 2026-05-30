@@ -13,7 +13,7 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// Config controls Redis-backed fixed-window budget and concurrency limits.
+// Config controls Redis-backed token bucket, budget, and concurrency limits.
 type Config struct {
 	Enabled             bool
 	RPM                 int64
@@ -121,21 +121,14 @@ func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState)
 	if len(rules) == 0 {
 		return noopRelease{}, nil
 	}
-	fixed, leases := e.operationsFor(state, rules, now)
-	if len(fixed) == 0 && len(leases) == 0 {
+	buckets, counters, leases := e.operationsFor(state, rules, now)
+	if len(buckets) == 0 && len(counters) == 0 && len(leases) == 0 {
 		return noopRelease{}, nil
 	}
-	for _, op := range fixed {
-		if reason, ok := e.deny.Get(op.cacheKey, now); ok {
-			return nil, apperr.RateLimited(reason, apperr.WithTemporary())
-		}
+	if reason, ok := e.cachedDeny(now, buckets, counters, leases); ok {
+		return nil, apperr.RateLimited(reason, apperr.WithTemporary())
 	}
-	for _, op := range leases {
-		if reason, ok := e.deny.Get(op.cacheKey, now); ok {
-			return nil, apperr.RateLimited(reason, apperr.WithTemporary())
-		}
-	}
-	result, err := e.runScript(ctx, state.RequestID, fixed, leases, now)
+	result, err := e.runScript(ctx, state.RequestID, buckets, counters, leases, now)
 	if err != nil {
 		return nil, err
 	}
@@ -180,8 +173,9 @@ func (e *RedisEnforcer) rulesFor(state *engine.RequestState) []engine.LimitRuleV
 	}}
 }
 
-func (e *RedisEnforcer) operationsFor(state *engine.RequestState, rules []engine.LimitRuleView, now time.Time) ([]limitOp, []limitOp) {
-	var fixed []limitOp
+func (e *RedisEnforcer) operationsFor(state *engine.RequestState, rules []engine.LimitRuleView, now time.Time) ([]limitOp, []limitOp, []limitOp) {
+	var buckets []limitOp
+	var counters []limitOp
 	var leases []limitOp
 	tokens := estimatedTokens(state)
 	costMicros := estimatedCostMicros(state)
@@ -191,28 +185,40 @@ func (e *RedisEnforcer) operationsFor(state *engine.RequestState, rules []engine
 		}
 		scope := e.ruleScope(rule)
 		if rule.QPS > 0 {
-			fixed = append(fixed, e.fixedOp(scope, "qps", 1, rule.QPS, time.Second))
+			buckets = append(buckets, e.bucketOp(scope, "qps", 1, rule.QPS, time.Second))
 		}
 		if rule.RPM > 0 {
-			fixed = append(fixed, e.fixedOp(scope, "rpm", 1, rule.RPM, time.Minute))
+			buckets = append(buckets, e.bucketOp(scope, "rpm", 1, rule.RPM, time.Minute))
 		}
 		if rule.TPM > 0 {
-			fixed = append(fixed, e.fixedOp(scope, "tpm", tokens, rule.TPM, time.Minute))
+			buckets = append(buckets, e.bucketOp(scope, "tpm", tokens, rule.TPM, time.Minute))
 		}
 		if rule.DailyBudgetMicros > 0 {
-			fixed = append(fixed, e.fixedOp(scope, "daily_budget", costMicros, rule.DailyBudgetMicros, untilNextUTC(now)))
+			counters = append(counters, e.counterOp(scope, "daily_budget", costMicros, rule.DailyBudgetMicros, untilNextUTC(now)))
 		}
 		if rule.CostPerMinuteMicros > 0 {
-			fixed = append(fixed, e.fixedOp(scope, "cost_per_minute", costMicros, rule.CostPerMinuteMicros, time.Minute))
+			buckets = append(buckets, e.bucketOp(scope, "cost_per_minute", costMicros, rule.CostPerMinuteMicros, time.Minute))
 		}
 		if rule.Concurrency > 0 {
-			leases = append(leases, e.fixedOp(scope, "concurrency", 1, rule.Concurrency, e.cfg.LeaseTTL))
+			leases = append(leases, e.counterOp(scope, "concurrency", 1, rule.Concurrency, e.cfg.LeaseTTL))
 		}
 	}
-	return fixed, leases
+	return buckets, counters, leases
 }
 
-func (e *RedisEnforcer) fixedOp(scope, kind string, cost, limit int64, ttl time.Duration) limitOp {
+func (e *RedisEnforcer) bucketOp(scope, kind string, cost, limit int64, ttl time.Duration) limitOp {
+	key := strings.Join([]string{e.cfg.KeyPrefix, "bucket", scope, kind}, ":")
+	return limitOp{
+		key:      key,
+		cacheKey: key,
+		cost:     cost,
+		limit:    limit,
+		ttl:      ttl,
+		reason:   kind + " limit exceeded",
+	}
+}
+
+func (e *RedisEnforcer) counterOp(scope, kind string, cost, limit int64, ttl time.Duration) limitOp {
 	key := strings.Join([]string{e.cfg.KeyPrefix, "limit", scope, kind}, ":")
 	return limitOp{
 		key:      key,
@@ -237,14 +243,17 @@ func (e *RedisEnforcer) ruleScope(rule engine.LimitRuleView) string {
 	return strings.Join(parts, ":")
 }
 
-func (e *RedisEnforcer) runScript(ctx context.Context, requestID string, fixed, leases []limitOp, now time.Time) (limitResult, error) {
+func (e *RedisEnforcer) runScript(ctx context.Context, requestID string, buckets, counters, leases []limitOp, now time.Time) (limitResult, error) {
 	args := []any{
 		now.UnixMilli(),
 		requestID,
-		e.cfg.LeaseTTL.Milliseconds(),
-		len(fixed),
+		len(buckets),
 	}
-	for _, op := range fixed {
+	for _, op := range buckets {
+		args = append(args, op.key, op.cost, op.limit, op.ttl.Milliseconds(), op.reason, op.cacheKey)
+	}
+	args = append(args, len(counters))
+	for _, op := range counters {
 		args = append(args, op.key, op.cost, op.limit, op.ttl.Milliseconds(), op.reason, op.cacheKey)
 	}
 	args = append(args, len(leases))
@@ -260,6 +269,17 @@ func (e *RedisEnforcer) runScript(ctx context.Context, requestID string, fixed, 
 		return limitResult{}, fmt.Errorf("unexpected limit script result %T", raw)
 	}
 	return parseLimitResult(values, now), nil
+}
+
+func (e *RedisEnforcer) cachedDeny(now time.Time, groups ...[]limitOp) (string, bool) {
+	for _, group := range groups {
+		for _, op := range group {
+			if reason, ok := e.deny.Get(op.cacheKey, now); ok {
+				return reason, true
+			}
+		}
+	}
+	return "", false
 }
 
 func (e *RedisEnforcer) cacheDeny(result limitResult, now time.Time) {
@@ -407,12 +427,51 @@ func nonEmpty(value, fallback string) string {
 var limitScript = goredis.NewScript(`
 local now = tonumber(ARGV[1])
 local member = ARGV[2]
-local lease_ttl = tonumber(ARGV[3])
-local fixed_count = tonumber(ARGV[4])
-local pos = 5
-local fixed = {}
+local bucket_count = tonumber(ARGV[3])
+local pos = 4
+local buckets = {}
 
-for i = 1, fixed_count do
+for i = 1, bucket_count do
+  local key = ARGV[pos]
+  local cost = tonumber(ARGV[pos + 1])
+  local limit = tonumber(ARGV[pos + 2])
+  local ttl = tonumber(ARGV[pos + 3])
+  local reason = ARGV[pos + 4]
+  local cache_key = ARGV[pos + 5]
+  pos = pos + 6
+  if cost > limit then
+    return {0, reason, cache_key, tostring(limit), "0", tostring(now + ttl)}
+  end
+  local values = redis.call("HMGET", key, "tokens", "updated_at")
+  local tokens = tonumber(values[1])
+  local updated_at = tonumber(values[2])
+  if tokens == nil then
+    tokens = limit
+    updated_at = now
+  end
+  if updated_at == nil then
+    updated_at = now
+  end
+  local elapsed = now - updated_at
+  if elapsed < 0 then
+    elapsed = 0
+  end
+  if elapsed > 0 then
+    local refill = (elapsed * limit) / ttl
+    tokens = math.min(limit, tokens + refill)
+  end
+  if tokens + 0.000001 < cost then
+    local needed = cost - tokens
+    local reset_at = now + math.ceil((needed * ttl) / limit)
+    return {0, reason, cache_key, tostring(limit), tostring(math.floor(tokens)), tostring(reset_at)}
+  end
+  table.insert(buckets, {key, tokens - cost, now, math.max(ttl * 2, ttl + 1000)})
+end
+
+local counter_count = tonumber(ARGV[pos])
+pos = pos + 1
+local counters = {}
+for i = 1, counter_count do
   local key = ARGV[pos]
   local cost = tonumber(ARGV[pos + 1])
   local limit = tonumber(ARGV[pos + 2])
@@ -428,7 +487,7 @@ for i = 1, fixed_count do
     end
     return {0, reason, cache_key, tostring(limit), tostring(math.max(limit - current, 0)), tostring(now + pttl)}
   end
-  table.insert(fixed, {key, cost, ttl})
+  table.insert(counters, {key, cost, ttl})
 end
 
 local lease_count = tonumber(ARGV[pos])
@@ -441,7 +500,7 @@ for i = 1, lease_count do
   local reason = ARGV[pos + 3]
   local cache_key = ARGV[pos + 4]
   pos = pos + 5
-  redis.call("ZREMRANGEBYSCORE", key, "0", now - lease_ttl)
+  redis.call("ZREMRANGEBYSCORE", key, "0", now - ttl)
   local count = redis.call("ZCARD", key)
   if count >= limit then
     return {0, reason, cache_key, tostring(limit), "0", tostring(now + ttl)}
@@ -449,7 +508,12 @@ for i = 1, lease_count do
   table.insert(leases, {key, ttl})
 end
 
-for _, op in ipairs(fixed) do
+for _, op in ipairs(buckets) do
+  redis.call("HSET", op[1], "tokens", tostring(op[2]), "updated_at", tostring(op[3]))
+  redis.call("PEXPIRE", op[1], op[4])
+end
+
+for _, op in ipairs(counters) do
   local value = redis.call("INCRBY", op[1], op[2])
   if value == op[2] then
     redis.call("PEXPIRE", op[1], op[3])

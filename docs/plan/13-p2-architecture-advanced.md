@@ -2,7 +2,7 @@
 
 ## 阶段目标
 
-在 P0 生产闭环和 P1 设计能力稳定后，补齐完整架构蓝图中的独立配置面、插件能力、协议分类器增强和 Realtime 后续边界。P2 追求设计一致性和长期演进能力，不把 Realtime 误标为当前已完成能力。
+在 P0 生产闭环和 P1 设计能力稳定后，补齐完整架构蓝图中的独立配置面、插件能力、协议分类器增强和 Realtime disabled contract 边界。P2 追求设计一致性和长期演进能力，不把 Realtime 误标为当前或后续待交付能力。
 
 ## 交付物
 
@@ -11,7 +11,7 @@
 - 插件补齐 IP allowlist、Model ACL、RouteOverride 和 Callback plugin。
 - CostGuard 能产生明确的 policy 或 route decision，而不是只记录建议。
 - 请求分类器支持 model registry hint、body schema inference 和 `ambiguous_protocol`。
-- Realtime 完整实现保持独立后续阶段，当前只维护 disabled contract、session 预留和 WebSocket stub 边界。
+- Realtime 完整实现不进入当前路线，当前只维护 disabled contract、session 预留和 WebSocket stub 边界。
 
 ## 核心实现顺序
 
@@ -24,7 +24,7 @@
 7. 增强 classifier，按 header、endpoint、model registry hint 和 body schema inference 依次消歧。
 8. 对 native compatible API 与 unified API 重叠且无法判断的请求返回 `ambiguous_protocol`。
 9. 保持 Realtime disabled contract，补充测试确认未启用时返回标准 501/feature_not_enabled。
-10. 为未来完整 Realtime 另建阶段入口，范围包括 WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter 和 realtime billing。
+10. 固化 Realtime 不做完整实现的范围说明，避免 WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter 和 realtime billing 被误列为后续任务。
 
 ## 关键设计约束
 
@@ -34,7 +34,7 @@
 - 插件仍是配置驱动的内置能力，不引入动态代码执行、WASM 或插件市场。
 - RouteOverride plugin 只能输出受约束的 route decision，不能绕过 policy、billing 或 model ACL。
 - Classifier 不能靠单一 endpoint 猜测协议；无法确定时必须显式返回 `ambiguous_protocol`。
-- Realtime 在 P2 仍不声明完整可用，完整能力必须另行规划和验收。
+- Realtime 在 P2 仍不声明完整可用，完整能力不进入当前路线。
 
 ## 验收标准
 
@@ -45,7 +45,7 @@
 - CostGuard 能触发明确 deny、degrade 或 route decision，并被主链路消费。
 - Classifier 测试覆盖 header override、endpoint inference、model registry hint、body schema inference 和 `ambiguous_protocol`。
 - Realtime 未启用时 session API 和 WebSocket stub 稳定返回标准错误，不进入半实现状态。
-- 文档明确完整 Realtime 不属于 P2 的完成定义，只保留后续阶段入口。
+- 文档明确完整 Realtime 不属于 P2 或 P3 的完成定义，不再保留完整 Realtime 后续阶段入口。
 
 ## 风险与处理
 
@@ -55,7 +55,7 @@
 | snapshot 发布失败导致配置漂移 | 发布前 validate，失败不切换 active version，并记录审计和 metrics |
 | 插件能力绕过核心治理 | 插件输出统一 decision，由 policy/routing 主链路消费 |
 | classifier 误判协议 | 增加 registry hint 和 schema inference，无法确定时返回 `ambiguous_protocol` |
-| Realtime 范围失控 | P2 只维护预留和 disabled contract，完整 Realtime 单独立项 |
+| Realtime 范围失控 | 只维护预留和 disabled contract，完整 Realtime 需要重新产品决策后另立路线 |
 
 ## 设计来源
 

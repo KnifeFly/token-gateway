@@ -75,14 +75,21 @@ func (w *AttemptWriter) RecordProviderAttempt(ctx context.Context, state *engine
 
 // SettlementPlanner creates final settlement plans from request state.
 type SettlementPlanner struct {
-	price pricing.TokenPrice
+	price  pricing.TokenPrice
+	policy BillabilityPolicy
 }
 
 func NewSettlementPlanner(price pricing.TokenPrice) *SettlementPlanner {
-	return &SettlementPlanner{price: price}
+	return NewSettlementPlannerWithPolicy(price, NewBillabilityPolicy())
+}
+
+// NewSettlementPlannerWithPolicy returns a settlement planner with an explicit billability policy.
+func NewSettlementPlannerWithPolicy(price pricing.TokenPrice, policy BillabilityPolicy) *SettlementPlanner {
+	return &SettlementPlanner{price: price, policy: policy}
 }
 
 func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
+	decision := p.policy.Decide(RequestBillabilityContext(state))
 	amount := p.price.QuoteActual(state.ActualUsage)
 	if state.PriceRule.Enabled {
 		amount = pricing.TokenPrice{
@@ -91,7 +98,9 @@ func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
 			OutputMicrosPerToken: state.PriceRule.OutputMicrosPerToken,
 		}.QuoteActual(state.ActualUsage)
 	}
-	if amount.Micros == 0 && state.EstimatedChargeMicros > 0 {
+	if !decision.Billable {
+		amount.Micros = 0
+	} else if amount.Micros == 0 && state.EstimatedChargeMicros > 0 {
 		amount.Micros = state.EstimatedChargeMicros
 		amount.Currency = state.Currency
 	}
@@ -100,18 +109,19 @@ func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
 		candidate = state.ProviderResult.Candidate
 	}
 	return SettlementPlan{
-		RequestID:    state.RequestID,
-		TenantID:     state.TenantID,
-		ProjectID:    state.ProjectID,
-		APIKeyID:     state.APIKeyID,
-		HoldID:       state.BalanceHoldID,
-		Model:        state.RequestedModel,
-		ProviderType: candidate.ProviderType,
-		ChannelID:    candidate.ChannelID,
-		Usage:        state.ActualUsage,
-		AmountMicros: amount.Micros,
-		Currency:     amount.Currency,
-		Billable:     true,
+		RequestID:      state.RequestID,
+		TenantID:       state.TenantID,
+		ProjectID:      state.ProjectID,
+		APIKeyID:       state.APIKeyID,
+		HoldID:         state.BalanceHoldID,
+		Model:          state.RequestedModel,
+		ProviderType:   candidate.ProviderType,
+		ChannelID:      candidate.ChannelID,
+		Usage:          state.ActualUsage,
+		AmountMicros:   amount.Micros,
+		Currency:       amount.Currency,
+		Billable:       decision.Billable,
+		BillableReason: decision.Reason,
 	}
 }
 
@@ -222,4 +232,14 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 		s.metrics.SetFailedBacklog(len(pending) - replayed)
 	}
 	return replayed, nil
+}
+
+func settlementReason(plan SettlementPlan) string {
+	if plan.BillableReason == "" {
+		return "usage settlement"
+	}
+	if !plan.Billable {
+		return "usage settlement:not_billable:" + plan.BillableReason
+	}
+	return "usage settlement:" + plan.BillableReason
 }

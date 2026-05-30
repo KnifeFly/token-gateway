@@ -4,19 +4,20 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通 APIClassifier、BodyStore/OpenAI Chat Parser、API key auth、seed RuntimeSnapshot、priority/weighted routing、OpenAI-compatible provider adapter、ProviderDispatcher、provider attempt metrics/trace 和 settlement mock；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer、downstream disconnect 分类和 `ambiguous_protocol` 映射；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、task/file migration、TaskBridge、provider task poller、callback outbox、task settlement 和 base64/url/stream file service；M5 已落地 control API admin token、tenant/project/api key/model/channel/route/price/limit CRUD、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动的 plugin chain、9 个 MVP phase、scope/priority/name binding resolver、RequestSize、PromptTokenLimit、PII Redaction、PromptGuard、ResponseGuard、CostGuard、AuditLog、LLMMetric、PluginResult mutation、统一观察出口 audit/metric 日志和 `policy_denied` 映射；M7 已落地 metrics 命名和安全 label 规范、HTTP/provider/token/cost/retry/fallback/degrade/idempotency/task/callback/snapshot/billing 指标、GatewayEngine 核心阶段 spans、统一 redactor 增强、load test、failure drills、dashboard、alert rules 和性能预算文档；M8 已落地 RealtimeSession domain、RealtimeEngine/DisabledEngine、`/v1/realtime/sessions` create/get handler、`/v1/realtime` WebSocket stub、API key auth/model permission、audit log、trace 和 realtime metrics 接入点，未启用时返回 501/`feature_not_enabled`；M9 已落地商用运营报表服务、客户余额/用量/ledger report、provider cost/profit report、reconciliation report、idempotent manual adjustment、模型市场配置、Agent workflow/scene/shot metadata report、M9 migration、OpenAPI 管理接口和 backup/restore runbook；P0 已补齐 worker 进程、通用 job runner、真实 HTTP async provider task dispatcher、公开 models/credits/moderations API、snapshot stale policy、emergency disable 热路径和 P0 focused tests；P1 已补齐多维 limit rule runtime index、Redis Lua 多维限流、local deny cache、routing strategy registry、RouteSignals、health/cost/latency/quota 策略、显式 policy decision stage、model catalog/schema/alias/provider mapping 和 P1 focused tests；P2 设计差距补齐规划已落到 `docs/plan/13-p2-architecture-advanced.md`。
-- 未开始：P2 架构一致性与高级能力。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer 和 downstream disconnect 分类；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、TaskBridge、provider task poller、callback outbox、task settlement 和 file service；M5 已落地 control API、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动 plugin chain、9 个 MVP phase、内置安全/审计/指标插件和 `policy_denied` 映射；M7 已落地 metrics/tracing/redaction/load test/failure drills/dashboard/alert rules/性能预算；M8 已落地 Realtime reserved extension，未启用时稳定返回 501/`feature_not_enabled`，完整 Realtime 不进入当前路线；M9 已落地商用运营报表、对账、人工调账、模型市场配置、Agent metadata report、OpenAPI 管理接口和 backup/restore runbook；P0 已补齐 worker、异步任务、公开 API、snapshot stale policy、emergency disable 和 focused tests；P1 已补齐多维 limit rule runtime index、Redis Lua 多维限流、local deny cache、routing strategy registry、RouteSignals、显式 policy decision stage、model catalog/schema/alias/provider mapping 和 focused tests；P2 已补齐独立 configd、snapshot publish/rollback/diagnostics、IP allowlist、Model ACL、RouteOverride、Callback、CostGuard decision、classifier registry hint/body schema inference、`ambiguous_protocol` 测试和 Realtime disabled contract 边界；P3 已补齐 Redis token bucket/TPM 预扣、统一 billability policy、Native OpenAI images/audio adapter、Unified Media provider adapter contract、Redis RouteSignals、configd 分发 smoke 和生产验收文档。
+- 未开始：无。
 - 阻塞：无。
-- 下一步建议：进入 P2，优先补独立 configd、剩余插件、分类器增强和 Realtime 后续边界。
-- 最近验证：P1 开发后 `go test ./...`、`make test`、`make lint`、`make build`、`make race` 和 `git diff --check` 均通过；Redis 多维限流集成测试已提供 `TOKEN_GATEWAY_REDIS_ADDR` 开关，本轮未连接外部 Redis 执行；未重跑 compose smoke。
+- 下一步建议：进入真实依赖环境做 release candidate dry run，重点复跑 Redis integration、compose smoke、load test、failure drills 和真实 upstream channel 验证。
+- 最近验证：2026-05-30 `go test ./...`、`make lint`、`make build`、`git diff --check` 均通过；Redis 集成 `TOKEN_GATEWAY_REDIS_ADDR=127.0.0.1:6379 go test ./internal/dataplane/limit -run TestRedisEnforcerIntegrationCoversP1LimitTypes -count=1` 通过；本地 gateway smoke 在 DB/billing/limits disabled、seed snapshot 和 mock upstream 下通过 `/healthz`、`/readyz`、`/v1/chat/completions`；`tests/failure/drills.sh` 通过；`go run ./tools/loadtest -requests 50 -concurrency 10` 通过。完整 compose MySQL smoke 未执行成功：本机已有 Docker MySQL 数据目录来自 8.4，当前 compose 镜像为 8.0.44，MySQL 拒绝 downgrade；未删除用户 volume。
 
 ## 使用规则
 
 - M0-M9 任务 ID 采用 `M{milestone}/E{epic}-T{number}/P{priority}` 格式。
-- P0-P2 设计差距补齐任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式。
+- P0-P3 设计差距补齐和商用硬化任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式。
 - 第一轮优先完成 M0-M3 的 P0 任务，形成最小商用内核。
 - M4-M9 只拆到可执行粒度，避免早期过度展开控制面、插件和运营后台。
-- P0-P2 是 M0-M9 之后的设计差距补齐阶段，执行顺序固定为 P0、P1、P2。
+- P0-P3 是 M0-M9 之后的设计差距补齐和商用硬化阶段，执行顺序固定为 P0、P1、P2、P3。
+- 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - 每个任务完成时必须按影响范围更新代码、测试、迁移、OpenAPI、ADR、metrics、trace、日志、审计、配置、计划和故障说明。
 
 ## M0 基础工程与文档归一
@@ -204,18 +205,19 @@
 | [x] | P2/E12-T10/P1 | P1 | 增强 classifier body schema inference | `internal/dataplane/classifier`, `internal/dataplane/parser` | native/unified 重叠请求可通过 schema 消歧 |
 | [x] | P2/E12-T11/P1 | P1 | 补齐 `ambiguous_protocol` 场景测试 | `internal/dataplane/classifier`, `internal/dataplane/engine` | 无法判断协议时稳定返回 `ambiguous_protocol` |
 | [x] | P2/E12-T12/P2 | P2 | 固化 Realtime disabled contract | `internal/dataplane/realtime`, `internal/transport/realtimehttp` | 未启用时 session API 和 WebSocket stub 稳定返回 501/feature_not_enabled |
-| [x] | P2/E12-T13/P2 | P2 | 建立完整 Realtime 后续阶段入口 | `docs/plan`, `docs/tasks.md` | WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter、realtime billing 明确另行规划 |
+| [x] | P2/E12-T13/P2 | P2 | 固化完整 Realtime 不进入当前路线 | `docs/plan`, `docs/tasks.md` | 保留 disabled contract、session 预留和 WebSocket stub，不再规划 WebSocket/WebRTC、session memory、双向音视频、provider realtime adapter 或 realtime billing |
 
-## P3 Realtime Full
+## P3 Production Hardening
 
 | 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
 |---|---|---|---|---|---|
-| [ ] | P3/E13-T01/P1 | P1 | 扩展 RealtimeEngine lifecycle | `internal/dataplane/realtime` | create、relay、close、usage finalize 边界明确 |
-| [ ] | P3/E13-T02/P1 | P1 | 实现 WebSocket/WebRTC 会话入口 | `internal/transport/realtimehttp` | 双入口共享 session lifecycle，未启用时保留 P2 disabled contract |
-| [ ] | P3/E13-T03/P1 | P1 | 建立 provider realtime adapter | `internal/provider`, `internal/dataplane/realtime` | 至少一个 mock adapter 通过端到端测试 |
-| [ ] | P3/E13-T04/P1 | P1 | 接入 session memory 和资源限制 | `internal/dataplane/realtime`, `internal/infra` | 会话上下文隔离、TTL、限流和清理可验证 |
-| [ ] | P3/E13-T05/P1 | P1 | 接入 realtime billing 和 repair | `internal/billing`, `internal/dataplane/realtime` | 断线、异常关闭和 provider usage 回传均可结算或修复 |
-| [ ] | P3/E13-T06/P2 | P2 | 完成 realtime observability 和协议文档 | `docs/design`, `docs/plan`, `internal/dataplane/observe` | session metrics、trace、audit、close reason 和客户端事件合同完整 |
+| [x] | P3/E13-T01/P0 | P0 | 修正 Redis 限流算法语义 | `internal/dataplane/limit`, `internal/infra/redis` | QPS/RPM token bucket、TPM estimated pre-charge、concurrency lease、daily budget 和 cost-per-minute 在 Lua 中原子判断 |
+| [x] | P3/E13-T02/P0 | P0 | 引入统一 billability policy | `internal/billing`, `internal/dataplane/stream`, `internal/task` | 无有效输出不计费，部分输出、客户端断开、provider error、任务取消和任务成功都有确定性计费判定 |
+| [x] | P3/E13-T03/P0 | P0 | 补齐 Native OpenAI media adapter | `internal/provider/openai`, `internal/dataplane/parser`, `internal/transport/httpserver` | `/v1/images/*`、`/v1/audio/*` native compatible 路径有转发、模型改写、错误映射和 SDK/HTTP 测试 |
+| [x] | P3/E13-T04/P1 | P1 | 建立 Unified Media provider adapter contract | `internal/provider`, `internal/task` | image/video/audio/music submit、poll、cancel 有供应商字段映射，mock 只作为测试辅助 |
+| [x] | P3/E13-T05/P1 | P1 | 接入真实 RouteSignals 数据源 | `internal/dataplane/router`, `internal/dataplane/observe`, `internal/infra/redis` | health/cost/latency/quota 策略读取真实信号，信号缺失时安全退回 priority/weighted |
+| [x] | P3/E13-T06/P1 | P1 | 强化 configd snapshot 分发验证 | `cmd/configd`, `internal/controlplane/snapshot`, `internal/dataplane/snapshot` | publish、watch、rollback、diagnostics、configd 重启和 gateway stale policy 有进程级 smoke |
+| [x] | P3/E13-T07/P1 | P1 | 完成生产集成验收与文档校准 | `docs/design`, `docs/runbook`, `tests/`, `deployments/` | OpenAPI/runbook/ADR 与实现一致，Redis integration、compose smoke、load test 和 failure drills 可复现 |
 
 ## 阶段验收总览
 
@@ -233,5 +235,5 @@
 | M9 | 客户、运营和财务能围绕余额、用量、成本、利润、对账和灾备开展运营 |
 | P0 | worker、异步任务、公开 API、snapshot stale policy 和 emergency disable 形成生产闭环 |
 | P1 | 多维限流、策略路由、显式 policy stage 和 model catalog 达到设计能力要求 |
-| P2 | 独立 configd、剩余插件、分类器增强和 Realtime 后续边界与完整架构蓝图一致 |
-| P3 | 完整 Realtime 会话、双向音视频、provider realtime adapter 和 realtime billing 单独验收 |
+| P2 | 独立 configd、剩余插件、分类器增强和 Realtime disabled contract 边界与完整架构蓝图一致 |
+| P3 | 限流算法语义、账务计费策略、Native media、RouteSignals、configd 分发和生产集成验收达到商用硬化要求 |

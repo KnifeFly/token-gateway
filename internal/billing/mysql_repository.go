@@ -208,6 +208,9 @@ func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*Set
 		return nil, err
 	}
 	charge := plan.AmountMicros
+	if !plan.Billable {
+		charge = 0
+	}
 	if charge < 0 {
 		charge = 0
 	}
@@ -242,7 +245,7 @@ INSERT INTO ledger_entries (
   amount_micros, balance_after_micros, reason
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ledgerEntryID, plan.RequestID, "usage_debit", plan.TenantID, plan.ProjectID, account.ID,
-		plan.Currency, -charge, newAvailable, "usage settlement",
+		plan.Currency, -charge, newAvailable, settlementReason(plan),
 	); err != nil {
 		return nil, err
 	}

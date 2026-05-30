@@ -110,6 +110,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			PublicModel:   candidate.PublicModel,
 			UpstreamModel: candidate.UpstreamModel,
 			RawBody:       state.Parsed.RawBody,
+			ContentType:   state.Incoming.Header.Get("Content-Type"),
 			RequestID:     state.RequestID,
 			Stream:        state.Stream,
 		})

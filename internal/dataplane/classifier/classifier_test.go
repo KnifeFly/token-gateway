@@ -1,8 +1,10 @@
 package classifier
 
 import (
+	"bytes"
 	"context"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -152,6 +154,51 @@ func TestDefaultClassifierInfersUnifiedFromBodySchema(t *testing.T) {
 		t.Fatalf("Classify() error = %v", err)
 	}
 	if state.ProtocolMode != engine.ProtocolUnified {
+		t.Fatalf("ProtocolMode = %q", state.ProtocolMode)
+	}
+}
+
+func TestDefaultClassifierInfersNativeOpenAIAudioFromBodySchema(t *testing.T) {
+	state := &engine.RequestState{Incoming: engine.IncomingRequest{
+		Method: http.MethodPost,
+		Path:   "/v1/audio/speech",
+		Header: http.Header{},
+		Body:   io.NopCloser(strings.NewReader(`{"model":"tts-1","input":"hi","voice":"alloy","response_format":"mp3"}`)),
+	}}
+	if err := NewDefault().Classify(context.Background(), state); err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if state.ProtocolMode != engine.ProtocolNativeOpenAI {
+		t.Fatalf("ProtocolMode = %q", state.ProtocolMode)
+	}
+}
+
+func TestDefaultClassifierInfersNativeOpenAIFromMultipart(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("model", "whisper-1"); err != nil {
+		t.Fatalf("WriteField() error = %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "audio.wav")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write([]byte("wav")); err != nil {
+		t.Fatalf("part.Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	state := &engine.RequestState{Incoming: engine.IncomingRequest{
+		Method: http.MethodPost,
+		Path:   "/v1/audio/transcriptions",
+		Header: http.Header{"Content-Type": []string{writer.FormDataContentType()}},
+		Body:   io.NopCloser(bytes.NewReader(body.Bytes())),
+	}}
+	if err := NewDefault().Classify(context.Background(), state); err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if state.ProtocolMode != engine.ProtocolNativeOpenAI {
 		t.Fatalf("ProtocolMode = %q", state.ProtocolMode)
 	}
 }

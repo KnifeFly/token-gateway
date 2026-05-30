@@ -109,6 +109,44 @@ func TestFailedSettlementReplay(t *testing.T) {
 	}
 }
 
+func TestSettlementPlannerMarksNoOutputNotBillable(t *testing.T) {
+	planner := NewSettlementPlanner(pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 10, OutputMicrosPerToken: 20})
+	state := settlementState("hold_1")
+	state.ActualUsage = tokenusage.Actual{}
+	state.EstimatedChargeMicros = 300
+	state.ProviderResult.Response = nil
+
+	plan := planner.Plan(state)
+	if plan.Billable {
+		t.Fatalf("Billable = true, want false")
+	}
+	if plan.AmountMicros != 0 {
+		t.Fatalf("AmountMicros = %d, want 0", plan.AmountMicros)
+	}
+	if plan.BillableReason != BillabilityReasonNoEffectiveOutput {
+		t.Fatalf("BillableReason = %q", plan.BillableReason)
+	}
+}
+
+func TestSettlementPlannerBillsPartialStreamClientDisconnect(t *testing.T) {
+	planner := NewSettlementPlanner(pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 10, OutputMicrosPerToken: 20})
+	state := settlementState("hold_1")
+	state.Stream = true
+	state.Internal = map[string]any{
+		"stream_chunks":           int64(1),
+		"stream_upstream_bytes":   int64(32),
+		"stream_downstream_error": "client_disconnected",
+	}
+
+	plan := planner.Plan(state)
+	if !plan.Billable {
+		t.Fatalf("Billable = false, reason = %q", plan.BillableReason)
+	}
+	if plan.BillableReason != BillabilityReasonPartialOutputClientDisconnected {
+		t.Fatalf("BillableReason = %q", plan.BillableReason)
+	}
+}
+
 func settlementState(holdID string) *engine.RequestState {
 	return &engine.RequestState{
 		RequestID:      "req_1",
@@ -121,7 +159,7 @@ func settlementState(holdID string) *engine.RequestState {
 		ProviderResult: &engine.ProviderResult{Candidate: engine.ProviderCandidate{
 			ProviderType: "openai_compatible",
 			ChannelID:    "channel_1",
-		}},
+		}, Response: &engine.GatewayResponse{StatusCode: 200, Body: []byte(`{"ok":true}`)}},
 	}
 }
 

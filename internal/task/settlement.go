@@ -31,13 +31,14 @@ func (NoopSettlement) RecordFailed(_ context.Context, _ Task, _ tokenusage.Actua
 
 // BillingSettlement settles task usage through the billing repository.
 type BillingSettlement struct {
-	repo  billing.Repository
-	price pricing.TokenPrice
+	repo   billing.Repository
+	price  pricing.TokenPrice
+	policy billing.BillabilityPolicy
 }
 
 // NewBillingSettlement returns a billing-backed task settlement service.
 func NewBillingSettlement(repo billing.Repository, price pricing.TokenPrice) *BillingSettlement {
-	return &BillingSettlement{repo: repo, price: price}
+	return &BillingSettlement{repo: repo, price: price, policy: billing.NewBillabilityPolicy()}
 }
 
 // Settle debits the task hold once and writes usage/ledger records.
@@ -73,19 +74,30 @@ func (s *BillingSettlement) RecordFailed(ctx context.Context, task Task, usage t
 }
 
 func (s *BillingSettlement) plan(task Task, usage tokenusage.Actual) billing.SettlementPlan {
+	decision := s.policy.Decide(billing.BillabilityContext{
+		Operation:       billing.BillabilityOperationTask,
+		Usage:           usage,
+		TaskResultBytes: int64(len(task.Result)),
+		TaskStatus:      string(task.Status),
+		ProviderError:   task.ErrorCode,
+	})
 	amount := s.price.QuoteActual(usage)
+	if !decision.Billable {
+		amount.Micros = 0
+	}
 	return billing.SettlementPlan{
-		RequestID:    task.RequestID,
-		TenantID:     task.TenantID,
-		ProjectID:    task.ProjectID,
-		APIKeyID:     task.APIKeyID,
-		HoldID:       task.BalanceHoldID,
-		Model:        task.Model,
-		ProviderType: task.ProviderType,
-		ChannelID:    task.ChannelID,
-		Usage:        usage,
-		AmountMicros: amount.Micros,
-		Currency:     amount.Currency,
-		Billable:     true,
+		RequestID:      task.RequestID,
+		TenantID:       task.TenantID,
+		ProjectID:      task.ProjectID,
+		APIKeyID:       task.APIKeyID,
+		HoldID:         task.BalanceHoldID,
+		Model:          task.Model,
+		ProviderType:   task.ProviderType,
+		ChannelID:      task.ChannelID,
+		Usage:          usage,
+		AmountMicros:   amount.Micros,
+		Currency:       amount.Currency,
+		Billable:       decision.Billable,
+		BillableReason: decision.Reason,
 	}
 }

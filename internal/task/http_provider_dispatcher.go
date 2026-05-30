@@ -28,23 +28,87 @@ type ProviderChannelResolver interface {
 	ResolveProviderChannel(ctx context.Context, channelID string) (engine.ChannelView, bool, error)
 }
 
-// HTTPProviderTaskDispatcher calls a provider's HTTP async task API.
+// ProviderTaskAdapter maps one provider's async media task contract.
+type ProviderTaskAdapter interface {
+	Submit(ctx context.Context, request ProviderTaskRequest) (*ProviderTask, error)
+	Poll(ctx context.Context, task Task, channel engine.ChannelView) (*ProviderTaskResult, error)
+	Cancel(ctx context.Context, task Task, channel engine.ChannelView) error
+}
+
+// ProviderTaskAdapterRegistry stores provider-specific async task adapters.
+type ProviderTaskAdapterRegistry struct {
+	adapters map[string]ProviderTaskAdapter
+	fallback ProviderTaskAdapter
+}
+
+// NewProviderTaskAdapterRegistry returns a registry with the supplied fallback adapter.
+func NewProviderTaskAdapterRegistry(fallback ProviderTaskAdapter) *ProviderTaskAdapterRegistry {
+	return &ProviderTaskAdapterRegistry{adapters: map[string]ProviderTaskAdapter{}, fallback: fallback}
+}
+
+// Register adds or replaces a provider-specific async task adapter.
+func (r *ProviderTaskAdapterRegistry) Register(providerType string, adapter ProviderTaskAdapter) {
+	if r == nil || strings.TrimSpace(providerType) == "" || adapter == nil {
+		return
+	}
+	r.adapters[providerType] = adapter
+}
+
+func (r *ProviderTaskAdapterRegistry) adapter(providerType string) ProviderTaskAdapter {
+	if r == nil {
+		return nil
+	}
+	if adapter := r.adapters[providerType]; adapter != nil {
+		return adapter
+	}
+	return r.fallback
+}
+
+// HTTPProviderTaskDispatcher calls provider-specific async task adapters.
 type HTTPProviderTaskDispatcher struct {
+	registry *ProviderTaskAdapterRegistry
+	channels ProviderChannelResolver
+}
+
+// GenericHTTPProviderTaskAdapter maps the default /v1/tasks async provider contract.
+type GenericHTTPProviderTaskAdapter struct {
 	client      *http.Client
 	credentials ProviderCredentialResolver
-	channels    ProviderChannelResolver
 }
 
 // NewHTTPProviderTaskDispatcher returns a provider task dispatcher backed by HTTP.
 func NewHTTPProviderTaskDispatcher(client *http.Client, credentials ProviderCredentialResolver, channels ProviderChannelResolver) *HTTPProviderTaskDispatcher {
+	adapter := NewGenericHTTPProviderTaskAdapter(client, credentials)
+	return &HTTPProviderTaskDispatcher{registry: NewProviderTaskAdapterRegistry(adapter), channels: channels}
+}
+
+// NewGenericHTTPProviderTaskAdapter returns the default HTTP async task adapter.
+func NewGenericHTTPProviderTaskAdapter(client *http.Client, credentials ProviderCredentialResolver) *GenericHTTPProviderTaskAdapter {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &HTTPProviderTaskDispatcher{client: client, credentials: credentials, channels: channels}
+	return &GenericHTTPProviderTaskAdapter{client: client, credentials: credentials}
+}
+
+// RegisterAdapter adds a provider-specific adapter to the dispatcher.
+func (d *HTTPProviderTaskDispatcher) RegisterAdapter(providerType string, adapter ProviderTaskAdapter) {
+	if d == nil || d.registry == nil {
+		return
+	}
+	d.registry.Register(providerType, adapter)
 }
 
 // Submit creates an upstream provider task.
 func (d *HTTPProviderTaskDispatcher) Submit(ctx context.Context, request ProviderTaskRequest) (*ProviderTask, error) {
+	adapter := d.adapter(request.Candidate.ProviderType)
+	if adapter == nil {
+		return nil, apperr.ConfigUnavailable("provider task adapter is unavailable")
+	}
+	return adapter.Submit(ctx, request)
+}
+
+// Submit creates an upstream provider task using the default HTTP contract.
+func (a *GenericHTTPProviderTaskAdapter) Submit(ctx context.Context, request ProviderTaskRequest) (*ProviderTask, error) {
 	if strings.HasPrefix(request.Channel.BaseURL, "mock://") {
 		externalID := fmt.Sprintf("external_%s_%s", request.Candidate.ChannelID, request.Task.ID)
 		return &ProviderTask{ExternalID: externalID, Status: StatusRunning, Progress: 1}, nil
@@ -67,7 +131,7 @@ func (d *HTTPProviderTaskDispatcher) Submit(ctx context.Context, request Provide
 		return nil, apperr.Internal("provider task request could not be encoded", apperr.WithCause(err))
 	}
 	var out providerTaskResponse
-	if err := d.doJSON(ctx, http.MethodPost, endpoint, request.Channel, request.RequestID, body, &out); err != nil {
+	if err := a.doJSON(ctx, http.MethodPost, endpoint, request.Channel, request.RequestID, body, &out); err != nil {
 		return nil, err
 	}
 	externalID := firstNonEmpty(out.ExternalTaskID, out.ID)
@@ -90,6 +154,15 @@ func (d *HTTPProviderTaskDispatcher) Poll(ctx context.Context, task Task) (*Prov
 	if err != nil {
 		return nil, err
 	}
+	adapter := d.adapter(task.ProviderType)
+	if adapter == nil {
+		return nil, apperr.ConfigUnavailable("provider task adapter is unavailable")
+	}
+	return adapter.Poll(ctx, task, channel)
+}
+
+// Poll fetches the current upstream provider task status using the default HTTP contract.
+func (a *GenericHTTPProviderTaskAdapter) Poll(ctx context.Context, task Task, channel engine.ChannelView) (*ProviderTaskResult, error) {
 	if strings.HasPrefix(channel.BaseURL, "mock://") {
 		return mockProviderTaskResult(task), nil
 	}
@@ -98,7 +171,7 @@ func (d *HTTPProviderTaskDispatcher) Poll(ctx context.Context, task Task) (*Prov
 		return nil, err
 	}
 	var out providerTaskResponse
-	if err := d.doJSON(ctx, http.MethodGet, endpoint, channel, task.RequestID, nil, &out); err != nil {
+	if err := a.doJSON(ctx, http.MethodGet, endpoint, channel, task.RequestID, nil, &out); err != nil {
 		return nil, err
 	}
 	status := normalizeProviderStatus(out.Status)
@@ -124,6 +197,15 @@ func (d *HTTPProviderTaskDispatcher) Cancel(ctx context.Context, task Task) erro
 	if err != nil {
 		return err
 	}
+	adapter := d.adapter(task.ProviderType)
+	if adapter == nil {
+		return apperr.ConfigUnavailable("provider task adapter is unavailable")
+	}
+	return adapter.Cancel(ctx, task, channel)
+}
+
+// Cancel asks the upstream provider to cancel an async task using the default HTTP contract.
+func (a *GenericHTTPProviderTaskAdapter) Cancel(ctx context.Context, task Task, channel engine.ChannelView) error {
 	if strings.HasPrefix(channel.BaseURL, "mock://") {
 		return nil
 	}
@@ -131,10 +213,17 @@ func (d *HTTPProviderTaskDispatcher) Cancel(ctx context.Context, task Task) erro
 	if err != nil {
 		return err
 	}
-	return d.doJSON(ctx, http.MethodPost, endpoint, channel, task.RequestID, nil, nil)
+	return a.doJSON(ctx, http.MethodPost, endpoint, channel, task.RequestID, nil, nil)
 }
 
-func (d *HTTPProviderTaskDispatcher) doJSON(ctx context.Context, method string, endpoint string, channel engine.ChannelView, requestID string, body []byte, out any) error {
+func (d *HTTPProviderTaskDispatcher) adapter(providerType string) ProviderTaskAdapter {
+	if d == nil || d.registry == nil {
+		return nil
+	}
+	return d.registry.adapter(providerType)
+}
+
+func (a *GenericHTTPProviderTaskAdapter) doJSON(ctx context.Context, method string, endpoint string, channel engine.ChannelView, requestID string, body []byte, out any) error {
 	timeout := channel.Timeout
 	if timeout <= 0 {
 		timeout = defaultProviderTaskTimeout
@@ -157,8 +246,8 @@ func (d *HTTPProviderTaskDispatcher) doJSON(ctx context.Context, method string, 
 		req.Header.Set("X-Request-ID", requestID)
 	}
 	apiKey := channel.APIKey
-	if d.credentials != nil && channel.ID != "" {
-		resolved, err := d.credentials.ResolveProviderAPIKey(ctx, channel)
+	if a.credentials != nil && channel.ID != "" {
+		resolved, err := a.credentials.ResolveProviderAPIKey(ctx, channel)
 		if err != nil {
 			return err
 		}
@@ -167,7 +256,7 @@ func (d *HTTPProviderTaskDispatcher) doJSON(ctx context.Context, method string, 
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
-	res, err := d.client.Do(req)
+	res, err := a.client.Do(req)
 	if err != nil {
 		return apperr.ProviderError("provider task request failed", apperr.WithCause(err), apperr.WithTemporary())
 	}

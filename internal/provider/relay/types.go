@@ -26,6 +26,7 @@ type Request struct {
 	PublicModel   string
 	UpstreamModel string
 	RawBody       []byte
+	ContentType   string
 	RequestID     string
 	Stream        bool
 }
