@@ -5,16 +5,16 @@
 ## 当前状态
 
 - 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer 和 downstream disconnect 分类；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、TaskBridge、provider task poller、callback outbox、task settlement 和 file service；M5 已落地 control API、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动 plugin chain、9 个 MVP phase、内置安全/审计/指标插件和 `policy_denied` 映射；M7 已落地 metrics/tracing/redaction/load test/failure drills/dashboard/alert rules/性能预算；M8 已落地 Realtime reserved extension，未启用时稳定返回 501/`feature_not_enabled`，完整 Realtime 不进入当前路线；M9 已落地商用运营报表、对账、人工调账、模型市场配置、Agent metadata report、OpenAPI 管理接口和 backup/restore runbook；P0 已补齐 worker、异步任务、公开 API、snapshot stale policy、emergency disable 和 focused tests；P1 已补齐多维 limit rule runtime index、Redis Lua 多维限流、local deny cache、routing strategy registry、RouteSignals、显式 policy decision stage、model catalog/schema/alias/provider mapping 和 focused tests；P2 已补齐独立 configd、snapshot publish/rollback/diagnostics、IP allowlist、Model ACL、RouteOverride、Callback、CostGuard decision、classifier registry hint/body schema inference、`ambiguous_protocol` 测试和 Realtime disabled contract 边界；P3 已补齐 Redis token bucket/TPM 预扣、统一 billability policy、Native OpenAI images/audio adapter、Unified Media provider adapter contract、Redis RouteSignals、configd 分发 smoke 和生产验收文档；P4 已补齐干净依赖环境 RC smoke、worker 运营 job、真实 provider release channel、configd Redis active snapshot 分发、OpenAPI 管理面合同、发布级观测安全 release gate 和 staging 灰度上线 runbook；P5 已补齐 OpenAI/Claude/Gemini 协议兼容矩阵、SDK-compatible HTTP wire shape、stream 生命周期、tool/multimodal passthrough、usage/error normalization、contract tests 和 OpenAPI/runbook 同步；P6 已补齐 provider/channel 健康信号、熔断、retry budget、fallback 限制、provider attempt 追踪和 failure drills；P7 已补齐非存储媒体输入资产语义、media provider result asset contract、Replicate fixture 映射、callback/settlement result URL 衔接和媒体 contract tests；P8 已补齐 Portal 模型/schema、credits、usage、API key 自助管理、task 查询、权限边界测试、OpenAPI contract 和 runbook；P9 已补齐客户接入验收收口、Portal smoke CLI、RC smoke 集成、OpenAPI import preflight 和 customer acceptance runbook；P10 已补齐发布交接收口、release handoff CLI、PR 模板、发布证据字段、回滚说明和 runbook。
-- 待执行：P5-P10 当前路线已完成；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
+- 待执行：P11 模型分类、复杂价格体系、渠道成本和模型目录运营能力；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
 - 阻塞：无。
-- 下一步建议：使用 `.github/pull_request_template.md` 开 PR，并在 staging 或 RC 环境执行 `tests/rc/clean_env_smoke.sh` 后把 `make release-handoff-check` 输出和 `rc_smoke=portal_customer_acceptance` / `portal_smoke=passed` 证据贴入 PR。
-- 最近验证：2026-05-30 review hardening 修复 Portal API key 快照刷新、异步任务终态结算、控制面 `enabled=false`、admin token fail-closed 和 fallback per-candidate 限流后，`go test ./...` 与 `go vet ./...` 通过；2026-05-30 P10 `go run ./tools/release-handoff -run-checks -output /tmp/token-gateway-p10-release-handoff.md` 通过，覆盖 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`go test ./tools/portal-smoke ./tools/release-handoff ./tests/contract`、`bash -n tests/rc/clean_env_smoke.sh` 和 `tests/failure/release_gate.sh`；`git diff --check` 通过；此前 P8 `go test ./internal/portal ./internal/transport/portalhttp ./internal/task ./internal/bootstrap` 通过；此前 P7 `go test ./internal/dataplane/parser ./internal/task ./internal/provider/replicate ./internal/worker/jobs ./tests/contract` 通过；此前 `go test ./internal/dataplane/observe ./internal/dataplane/router ./internal/dataplane/dispatch ./internal/billing ./internal/infra/redis` 通过；`bash -n tests/failure/provider_reliability_drills.sh` 和 `bash -n tests/failure/release_gate.sh` 通过；非 live `tests/failure/release_gate.sh` 通过；此前 `bash tests/rc/clean_env_smoke.sh` 使用独立 Docker compose project/volume 和自动避让端口跑通 MySQL、Redis、migration、gateway、control-api、configd、worker、health/ready、Redis active snapshot key、snapshot publish/watch/rollback、gateway chat 和 metrics，输出 `rc_smoke=passed`；`make lint`、`make build`、Redis 集成、failure drills 和 load test 均通过。
+- 下一步建议：从 P11/E21-T01/P0 开始，先定义模型 category、分类价格模板和组件化价格单位，再迁移客户售价、provider cost、settlement 和模型目录展示字段。
+- 最近验证：2026-05-30 P11 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试；2026-05-30 review hardening 修复 Portal API key 快照刷新、异步任务终态结算、控制面 `enabled=false`、admin token fail-closed 和 fallback per-candidate 限流后，`go test ./...` 与 `go vet ./...` 通过；2026-05-30 P10 `go run ./tools/release-handoff -run-checks -output /tmp/token-gateway-p10-release-handoff.md` 通过，覆盖 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`go test ./tools/portal-smoke ./tools/release-handoff ./tests/contract`、`bash -n tests/rc/clean_env_smoke.sh` 和 `tests/failure/release_gate.sh`；`git diff --check` 通过；此前 P8 `go test ./internal/portal ./internal/transport/portalhttp ./internal/task ./internal/bootstrap` 通过；此前 P7 `go test ./internal/dataplane/parser ./internal/task ./internal/provider/replicate ./internal/worker/jobs ./tests/contract` 通过；此前 `go test ./internal/dataplane/observe ./internal/dataplane/router ./internal/dataplane/dispatch ./internal/billing ./internal/infra/redis` 通过；`bash -n tests/failure/provider_reliability_drills.sh` 和 `bash -n tests/failure/release_gate.sh` 通过；非 live `tests/failure/release_gate.sh` 通过；此前 `bash tests/rc/clean_env_smoke.sh` 使用独立 Docker compose project/volume 和自动避让端口跑通 MySQL、Redis、migration、gateway、control-api、configd、worker、health/ready、Redis active snapshot key、snapshot publish/watch/rollback、gateway chat 和 metrics，输出 `rc_smoke=passed`；`make lint`、`make build`、Redis 集成、failure drills 和 load test 均通过。
 
 ## 使用规则
 
 - M0-M9 任务 ID 采用 `M{milestone}/E{epic}-T{number}/P{priority}` 格式。
 - P0-P4 设计差距补齐、商用硬化和发布验收任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式。
-- P5-P10 剩余产品能力、验收和发布交接收口任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，执行顺序固定为 P5、P6、P7、P8、P9、P10。
+- P5-P11 剩余产品能力、验收、发布交接和模型价格目录增强任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，执行顺序固定为 P5、P6、P7、P8、P9、P10、P11。
 - 第一轮优先完成 M0-M3 的 P0 任务，形成最小商用内核。
 - M4-M9 只拆到可执行粒度，避免早期过度展开控制面、插件和运营后台。
 - P0-P4 是 M0-M9 之后的设计差距补齐、商用硬化和发布候选验收阶段，执行顺序固定为 P0、P1、P2、P3、P4。
@@ -298,6 +298,20 @@
 | [x] | P10/E20-T04/P1 | P1 | 增加 PR 模板 | `.github/pull_request_template.md` | PR 模板覆盖 scope、validation、customer acceptance、release notes 和范围边界 |
 | [x] | P10/E20-T05/P1 | P1 | 编写发布交接 runbook | `docs/runbook/release-handoff.md`, `docs/runbook/staging-rollout.md` | runbook 固定 handoff 生成、RC/staging 证据、PR 填写和 rollback 检查 |
 
+## P11 Model Pricing Catalog
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | P11/E21-T01/P0 | P0 | 定义模型 category 枚举和默认模板 | `internal/controlplane/admin`, `internal/controlplane/snapshot`, `docs/plan/22-p11-model-pricing-catalog.md` | chat、embedding、rerank、image、video、audio_speech、audio_transcription、music、moderation、realtime_reserved 可表达，并能进入 snapshot |
+| [ ] | P11/E21-T02/P0 | P0 | 实现分类价格模板和单位校验 | `internal/domain/pricing`, `internal/controlplane/admin` | 每个 category 只允许配置受支持的价格单位，非法单位发布前被拒绝 |
+| [ ] | P11/E21-T03/P0 | P0 | 实现客户售价组件化并兼容旧 token 字段 | `internal/controlplane/admin`, `internal/controlplane/snapshot`, `internal/domain/pricing` | 旧 input/output token 字段可读写，新逻辑统一规范化为 price components |
+| [ ] | P11/E21-T04/P0 | P0 | 将 hold、settlement、failed replay、async task settlement 切到统一报价器 | `internal/dataplane/admission`, `internal/billing`, `internal/task` | chat、image、video、audio task 的 hold、ledger、settlement 和 failed replay 金额一致 |
+| [ ] | P11/E21-T05/P1 | P1 | 实现 provider cost 组件化并保持与客户售价隔离 | `internal/billing/reporting`, migrations, reporting tests | provider cost 使用同构组件结构，但不参与客户扣费，利润报表可按 provider/channel/model 聚合 |
+| [ ] | P11/E21-T06/P1 | P1 | 增强模型目录展示字段和 tags/metadata | `internal/controlplane/admin`, `internal/controlplane/snapshot`, `internal/portal` | 模型 category、tags、modalities、capabilities、status、sort order 和 metadata 可发布并被 Portal/模型列表读取 |
+| [ ] | P11/E21-T07/P1 | P1 | 增强渠道模型 metadata、测试状态和成本配置状态 | `internal/controlplane/admin`, `internal/controlplane/snapshot` | public model 到 upstream model 映射保留，渠道模型能力覆盖、测试状态和成本状态可追踪 |
+| [ ] | P11/E21-T08/P1 | P1 | 增加渠道测试和上游模型同步 preview 的后台能力 | control-plane service/CLI, provider adapters | 单渠道、单模型、批量测试和上游模型列表 preview 可输出新增、删除、变更、未知 category 和缺价格/成本配置 |
+| [ ] | P11/E21-T09/P1 | P1 | 补齐 OpenAPI、runbook、focused tests 和兼容测试 | `docs/design/ai_gateway_openapi.yaml`, `docs/runbook`, focused tests | 复杂价格、模型分类、渠道成本、目录展示、同步 preview 和旧价格字段兼容均可验证 |
+
 ## 阶段验收总览
 
 | 阶段 | 验收标准 |
@@ -323,3 +337,4 @@
 | P8 | Portal API 支持模型、schema、credits、usage、API key 自助管理和 task 查询，权限边界清晰 |
 | P9 | 客户接入验收可重复执行，Portal smoke、OpenAPI import preflight 和 RC smoke 集成可形成发布证据 |
 | P10 | 发布交接可重复生成，PR 模板、release handoff、验证命令、客户验收和 rollback 字段可形成交付证据 |
+| P11 | 模型分类、复杂价格、渠道成本、模型目录展示和渠道测试/同步 preview 可验证，客户售价与 provider 成本边界清晰 |
