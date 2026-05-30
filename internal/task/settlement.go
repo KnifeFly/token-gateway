@@ -29,6 +29,22 @@ func (NoopSettlement) RecordFailed(_ context.Context, _ Task, _ tokenusage.Actua
 	return cause
 }
 
+// SettleTerminalTask settles or records repair state for a terminal async task.
+func SettleTerminalTask(ctx context.Context, settlement Settlement, task Task, usage tokenusage.Actual) error {
+	if !IsTerminal(task.Status) {
+		return nil
+	}
+	if settlement == nil {
+		settlement = NoopSettlement{}
+	}
+	if err := settlement.Settle(ctx, task, usage); err != nil {
+		if recordErr := settlement.RecordFailed(ctx, task, usage, err); recordErr != nil {
+			return recordErr
+		}
+	}
+	return nil
+}
+
 // BillingSettlement settles task usage through the billing repository.
 type BillingSettlement struct {
 	repo   billing.Repository

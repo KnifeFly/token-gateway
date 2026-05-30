@@ -41,9 +41,7 @@ func (s *Service) UpsertTenant(ctx context.Context, tenant Tenant) (*Tenant, err
 	if tenant.Name == "" {
 		return nil, apperr.InvalidArgument("tenant name is required")
 	}
-	if !tenant.Enabled {
-		tenant.Enabled = true
-	}
+	tenant.Enabled = defaultEnabled(tenant.Enabled, tenant.EnabledSet)
 	return s.repo.UpsertTenant(ctx, tenant)
 }
 
@@ -52,9 +50,7 @@ func (s *Service) UpsertProject(ctx context.Context, project Project) (*Project,
 	if project.TenantID == "" || project.Name == "" {
 		return nil, apperr.InvalidArgument("tenant_id and name are required")
 	}
-	if !project.Enabled {
-		project.Enabled = true
-	}
+	project.Enabled = defaultEnabled(project.Enabled, project.EnabledSet)
 	return s.repo.UpsertProject(ctx, project)
 }
 
@@ -122,9 +118,7 @@ func (s *Service) UpsertModel(ctx context.Context, model ModelConfig) (*ModelCon
 	if !json.Valid(model.Schema) {
 		return nil, apperr.InvalidArgument("model schema must be valid json")
 	}
-	if !model.Enabled {
-		model.Enabled = true
-	}
+	model.Enabled = defaultEnabled(model.Enabled, model.EnabledSet)
 	return s.repo.UpsertModel(ctx, model)
 }
 
@@ -147,9 +141,7 @@ func (s *Service) UpsertChannel(ctx context.Context, channel ChannelConfig) (*Ch
 		channel.EncryptedAPIKey = ciphertext
 		channel.APIKey = ""
 	}
-	if !channel.Enabled {
-		channel.Enabled = true
-	}
+	channel.Enabled = defaultEnabled(channel.Enabled, channel.EnabledSet)
 	return s.repo.UpsertChannel(ctx, channel)
 }
 
@@ -164,9 +156,7 @@ func (s *Service) UpsertRoute(ctx context.Context, route RoutePolicyConfig) (*Ro
 	if route.Strategy == "" {
 		route.Strategy = "priority"
 	}
-	if !route.Enabled {
-		route.Enabled = true
-	}
+	route.Enabled = defaultEnabled(route.Enabled, route.EnabledSet)
 	for i := range route.Candidates {
 		if route.Candidates[i].Weight <= 0 {
 			route.Candidates[i].Weight = 100
@@ -181,9 +171,7 @@ func (s *Service) UpsertPrice(ctx context.Context, price PriceRuleConfig) (*Pric
 		return nil, apperr.InvalidArgument("public_model and currency are required")
 	}
 	price.Currency = strings.ToUpper(strings.TrimSpace(price.Currency))
-	if !price.Enabled {
-		price.Enabled = true
-	}
+	price.Enabled = defaultEnabled(price.Enabled, price.EnabledSet)
 	return s.repo.UpsertPrice(ctx, price)
 }
 
@@ -201,9 +189,7 @@ func (s *Service) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*Limi
 	if limit.ID == "" {
 		limit.ID = limitRuleID(limit)
 	}
-	if !limit.Enabled {
-		limit.Enabled = true
-	}
+	limit.Enabled = defaultEnabled(limit.Enabled, limit.EnabledSet)
 	return s.repo.UpsertLimit(ctx, limit)
 }
 
@@ -219,10 +205,8 @@ func (s *Service) UpsertPluginBinding(ctx context.Context, binding PluginBinding
 	}
 	if binding.ID == "" {
 		binding.ID = pluginBindingID(binding)
-		if !binding.Enabled {
-			binding.Enabled = true
-		}
 	}
+	binding.Enabled = defaultEnabled(binding.Enabled, binding.EnabledSet)
 	if binding.Priority == 0 {
 		binding.Priority = 100
 	}
@@ -253,9 +237,7 @@ func (s *Service) UpsertModelMarketplace(ctx context.Context, config ModelMarket
 	if config.DisplayName == "" {
 		config.DisplayName = config.PublicModel
 	}
-	if !config.Enabled {
-		config.Enabled = true
-	}
+	config.Enabled = defaultEnabled(config.Enabled, config.EnabledSet)
 	if len(config.Metadata) == 0 {
 		config.Metadata = json.RawMessage(`{}`)
 	}
@@ -295,6 +277,13 @@ func pluginBindingID(binding PluginBindingConfig) string {
 func limitRuleID(limit LimitRuleConfig) string {
 	base := fmt.Sprintf("limit_%s_%s_%s_%s_%s_%s", limit.TenantID, limit.ProjectID, limit.APIKeyID, limit.PublicModel, limit.ProviderType, limit.ChannelID)
 	return strings.Trim(pluginBindingIDRe.ReplaceAllString(base, "_"), "_")
+}
+
+func defaultEnabled(enabled bool, explicitlySet bool) bool {
+	if explicitlySet {
+		return enabled
+	}
+	return true
 }
 
 func cleanStrings(values []string) []string {

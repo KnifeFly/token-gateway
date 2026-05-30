@@ -52,6 +52,19 @@ func TestHandlerPublishesAndReportsDiagnostics(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsEmptyAdminToken(t *testing.T) {
+	repo := admin.NewMemoryRepository()
+	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
+	mux := http.NewServeMux()
+	NewHandler(publisher, "", nil).Register(mux)
+
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/configd/snapshots/publish", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandlerRollsBackActiveSnapshot(t *testing.T) {
 	ctx := context.Background()
 	repo := admin.NewMemoryRepository()

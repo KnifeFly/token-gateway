@@ -28,11 +28,16 @@ type ProviderTaskRequest struct {
 type Bridge struct {
 	service    *Service
 	dispatcher ProviderTaskDispatcher
+	settlement Settlement
 }
 
 // NewBridge returns a task bridge.
-func NewBridge(service *Service, dispatcher ProviderTaskDispatcher) *Bridge {
-	return &Bridge{service: service, dispatcher: dispatcher}
+func NewBridge(service *Service, dispatcher ProviderTaskDispatcher, settlement ...Settlement) *Bridge {
+	bridge := &Bridge{service: service, dispatcher: dispatcher}
+	if len(settlement) > 0 {
+		bridge.settlement = settlement[0]
+	}
+	return bridge
 }
 
 // CheckIdempotency returns an existing async task before admission creates a new hold.
@@ -138,6 +143,7 @@ func (b *Bridge) HandleTaskOperation(ctx context.Context, state *engine.RequestS
 		if err != nil {
 			return nil, err
 		}
+		wasTerminal := IsTerminal(task.Status)
 		if !IsTerminal(task.Status) && b.dispatcher != nil {
 			if err := b.dispatcher.Cancel(ctx, *task); err != nil {
 				return nil, err
@@ -146,6 +152,11 @@ func (b *Bridge) HandleTaskOperation(ctx context.Context, state *engine.RequestS
 		task, err = b.service.CancelTask(ctx, state.TenantID, state.ProjectID, state.Parsed.Task.TaskID)
 		if err != nil {
 			return nil, err
+		}
+		if !wasTerminal {
+			if err := SettleTerminalTask(ctx, b.settlement, *task, task.Usage); err != nil {
+				return nil, err
+			}
 		}
 		return TaskResponse(task)
 	default:

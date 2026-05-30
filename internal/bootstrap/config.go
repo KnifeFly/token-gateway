@@ -351,6 +351,7 @@ func (c *Config) Normalize() {
 	c.Telemetry.LogLevel = strings.ToLower(strings.TrimSpace(c.Telemetry.LogLevel))
 	c.Telemetry.LogFormat = strings.ToLower(strings.TrimSpace(c.Telemetry.LogFormat))
 	c.Telemetry.Tracing.Exporter = strings.ToLower(strings.TrimSpace(c.Telemetry.Tracing.Exporter))
+	c.Control.AdminToken = strings.TrimSpace(c.Control.AdminToken)
 
 	if c.Environment == "" {
 		c.Environment = "local"
@@ -499,6 +500,9 @@ func (c Config) Validate() error {
 	}
 	if c.Redis.Enabled && c.Redis.Addr == "" {
 		errs = append(errs, errors.New("redis.addr is required when redis is enabled"))
+	}
+	if c.Control.AdminToken == "" {
+		errs = append(errs, errors.New("control.admin_token is required"))
 	}
 	if c.Telemetry.Tracing.Enabled {
 		switch c.Telemetry.Tracing.Exporter {

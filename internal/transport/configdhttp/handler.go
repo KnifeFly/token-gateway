@@ -37,7 +37,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if h.token != "" && adminToken(r) != h.token {
+		if strings.TrimSpace(h.token) == "" {
+			writeError(w, apperr.ConfigUnavailable("admin token is required"))
+			return
+		}
+		if adminToken(r) != h.token {
 			writeError(w, apperr.Unauthorized("invalid admin token"))
 			return
 		}

@@ -27,6 +27,19 @@ func TestHandlerRequiresAdminToken(t *testing.T) {
 	}
 }
 
+func TestHandlerRejectsEmptyAdminToken(t *testing.T) {
+	repo := admin.NewMemoryRepository()
+	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "", nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/tenants", strings.NewReader(`{"name":"tenant"}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHandlerCreatesModelWithAdminToken(t *testing.T) {
 	repo := admin.NewMemoryRepository()
 	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)

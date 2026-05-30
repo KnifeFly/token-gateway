@@ -107,7 +107,7 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	portalHandler := portalhttp.NewHandler(
 		gatewayRuntime.snapshotProvider,
 		gatewayRuntime.authenticator,
-		portal.NewService(gatewayRuntime.adminService, reporting.NewService(reportRepo), gatewayRuntime.taskRepo),
+		portal.NewService(gatewayRuntime.adminService, reporting.NewService(reportRepo), gatewayRuntime.taskRepo, gatewayRuntime.portalOptions()...),
 		logger,
 	)
 	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler, publicHandler, portalHandler}, gatewayRuntime.engine)
@@ -128,6 +128,7 @@ type gatewayRuntime struct {
 	observeRecorder  engine.ObserveRecorder
 	adminService     *admin.Service
 	taskRepo         tasksvc.Repository
+	portalSnapshots  portal.SnapshotRefresher
 }
 
 func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*gatewayRuntime, error) {
@@ -149,12 +150,14 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	}
 	adminRepo := admin.Repository(admin.NewMemoryRepository())
 	usingDBAdmin := cfg.Database.Enabled && database != nil && database.DB() != nil
+	var snapshotDistributor cpsnapshot.RuntimeSnapshotDistributor
 	if usingDBAdmin {
 		adminRepo = admin.NewMySQLRepository(database.DB())
 		activeProvider := dpsnapshot.ActiveRuntimeProvider(cpsnapshot.NewActiveProvider(adminRepo))
 		var watcherOpts []dpsnapshot.WatcherOption
 		if redisClient.Raw() != nil {
 			redisSnapshots := snapshotdist.NewRedisDistribution(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
+			snapshotDistributor = redisSnapshots
 			activeProvider = dpsnapshot.NewFallbackActiveProvider(redisSnapshots, activeProvider)
 			watcherOpts = append(watcherOpts, dpsnapshot.WithEventSource(redisSnapshots))
 		}
@@ -183,7 +186,9 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 
 	admissionController := engine.AdmissionController(engine.NoopAdmission{})
 	limitEnforcer := engine.LimitEnforcer(engine.NoopLimitEnforcer{})
+	var attemptLimiter dispatch.AttemptLimiter
 	settlementService := engine.SettlementService(engine.NoopSettlement{})
+	taskSettlement := tasksvc.Settlement(tasksvc.NoopSettlement{})
 	taskRepo := tasksvc.Repository(tasksvc.NewMemoryRepository())
 	if cfg.Database.Enabled && database != nil && database.DB() != nil {
 		taskRepo = tasksvc.NewMySQLRepository(database.DB())
@@ -196,7 +201,6 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	credentialResolver := providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)}
 	taskDispatcher := tasksvc.NewHTTPProviderTaskDispatcher(nil, credentialResolver, snapshotChannelResolver{store: snapshotStore})
 	taskDispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(nil, credentialResolver))
-	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher)
 	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration))
 	var attemptRecorder dispatch.AttemptRecorder
 	if cfg.Gateway.Billing.Enabled {
@@ -220,9 +224,11 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		)
 		attemptRecorder = billing.NewAttemptWriter(repo)
 		settlementService = billing.NewSettlementService(repo, billing.NewSettlementPlanner(price), billingMetrics)
+		taskSettlement = tasksvc.NewBillingSettlement(repo, price)
 	}
+	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher, taskSettlement)
 	if cfg.Gateway.Limits.Enabled {
-		limitEnforcer = limit.NewRedisEnforcer(redisClient.Raw(), limit.Config{
+		redisLimiter := limit.NewRedisEnforcer(redisClient.Raw(), limit.Config{
 			Enabled:             cfg.Gateway.Limits.Enabled,
 			RPM:                 cfg.Gateway.Limits.RPM,
 			QPS:                 cfg.Gateway.Limits.QPS,
@@ -235,6 +241,8 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 			DenyCacheTTL:        cfg.Gateway.Limits.DenyCacheTTL.Duration,
 			KeyPrefix:           cfg.Gateway.Limits.KeyPrefix,
 		})
+		limitEnforcer = redisLimiter
+		attemptLimiter = redisLimiter
 	}
 	streamFinalizer := stream.NewFinalizer(settlementService, observeRecorder)
 	pluginManager := plugin.NewManager(builtin.Registry())
@@ -244,6 +252,17 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	if !usingDBAdmin {
 		if err := seedLocalPortalAPIKey(ctx, cfg, adminService); err != nil {
 			return nil, err
+		}
+	}
+	var portalSnapshots portal.SnapshotRefresher
+	if usingDBAdmin {
+		var publisherOpts []cpsnapshot.PublisherOption
+		if snapshotDistributor != nil {
+			publisherOpts = append(publisherOpts, cpsnapshot.WithDistributor(snapshotDistributor))
+		}
+		portalSnapshots = runtimeSnapshotRefresher{
+			publisher: cpsnapshot.NewPublisher(adminRepo, cpsnapshot.NewBuilder(adminRepo), publisherOpts...),
+			store:     snapshotStore,
 		}
 	}
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
@@ -257,6 +276,9 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		),
 	)
 	dispatcher := dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, credentialResolver, logger, emergencyDisableStore).WithReliability(circuitBreaker)
+	if attemptLimiter != nil {
+		dispatcher = dispatcher.WithAttemptLimiter(attemptLimiter)
+	}
 	gatewayEngine, err := engine.New(
 		engine.WithSnapshot(snapshotProvider),
 		engine.WithClassifier(classifier.NewDefault()),
@@ -284,7 +306,35 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		observeRecorder:  observeRecorder,
 		adminService:     adminService,
 		taskRepo:         taskRepo,
+		portalSnapshots:  portalSnapshots,
 	}, nil
+}
+
+func (r *gatewayRuntime) portalOptions() []portal.ServiceOption {
+	if r == nil || r.portalSnapshots == nil {
+		return nil
+	}
+	return []portal.ServiceOption{portal.WithSnapshotRefresher(r.portalSnapshots)}
+}
+
+type runtimeSnapshotRefresher struct {
+	publisher *cpsnapshot.Publisher
+	store     *dpsnapshot.Store
+}
+
+func (r runtimeSnapshotRefresher) RefreshSnapshot(ctx context.Context) error {
+	if r.publisher == nil || r.store == nil {
+		return nil
+	}
+	runtime, err := r.publisher.Publish(ctx)
+	if err != nil {
+		return err
+	}
+	indexed, err := dpsnapshot.Build(*runtime)
+	if err != nil {
+		return err
+	}
+	return r.store.Replace(indexed)
 }
 
 func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*engine.GatewayEngine, error) {
