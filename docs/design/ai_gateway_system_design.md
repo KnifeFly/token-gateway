@@ -929,6 +929,10 @@ semantic cache
 
 P9 只补齐客户接入验收资产：Portal smoke CLI、OpenAPI import preflight、RC smoke 集成和客户验收 runbook。P9 不新增产品接口，也不改变 16.2 和 16.3 的范围边界。
 
+### 16.5 发布交接收口
+
+P10 只补齐发布交接资产：release handoff CLI、PR 模板、发布证据字段、验证命令和回滚字段。P10 不新增产品接口，也不改变 16.2、16.3 和 16.4 的范围边界。
+
 ---
 
 ## 17. 核心验收标准

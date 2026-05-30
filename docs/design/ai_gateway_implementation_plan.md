@@ -378,7 +378,7 @@ ADR 更新
 
 ## 14. 当前后续路线边界
 
-M0-M9 之后的执行路线以 `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/20-p9-customer-acceptance.md` 为准。当前只继续推进 provider 协议兼容、provider 可靠性、非存储媒体转发生态、portal API 和客户接入验收收口。
+M0-M9 之后的执行路线以 `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/21-p10-release-handoff.md` 为准。当前只继续推进 provider 协议兼容、provider 可靠性、非存储媒体转发生态、portal API、客户接入验收和发布交接收口。
 
 当前不做：控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件。
 

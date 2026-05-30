@@ -51,6 +51,11 @@ redis-cli GET "${REDIS_KEY_PREFIX}:snapshot:active" | jq '.version,.checksum'
 ## Release Gate
 
 ```bash
+make release-handoff
+
+go run ./tools/release-handoff -run-checks \
+  -output /tmp/token-gateway-release-handoff.md
+
 tests/failure/release_gate.sh
 
 TOKEN_GATEWAY_RELEASE_GATE_REDIS_ADDR="${REDIS_ADDR}" \
@@ -66,6 +71,7 @@ MODEL="${MODEL}" \
 通过标准：
 
 - `release_gate=passed`
+- generated release handoff includes the current branch, commit, latest migration and validation table
 - `drills=passed`
 - loadtest 输出 `latency_p95_ms`、`latency_p99_ms`
 - Redis latency 输出 `redis_latency_p95_ms`

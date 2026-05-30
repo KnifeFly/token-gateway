@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 CONFIG ?= configs/local.yaml
 
-.PHONY: help test lint fmt fmt-check vet race build run-gateway run-worker loadtest portal-smoke failure-drills migrate-up migrate-down compose-up compose-down
+.PHONY: help test lint fmt fmt-check vet race build run-gateway run-worker loadtest portal-smoke release-handoff release-handoff-check failure-drills migrate-up migrate-down compose-up compose-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -43,6 +43,12 @@ loadtest: ## Run local M7 load test
 
 portal-smoke: ## Run P9 Portal customer smoke against GATEWAY_URL/API_KEY
 	go run ./tools/portal-smoke
+
+release-handoff: ## Print P10 release handoff document
+	go run ./tools/release-handoff
+
+release-handoff-check: ## Run P10 release checks and print handoff evidence
+	go run ./tools/release-handoff -run-checks
 
 failure-drills: ## Run M7 failure drills against GATEWAY_URL/API_KEY
 	tests/failure/drills.sh
