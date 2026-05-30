@@ -141,10 +141,14 @@ func TestPublisherPublishesAndRollsBack(t *testing.T) {
 	repo := admin.NewMemoryRepository()
 	service := admin.NewService(repo, admin.NewCredentialCodec("test-secret"), nil)
 	seedSnapshotConfig(t, ctx, service, "gpt-4o-mini")
-	publisher := NewPublisher(repo, nil)
+	distributor := &fakeRuntimeDistributor{}
+	publisher := NewPublisher(repo, nil, WithDistributor(distributor))
 	first, err := publisher.Publish(ctx)
 	if err != nil {
 		t.Fatalf("Publish(first) error = %v", err)
+	}
+	if distributor.versions[len(distributor.versions)-1] != first.Version {
+		t.Fatalf("distributed first versions = %#v", distributor.versions)
 	}
 	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
 		PublicModel: "gpt-4.1-mini",
@@ -168,6 +172,9 @@ func TestPublisherPublishesAndRollsBack(t *testing.T) {
 	if rolledBack.Version != first.Version {
 		t.Fatalf("rollback version = %q, want %q", rolledBack.Version, first.Version)
 	}
+	if distributor.versions[len(distributor.versions)-1] != first.Version {
+		t.Fatalf("distributed rollback versions = %#v", distributor.versions)
+	}
 	diagnostics, err := publisher.Diagnostics(ctx)
 	if err != nil {
 		t.Fatalf("Diagnostics() error = %v", err)
@@ -175,6 +182,15 @@ func TestPublisherPublishesAndRollsBack(t *testing.T) {
 	if diagnostics.Active == nil || !diagnostics.Active.Valid || diagnostics.Active.Version != first.Version {
 		t.Fatalf("active diagnostics = %#v", diagnostics.Active)
 	}
+}
+
+type fakeRuntimeDistributor struct {
+	versions []string
+}
+
+func (d *fakeRuntimeDistributor) PublishActiveRuntimeSnapshot(_ context.Context, runtime RuntimeSnapshot) error {
+	d.versions = append(d.versions, runtime.Version)
+	return nil
 }
 
 func seedSnapshotConfig(t *testing.T, ctx context.Context, service *admin.Service, model string) {

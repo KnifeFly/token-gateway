@@ -17,6 +17,7 @@ import (
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	"github.com/KnifeFly/token-gateway/internal/provider/replicate"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 	"github.com/KnifeFly/token-gateway/internal/worker"
@@ -81,6 +82,10 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
 		adminChannelResolver{repo: adminRepo},
 	)
+	dispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(
+		&http.Client{Timeout: cfg.Worker.JobTimeout.Duration},
+		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
+	))
 	price := pricing.TokenPrice{
 		Currency:             cfg.Gateway.Billing.Currency,
 		InputMicrosPerToken:  cfg.Gateway.Billing.InputMicrosPerToken,
@@ -93,6 +98,8 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 	jobList := []worker.Job{
 		jobs.NewProviderTaskPoller(taskRepo, dispatcher, taskService, taskSettlement, cfg.Worker.ProviderTaskPollInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewFailedSettlementReplayer(billing.NewFailedSettlementServiceWithMetrics(billingRepo, billingMetrics), cfg.Worker.FailedSettlementInterval.Duration, cfg.Worker.BatchSize),
+		jobs.NewBalanceHoldReaper(billing.NewBalanceService(billingRepo), cfg.Worker.HoldReaperInterval.Duration, cfg.Worker.BatchSize),
+		jobs.NewReconciliationJob(billing.NewReconciliationService(billingRepo), cfg.Worker.ReconciliationInterval.Duration),
 		jobs.NewCallbackDispatcherWithMetrics(taskRepo, &http.Client{Timeout: cfg.Worker.JobTimeout.Duration}, taskMetrics, cfg.Worker.CallbackInterval.Duration, cfg.Worker.BatchSize),
 	}
 	leaseStore := worker.LeaseStore(worker.NewRedisLeaseStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix))

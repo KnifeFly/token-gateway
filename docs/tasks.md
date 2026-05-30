@@ -4,19 +4,18 @@
 
 ## 当前状态
 
-- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer 和 downstream disconnect 分类；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、TaskBridge、provider task poller、callback outbox、task settlement 和 file service；M5 已落地 control API、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动 plugin chain、9 个 MVP phase、内置安全/审计/指标插件和 `policy_denied` 映射；M7 已落地 metrics/tracing/redaction/load test/failure drills/dashboard/alert rules/性能预算；M8 已落地 Realtime reserved extension，未启用时稳定返回 501/`feature_not_enabled`，完整 Realtime 不进入当前路线；M9 已落地商用运营报表、对账、人工调账、模型市场配置、Agent metadata report、OpenAPI 管理接口和 backup/restore runbook；P0 已补齐 worker、异步任务、公开 API、snapshot stale policy、emergency disable 和 focused tests；P1 已补齐多维 limit rule runtime index、Redis Lua 多维限流、local deny cache、routing strategy registry、RouteSignals、显式 policy decision stage、model catalog/schema/alias/provider mapping 和 focused tests；P2 已补齐独立 configd、snapshot publish/rollback/diagnostics、IP allowlist、Model ACL、RouteOverride、Callback、CostGuard decision、classifier registry hint/body schema inference、`ambiguous_protocol` 测试和 Realtime disabled contract 边界；P3 已补齐 Redis token bucket/TPM 预扣、统一 billability policy、Native OpenAI images/audio adapter、Unified Media provider adapter contract、Redis RouteSignals、configd 分发 smoke 和生产验收文档。
-- 未开始：无。
+- 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer 和 downstream disconnect 分类；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、TaskBridge、provider task poller、callback outbox、task settlement 和 file service；M5 已落地 control API、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动 plugin chain、9 个 MVP phase、内置安全/审计/指标插件和 `policy_denied` 映射；M7 已落地 metrics/tracing/redaction/load test/failure drills/dashboard/alert rules/性能预算；M8 已落地 Realtime reserved extension，未启用时稳定返回 501/`feature_not_enabled`，完整 Realtime 不进入当前路线；M9 已落地商用运营报表、对账、人工调账、模型市场配置、Agent metadata report、OpenAPI 管理接口和 backup/restore runbook；P0 已补齐 worker、异步任务、公开 API、snapshot stale policy、emergency disable 和 focused tests；P1 已补齐多维 limit rule runtime index、Redis Lua 多维限流、local deny cache、routing strategy registry、RouteSignals、显式 policy decision stage、model catalog/schema/alias/provider mapping 和 focused tests；P2 已补齐独立 configd、snapshot publish/rollback/diagnostics、IP allowlist、Model ACL、RouteOverride、Callback、CostGuard decision、classifier registry hint/body schema inference、`ambiguous_protocol` 测试和 Realtime disabled contract 边界；P3 已补齐 Redis token bucket/TPM 预扣、统一 billability policy、Native OpenAI images/audio adapter、Unified Media provider adapter contract、Redis RouteSignals、configd 分发 smoke 和生产验收文档；P4 已补齐干净依赖环境 RC smoke、worker 运营 job、真实 provider release channel、configd Redis active snapshot 分发、OpenAPI 管理面合同、发布级观测安全 release gate 和 staging 灰度上线 runbook。
 - 阻塞：无。
-- 下一步建议：进入真实依赖环境做 release candidate dry run，重点复跑 Redis integration、compose smoke、load test、failure drills 和真实 upstream channel 验证。
-- 最近验证：2026-05-30 本轮注释补齐后 `go test ./...` 通过，`golint ./...` 已无缺失注释告警，剩余为既有 stutter/context 参数顺序建议，`git diff --check` 通过；此前 `make lint`、`make build` 均通过；Redis 集成 `TOKEN_GATEWAY_REDIS_ADDR=127.0.0.1:6379 go test ./internal/dataplane/limit -run TestRedisEnforcerIntegrationCoversP1LimitTypes -count=1` 通过；本地 gateway smoke 在 DB/billing/limits disabled、seed snapshot 和 mock upstream 下通过 `/healthz`、`/readyz`、`/v1/chat/completions`；`tests/failure/drills.sh` 通过；`go run ./tools/loadtest -requests 50 -concurrency 10` 通过。完整 compose MySQL smoke 未执行成功：本机已有 Docker MySQL 数据目录来自 8.4，当前 compose 镜像为 8.0.44，MySQL 拒绝 downgrade；未删除用户 volume。
+- 下一步建议：执行最终全量验证，确认无未提交变更后 push `codex/p4-release-candidate-readiness`。
+- 最近验证：2026-05-30 `bash tests/rc/clean_env_smoke.sh` 使用独立 Docker compose project/volume 和自动避让端口跑通 MySQL、Redis、migration、gateway、control-api、configd、worker、health/ready、Redis active snapshot key、snapshot publish/watch/rollback、gateway chat 和 metrics，输出 `rc_smoke=passed`；`tests/failure/release_gate.sh` 通过；`go test ./internal/controlplane/snapshot ./internal/dataplane/snapshot ./internal/snapshotdist ./internal/bootstrap` 通过；`go test ./internal/transport/controlhttp` 通过；`go test ./internal/billing ./internal/worker ./internal/worker/jobs ./internal/bootstrap` 通过；`go test ./internal/provider/replicate ./internal/task ./internal/bootstrap` 通过；此前 `go test ./...`、`make lint`、`make build`、Redis 集成、failure drills 和 load test 均通过。
 
 ## 使用规则
 
 - M0-M9 任务 ID 采用 `M{milestone}/E{epic}-T{number}/P{priority}` 格式。
-- P0-P3 设计差距补齐和商用硬化任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式。
+- P0-P4 设计差距补齐、商用硬化和发布验收任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式。
 - 第一轮优先完成 M0-M3 的 P0 任务，形成最小商用内核。
 - M4-M9 只拆到可执行粒度，避免早期过度展开控制面、插件和运营后台。
-- P0-P3 是 M0-M9 之后的设计差距补齐和商用硬化阶段，执行顺序固定为 P0、P1、P2、P3。
+- P0-P4 是 M0-M9 之后的设计差距补齐、商用硬化和发布候选验收阶段，执行顺序固定为 P0、P1、P2、P3、P4。
 - 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - 每个任务完成时必须按影响范围更新代码、测试、迁移、OpenAPI、ADR、metrics、trace、日志、审计、配置、计划和故障说明。
 
@@ -219,6 +218,18 @@
 | [x] | P3/E13-T06/P1 | P1 | 强化 configd snapshot 分发验证 | `cmd/configd`, `internal/controlplane/snapshot`, `internal/dataplane/snapshot` | publish、watch、rollback、diagnostics、configd 重启和 gateway stale policy 有进程级 smoke |
 | [x] | P3/E13-T07/P1 | P1 | 完成生产集成验收与文档校准 | `docs/design`, `docs/runbook`, `tests/`, `deployments/` | OpenAPI/runbook/ADR 与实现一致，Redis integration、compose smoke、load test 和 failure drills 可复现 |
 
+## P4 Release Candidate Readiness
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [x] | P4/E14-T01/P0 | P0 | 跑通干净依赖环境 RC smoke | `tests/rc/clean_env_smoke.sh`, `configs`, `cmd/*`, `migrations`, `docs/runbook` | 独立 project/volume 或 staging 下 MySQL、Redis、gateway、control-api、configd、worker、migration、health/ready、snapshot publish/watch/rollback 全部通过 |
+| [x] | P4/E14-T02/P0 | P0 | 补齐 worker 生产运营 job | `internal/worker/jobs`, `internal/billing`, `internal/task`, `internal/bootstrap/worker.go` | failed settlement replay、provider task poller、callback dispatcher、balance hold reaper、reconciliation scheduled job 均有 lease、metrics、重试和 focused tests |
+| [x] | P4/E14-T03/P0 | P0 | 接入真实 provider release channel | `internal/provider`, `internal/task`, `configs`, `docs/runbook` | OpenAI/Claude/Gemini 真实 channel 最小回归通过，至少一个真实媒体 provider task 完成 submit、poll、result、callback、settlement |
+| [x] | P4/E14-T04/P1 | P1 | 生产化 configd snapshot 分发 | `cmd/configd`, `internal/controlplane/snapshot`, `internal/dataplane/snapshot`, `internal/snapshotdist` | Redis active snapshot key/pubsub 或明确 fallback 模式可复现，gateway reload、checksum、rollback、stale policy 和 diagnostics 覆盖 |
+| [x] | P4/E14-T05/P1 | P1 | 补齐 OpenAPI 管理面合同 | `docs/design/ai_gateway_openapi.yaml`, `internal/transport/controlhttp`, contract tests | tenant/project/api-key/model/channel/route/price/limit/plugin/snapshot/emergency 管理接口与实现一致，关键请求/响应示例完整 |
+| [x] | P4/E14-T06/P1 | P1 | 建立发布级观测与安全验收 | `deployments/observability`, `pkg/redaction`, `tests/failure`, `tools/loadtest` | dashboard、alert、redaction audit、provider attempt、billing backlog、snapshot stale、worker job、Redis latency 和 SLO 预算均可验证 |
+| [x] | P4/E14-T07/P1 | P1 | 固化 staging 灰度上线 runbook | `docs/runbook`, `docs/plan`, `docs/tasks.md` | 发布 checklist 覆盖环境准备、密钥注入、迁移、配置发布、真实请求、压测、故障演练、回滚、数据核对和风险记录 |
+
 ## 阶段验收总览
 
 | 阶段 | 验收标准 |
@@ -237,3 +248,4 @@
 | P1 | 多维限流、策略路由、显式 policy stage 和 model catalog 达到设计能力要求 |
 | P2 | 独立 configd、剩余插件、分类器增强和 Realtime disabled contract 边界与完整架构蓝图一致 |
 | P3 | 限流算法语义、账务计费策略、Native media、RouteSignals、configd 分发和生产集成验收达到商用硬化要求 |
+| P4 | 干净依赖环境、真实 provider、worker 运营 job、OpenAPI 管理面、观测安全和灰度回滚验收达到 release candidate 要求 |

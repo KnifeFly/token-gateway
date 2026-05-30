@@ -49,6 +49,20 @@
     },
     {
       "type": "timeseries",
+      "title": "Worker Job Outcomes",
+      "targets": [
+        { "expr": "sum(rate(token_gateway_worker_job_runs_total[5m])) by (job, outcome)", "legendFormat": "{{job}} {{outcome}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Snapshot Publish Errors",
+      "targets": [
+        { "expr": "increase(token_gateway_snapshot_publish_errors_total[5m])", "legendFormat": "errors" }
+      ]
+    },
+    {
+      "type": "timeseries",
       "title": "Snapshot Staleness",
       "targets": [
         { "expr": "token_gateway_snapshot_staleness_seconds", "legendFormat": "seconds" }

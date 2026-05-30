@@ -101,6 +101,8 @@ worker:
   job_timeout: 30s
   provider_task_poll_interval: 5s
   failed_settlement_interval: 1m
+  hold_reaper_interval: 1m
+  reconciliation_interval: 15m
   callback_interval: 5s
   batch_size: 100
 

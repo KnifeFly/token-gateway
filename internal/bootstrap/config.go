@@ -203,6 +203,8 @@ type WorkerConfig struct {
 	JobTimeout               Duration `yaml:"job_timeout"`
 	ProviderTaskPollInterval Duration `yaml:"provider_task_poll_interval"`
 	FailedSettlementInterval Duration `yaml:"failed_settlement_interval"`
+	HoldReaperInterval       Duration `yaml:"hold_reaper_interval"`
+	ReconciliationInterval   Duration `yaml:"reconciliation_interval"`
 	CallbackInterval         Duration `yaml:"callback_interval"`
 	BatchSize                int      `yaml:"batch_size"`
 }
@@ -318,6 +320,8 @@ func DefaultConfig() Config {
 			JobTimeout:               Duration{30 * time.Second},
 			ProviderTaskPollInterval: Duration{5 * time.Second},
 			FailedSettlementInterval: Duration{time.Minute},
+			HoldReaperInterval:       Duration{time.Minute},
+			ReconciliationInterval:   Duration{15 * time.Minute},
 			CallbackInterval:         Duration{5 * time.Second},
 			BatchSize:                100,
 		},
@@ -463,6 +467,12 @@ func (c *Config) Normalize() {
 	}
 	if c.Worker.FailedSettlementInterval.Duration <= 0 {
 		c.Worker.FailedSettlementInterval = Duration{time.Minute}
+	}
+	if c.Worker.HoldReaperInterval.Duration <= 0 {
+		c.Worker.HoldReaperInterval = Duration{time.Minute}
+	}
+	if c.Worker.ReconciliationInterval.Duration <= 0 {
+		c.Worker.ReconciliationInterval = Duration{15 * time.Minute}
 	}
 	if c.Worker.CallbackInterval.Duration <= 0 {
 		c.Worker.CallbackInterval = Duration{5 * time.Second}

@@ -122,6 +122,42 @@ func (r *MemoryRepository) ReleaseHold(_ context.Context, holdID string, reason 
 	return nil
 }
 
+// ReleaseExpiredHolds returns expired active holds to available balance.
+func (r *MemoryRepository) ReleaseExpiredHolds(_ context.Context, now time.Time, limit int) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 {
+		limit = 100
+	}
+	released := 0
+	for holdID, hold := range r.holds {
+		if released >= limit {
+			break
+		}
+		if hold.Status != HoldStatusActive || hold.ExpiresAt.IsZero() || hold.ExpiresAt.After(now) {
+			continue
+		}
+		for key, account := range r.accounts {
+			if account.ID != hold.AccountID {
+				continue
+			}
+			account.AvailableMicros += hold.AmountMicros
+			account.HeldMicros -= hold.AmountMicros
+			if account.HeldMicros < 0 {
+				account.HeldMicros = 0
+			}
+			r.accounts[key] = account
+			break
+		}
+		hold.Status = HoldStatusReleased
+		hold.ReleaseReason = "expired hold reaper"
+		hold.UpdatedAt = now
+		r.holds[holdID] = hold
+		released++
+	}
+	return released, nil
+}
+
 // RecordUsageAttempt records one provider attempt.
 func (r *MemoryRepository) RecordUsageAttempt(_ context.Context, attempt UsageAttempt) error {
 	r.mu.Lock()

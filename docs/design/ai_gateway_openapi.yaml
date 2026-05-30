@@ -50,6 +50,7 @@ tags:
 - name: Claude Compatible
 - name: Gemini Compatible
 - name: Moderation
+- name: Admin
 paths:
   /v1/models:
     get:
@@ -747,6 +748,451 @@ paths:
           $ref: '#/components/responses/ErrorResponse'
       security:
       - bearerAuth: []
+  /admin/tenants:
+    post:
+      tags:
+      - Admin
+      summary: Upsert tenant
+      operationId: adminUpsertTenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminTenant'
+            example:
+              id: tenant_release
+              name: Release Tenant
+              enabled: true
+      responses:
+        '200':
+          description: Tenant config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTenant'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/projects:
+    post:
+      tags:
+      - Admin
+      summary: Upsert project
+      operationId: adminUpsertProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminProject'
+            example:
+              id: project_release
+              tenant_id: tenant_release
+              name: Release Project
+              enabled: true
+      responses:
+        '200':
+          description: Project config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminProject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/api-keys:
+    get:
+      tags:
+      - Admin
+      summary: List API keys
+      operationId: adminListAPIKeys
+      parameters:
+      - name: tenant_id
+        in: query
+        schema:
+          type: string
+      - name: project_id
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: API key list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminAPIKey'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+    post:
+      tags:
+      - Admin
+      summary: Create API key
+      operationId: adminCreateAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminAPIKey'
+            example:
+              id: key_release
+              tenant_id: tenant_release
+              project_id: project_release
+              name: Release Key
+              plaintext_key: tg-release-key
+              allowed_models:
+              - gpt-4o-mini
+              enabled: true
+      responses:
+        '200':
+          description: API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAPIKey'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/api-keys/{key_id}/disable:
+    post:
+      tags:
+      - Admin
+      summary: Disable API key
+      operationId: adminDisableAPIKey
+      parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Disabled API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminAPIKey'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/models:
+    post:
+      tags:
+      - Admin
+      summary: Upsert public model config
+      operationId: adminUpsertModel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminModelConfig'
+            example:
+              public_model: gpt-4o-mini
+              protocol: native_openai
+              capability: chat
+              enabled: true
+      responses:
+        '200':
+          description: Model config
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminModelConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/channels:
+    post:
+      tags:
+      - Admin
+      summary: Upsert provider channel
+      operationId: adminUpsertChannel
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminChannelConfig'
+            example:
+              id: channel_release_openai
+              provider_type: openai_compatible
+              base_url: https://api.openai.com
+              api_key: '[REDACTED_SECRET]'
+              enabled: true
+              timeout_millis: 30000
+              models:
+              - public_model: gpt-4o-mini
+                upstream_model: gpt-4o-mini
+      responses:
+        '200':
+          description: Channel config with encrypted credential reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminChannelConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/routes:
+    post:
+      tags:
+      - Admin
+      summary: Upsert route policy
+      operationId: adminUpsertRoute
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminRoutePolicyConfig'
+            example:
+              public_model: gpt-4o-mini
+              strategy: priority
+              enabled: true
+              candidates:
+              - channel_id: channel_release_openai
+                priority: 1
+                weight: 100
+      responses:
+        '200':
+          description: Route policy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRoutePolicyConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/prices:
+    post:
+      tags:
+      - Admin
+      summary: Upsert price rule
+      operationId: adminUpsertPrice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminPriceRuleConfig'
+            example:
+              public_model: gpt-4o-mini
+              currency: USD
+              input_micros_per_token: 1
+              output_micros_per_token: 2
+              estimated_output_tokens: 256
+              enabled: true
+      responses:
+        '200':
+          description: Price rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPriceRuleConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/limits:
+    post:
+      tags:
+      - Admin
+      summary: Upsert multi-dimensional limit rule
+      operationId: adminUpsertLimit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminLimitRuleConfig'
+            example:
+              tenant_id: tenant_release
+              project_id: project_release
+              public_model: gpt-4o-mini
+              rpm: 3600
+              qps: 60
+              tpm: 60000
+              concurrency: 100
+              enabled: true
+      responses:
+        '200':
+          description: Limit rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminLimitRuleConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/plugin-bindings:
+    post:
+      tags:
+      - Admin
+      summary: Upsert plugin binding
+      operationId: adminUpsertPluginBinding
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminPluginBindingConfig'
+            example:
+              name: prompt_guard
+              phase: pre_prompt
+              model: gpt-4o-mini
+              priority: 10
+              enabled: true
+              failure_policy: fail_closed
+              config:
+                deny_terms:
+                - blocked
+      responses:
+        '200':
+          description: Plugin binding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPluginBindingConfig'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/snapshots/publish:
+    post:
+      tags:
+      - Admin
+      summary: Build, validate, store, and activate a runtime snapshot
+      operationId: adminPublishSnapshot
+      responses:
+        '200':
+          description: Runtime snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeSnapshot'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/snapshots/rollback:
+    post:
+      tags:
+      - Admin
+      summary: Roll back to the previous active runtime snapshot
+      operationId: adminRollbackSnapshot
+      responses:
+        '200':
+          description: Runtime snapshot after rollback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminRuntimeSnapshot'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/emergency/providers/{provider_type}/{action}:
+    post:
+      tags:
+      - Admin
+      summary: Enable or disable a provider type on the hot path
+      operationId: adminProviderEmergencyAction
+      parameters:
+      - name: provider_type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - disable
+          - enable
+      - name: ttl_seconds
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: Emergency action result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminEmergencyAction'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
+  /admin/emergency/channels/{channel_id}/{action}:
+    post:
+      tags:
+      - Admin
+      summary: Enable or disable a provider channel on the hot path
+      operationId: adminChannelEmergencyAction
+      parameters:
+      - name: channel_id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: action
+        in: path
+        required: true
+        schema:
+          type: string
+          enum:
+          - disable
+          - enable
+      - name: ttl_seconds
+        in: query
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: Emergency action result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminEmergencyAction'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
   /admin/reports/tenant-usage:
     get:
       tags:
@@ -928,6 +1374,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: API key
+    adminTokenAuth:
+      type: apiKey
+      in: header
+      name: X-Admin-Token
   responses:
     ErrorResponse:
       description: Error response
@@ -1093,6 +1543,316 @@ components:
         currency:
           type: string
           example: CNY
+    AdminTenant:
+      type: object
+      required:
+      - id
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminProject:
+      type: object
+      required:
+      - id
+      - tenant_id
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminAPIKey:
+      type: object
+      required:
+      - tenant_id
+      - project_id
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        key_hash:
+          type: string
+          readOnly: true
+        plaintext_key:
+          type: string
+          writeOnly: true
+        enabled:
+          type: boolean
+        allowed_models:
+          type: array
+          items:
+            type: string
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminModelConfig:
+      type: object
+      required:
+      - public_model
+      - protocol
+      - capability
+      properties:
+        public_model:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        protocol:
+          type: string
+          enum:
+          - native_openai
+          - native_claude
+          - native_gemini
+          - unified
+        capability:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+        enabled:
+          type: boolean
+    AdminChannelConfig:
+      type: object
+      required:
+      - id
+      - provider_type
+      - base_url
+      - models
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+        credential_ref:
+          type: string
+        encrypted_api_key:
+          type: string
+          readOnly: true
+        enabled:
+          type: boolean
+        timeout_millis:
+          type: integer
+          format: int64
+        models:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminChannelModel'
+    AdminChannelModel:
+      type: object
+      required:
+      - public_model
+      - upstream_model
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+    AdminRoutePolicyConfig:
+      type: object
+      required:
+      - public_model
+      - candidates
+      properties:
+        id:
+          type: string
+        public_model:
+          type: string
+        strategy:
+          type: string
+          enum:
+          - priority
+          - weighted
+          - health_weighted
+          - least_cost
+          - least_latency
+          - quota_aware
+        enabled:
+          type: boolean
+        candidates:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminRouteCandidate'
+    AdminRouteCandidate:
+      type: object
+      required:
+      - channel_id
+      properties:
+        channel_id:
+          type: string
+        priority:
+          type: integer
+        weight:
+          type: integer
+    AdminPriceRuleConfig:
+      type: object
+      required:
+      - public_model
+      - currency
+      properties:
+        public_model:
+          type: string
+        currency:
+          type: string
+        input_micros_per_token:
+          type: integer
+          format: int64
+        output_micros_per_token:
+          type: integer
+          format: int64
+        estimated_output_tokens:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+    AdminLimitRuleConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        public_model:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        rpm:
+          type: integer
+          format: int64
+        qps:
+          type: integer
+          format: int64
+        tpm:
+          type: integer
+          format: int64
+        concurrency:
+          type: integer
+          format: int64
+        daily_budget_micros:
+          type: integer
+          format: int64
+        cost_per_minute_micros:
+          type: integer
+          format: int64
+        enabled:
+          type: boolean
+    AdminPluginBindingConfig:
+      type: object
+      required:
+      - name
+      - phase
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        phase:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        model:
+          type: string
+        priority:
+          type: integer
+        enabled:
+          type: boolean
+        failure_policy:
+          type: string
+          enum:
+          - fail_open
+          - fail_closed
+        config:
+          type: object
+          additionalProperties: true
+    AdminRuntimeSnapshot:
+      type: object
+      properties:
+        Version:
+          type: string
+        SchemaVersion:
+          type: string
+        Checksum:
+          type: string
+        CreatedAt:
+          type: string
+          format: date-time
+        APIKeys:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        Models:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        Channels:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        RoutePolicies:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AdminEmergencyAction:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - provider
+          - channel
+        id:
+          type: string
+        action:
+          type: string
+          enum:
+          - disable
+          - enable
     AdminTenantUsageReport:
       type: object
       properties:

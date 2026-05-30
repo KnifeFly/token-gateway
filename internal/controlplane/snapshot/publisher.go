@@ -13,8 +13,24 @@ import (
 
 // Publisher validates and publishes runtime snapshots.
 type Publisher struct {
-	repo    ConfigRepository
-	builder *Builder
+	repo        ConfigRepository
+	builder     *Builder
+	distributor RuntimeSnapshotDistributor
+}
+
+// RuntimeSnapshotDistributor publishes active runtime snapshots to data-plane stores.
+type RuntimeSnapshotDistributor interface {
+	PublishActiveRuntimeSnapshot(ctx context.Context, runtime RuntimeSnapshot) error
+}
+
+// PublisherOption configures snapshot publishing.
+type PublisherOption func(*Publisher)
+
+// WithDistributor publishes activated snapshots to an external distribution store.
+func WithDistributor(distributor RuntimeSnapshotDistributor) PublisherOption {
+	return func(p *Publisher) {
+		p.distributor = distributor
+	}
 }
 
 // SnapshotRecordDiagnostics describes one persisted runtime snapshot without payload details.
@@ -36,11 +52,15 @@ type Diagnostics struct {
 }
 
 // NewPublisher returns a snapshot publisher.
-func NewPublisher(repo ConfigRepository, builder *Builder) *Publisher {
+func NewPublisher(repo ConfigRepository, builder *Builder, opts ...PublisherOption) *Publisher {
 	if builder == nil {
 		builder = NewBuilder(repo)
 	}
-	return &Publisher{repo: repo, builder: builder}
+	publisher := &Publisher{repo: repo, builder: builder}
+	for _, opt := range opts {
+		opt(publisher)
+	}
+	return publisher
 }
 
 // ActiveProvider adapts a ConfigRepository to the data-plane watcher interface.
@@ -81,6 +101,11 @@ func (p *Publisher) Publish(ctx context.Context) (*RuntimeSnapshot, error) {
 	if _, err := p.repo.ActivateSnapshot(ctx, runtime.Version); err != nil {
 		return nil, err
 	}
+	if p.distributor != nil {
+		if err := p.distributor.PublishActiveRuntimeSnapshot(ctx, *runtime); err != nil {
+			return nil, err
+		}
+	}
 	return runtime, nil
 }
 
@@ -99,6 +124,11 @@ func (p *Publisher) Rollback(ctx context.Context) (*RuntimeSnapshot, error) {
 	}
 	if _, err := p.repo.ActivateSnapshot(ctx, previous.Version); err != nil {
 		return nil, err
+	}
+	if p.distributor != nil {
+		if err := p.distributor.PublishActiveRuntimeSnapshot(ctx, *runtime); err != nil {
+			return nil, err
+		}
 	}
 	return runtime, nil
 }
