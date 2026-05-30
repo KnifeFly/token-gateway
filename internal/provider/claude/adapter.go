@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -48,11 +47,21 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(request.RawBody))
+	upstreamModel := request.UpstreamModel
+	if upstreamModel == "" {
+		upstreamModel = channel.UpstreamModel
+	}
+	relayBody, err := rewriteJSONModel(request.RawBody, upstreamModel)
 	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(relayBody))
+	if err != nil {
+		cancel()
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -60,19 +69,24 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 	if request.Stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
-	req.Header.Set("Anthropic-Version", "2023-06-01")
+	req.Header.Set("Anthropic-Version", claudeHeader(request.Headers, "Anthropic-Version", "2023-06-01"))
+	if beta := claudeHeader(request.Headers, "Anthropic-Beta", ""); beta != "" {
+		req.Header.Set("Anthropic-Beta", beta)
+	}
 	if channel.APIKey != "" {
 		req.Header.Set("X-API-Key", channel.APIKey)
 	}
 
 	res, err := a.client.Do(req)
 	if err != nil {
-		return nil, &relay.ProviderError{StatusCode: http.StatusBadGateway, Code: "provider_unavailable", Message: "provider request failed", Retryable: true}
+		cancel()
+		return nil, relay.ErrorFromRequestFailure(err)
 	}
 
 	if request.Stream && res.StatusCode >= 200 && res.StatusCode < 300 {
-		return &relay.Response{StatusCode: res.StatusCode, Header: safeStreamHeaders(res.Header), Stream: &httpStream{body: res.Body}}, nil
+		return &relay.Response{StatusCode: res.StatusCode, Header: safeStreamHeaders(res.Header), Stream: &httpStream{body: res.Body, cancel: cancel}}, nil
 	}
+	defer cancel()
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, 16<<20))
@@ -80,10 +94,36 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 		return nil, &relay.ProviderError{StatusCode: http.StatusBadGateway, Code: "provider_error", Message: "provider response could not be read", Retryable: true}
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		code, retryable := relay.ClassifyStatus(res.StatusCode)
-		return nil, &relay.ProviderError{StatusCode: res.StatusCode, Code: code, Message: fmt.Sprintf("provider returned status %d", res.StatusCode), Retryable: retryable}
+		return nil, relay.ErrorFromStatus(res.StatusCode, body)
 	}
 	return &relay.Response{StatusCode: res.StatusCode, Header: safeHeaders(res.Header), Body: body, Usage: parseUsage(body)}, nil
+}
+
+func rewriteJSONModel(body []byte, upstreamModel string) ([]byte, error) {
+	if upstreamModel == "" {
+		return append([]byte(nil), body...), nil
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, &relay.ProviderError{StatusCode: http.StatusBadRequest, Code: "provider_request_invalid", Message: "provider request could not be encoded"}
+	}
+	payload["model"] = upstreamModel
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, &relay.ProviderError{StatusCode: http.StatusBadRequest, Code: "provider_request_invalid", Message: "provider request could not be encoded"}
+	}
+	return encoded, nil
+}
+
+func claudeHeader(headers http.Header, key string, fallback string) string {
+	if headers == nil {
+		return fallback
+	}
+	value := strings.TrimSpace(headers.Get(key))
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func endpointURL(base string) (string, error) {
@@ -136,13 +176,17 @@ func mockMessage(request relay.Request) *relay.Response {
 func parseUsage(body []byte) tokenusage.Actual {
 	var payload struct {
 		Usage struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
+			InputTokens              int64 `json:"input_tokens"`
+			OutputTokens             int64 `json:"output_tokens"`
+			CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 		} `json:"usage"`
 		Message struct {
 			Usage struct {
-				InputTokens  int64 `json:"input_tokens"`
-				OutputTokens int64 `json:"output_tokens"`
+				InputTokens              int64 `json:"input_tokens"`
+				OutputTokens             int64 `json:"output_tokens"`
+				CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+				CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 			} `json:"usage"`
 		} `json:"message"`
 	}
@@ -157,7 +201,22 @@ func parseUsage(body []byte) tokenusage.Actual {
 	if outputTokens == 0 {
 		outputTokens = payload.Message.Usage.OutputTokens
 	}
-	return tokenusage.Actual{InputTokens: inputTokens, OutputTokens: outputTokens, TotalTokens: inputTokens + outputTokens}
+	cacheCreation := payload.Usage.CacheCreationInputTokens
+	if cacheCreation == 0 {
+		cacheCreation = payload.Message.Usage.CacheCreationInputTokens
+	}
+	cacheRead := payload.Usage.CacheReadInputTokens
+	if cacheRead == 0 {
+		cacheRead = payload.Message.Usage.CacheReadInputTokens
+	}
+	return tokenusage.Actual{
+		InputTokens:              inputTokens,
+		OutputTokens:             outputTokens,
+		TotalTokens:              inputTokens + outputTokens,
+		CachedInputTokens:        cacheCreation + cacheRead,
+		CacheCreationInputTokens: cacheCreation,
+		CacheReadInputTokens:     cacheRead,
+	}
 }
 
 func safeHeaders(header http.Header) http.Header {
@@ -179,6 +238,7 @@ func safeStreamHeaders(header http.Header) http.Header {
 
 type httpStream struct {
 	body   io.ReadCloser
+	cancel context.CancelFunc
 	actual tokenusage.Actual
 }
 
@@ -201,7 +261,11 @@ func (s *httpStream) Usage() tokenusage.Actual {
 }
 
 func (s *httpStream) Close() error {
-	return s.body.Close()
+	err := s.body.Close()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	return err
 }
 
 func (s *httpStream) observeUsage(chunk []byte) {
@@ -216,7 +280,7 @@ func (s *httpStream) observeUsage(chunk []byte) {
 		}
 		usage := parseUsage([]byte(data))
 		if usage.TotalTokens > 0 {
-			s.actual = usage
+			s.actual = tokenusage.Merge(s.actual, usage)
 		}
 	}
 }

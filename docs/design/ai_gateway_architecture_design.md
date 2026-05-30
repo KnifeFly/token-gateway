@@ -46,6 +46,7 @@ internal/controlplane/控制面配置与发布
 internal/provider/    provider adapter
 internal/billing/     账务、ledger、结算
 internal/task/        异步任务领域
+internal/portal/      客户自助 Portal use case
 internal/worker/      worker job
 internal/infra/       DB/Redis/KMS/OTel 等基础设施
 pkg/                  可被外部复用的小包
@@ -123,6 +124,13 @@ internal/
     realtimehttp/
       session_handler.go
       websocket_handler.go
+    portalhttp/
+      handler.go
+      error_writer.go
+
+  portal/
+    service.go
+    types.go
 
   domain/
     tenant/
@@ -463,7 +471,7 @@ type GatewayEngine struct {
 }
 ```
 
-`FileService` 只表达 transient input asset 的 metadata、幂等、大小限制和 provider 转发辅助能力，不代表对象存储服务。Gateway 不承诺文件持久化、下载地址、生命周期管理或存储 SLA。
+`FileService` 只表达 transient input asset 的 metadata、幂等、大小限制和 provider 转发辅助能力，不代表对象存储服务。Gateway 不承诺文件持久化、下载地址、生命周期管理或存储 SLA。Provider 返回的媒体结果以 `results`、`assets`、`usage` 和非敏感 `provider_metadata` 进入 task response、callback 和 settlement，不依赖 gateway 本地文件对象。
 
 ### 5.1 EngineConfig
 

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -39,7 +38,11 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 		return mockGenerateContent(request), nil
 	}
 
-	endpoint, err := endpointURL(channel.BaseURL, request.UpstreamModel, request.Stream)
+	upstreamModel := request.UpstreamModel
+	if upstreamModel == "" {
+		upstreamModel = channel.UpstreamModel
+	}
+	endpoint, err := endpointURL(channel.BaseURL, upstreamModel, request.Stream)
 	if err != nil {
 		return nil, err
 	}
@@ -48,11 +51,11 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 	if timeout <= 0 {
 		timeout = defaultTimeout
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(request.RawBody))
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, bytes.NewReader(request.RawBody))
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
@@ -67,12 +70,14 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 
 	res, err := a.client.Do(req)
 	if err != nil {
-		return nil, &relay.ProviderError{StatusCode: http.StatusBadGateway, Code: "provider_unavailable", Message: "provider request failed", Retryable: true}
+		cancel()
+		return nil, relay.ErrorFromRequestFailure(err)
 	}
 
 	if request.Stream && res.StatusCode >= 200 && res.StatusCode < 300 {
-		return &relay.Response{StatusCode: res.StatusCode, Header: safeStreamHeaders(res.Header), Stream: &httpStream{body: res.Body}}, nil
+		return &relay.Response{StatusCode: res.StatusCode, Header: safeStreamHeaders(res.Header), Stream: &httpStream{body: res.Body, cancel: cancel}}, nil
 	}
+	defer cancel()
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(io.LimitReader(res.Body, 16<<20))
@@ -80,8 +85,7 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 		return nil, &relay.ProviderError{StatusCode: http.StatusBadGateway, Code: "provider_error", Message: "provider response could not be read", Retryable: true}
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		code, retryable := relay.ClassifyStatus(res.StatusCode)
-		return nil, &relay.ProviderError{StatusCode: res.StatusCode, Code: code, Message: fmt.Sprintf("provider returned status %d", res.StatusCode), Retryable: retryable}
+		return nil, relay.ErrorFromStatus(res.StatusCode, body)
 	}
 	return &relay.Response{StatusCode: res.StatusCode, Header: safeHeaders(res.Header), Body: body, Usage: parseUsage(body)}, nil
 }
@@ -98,7 +102,11 @@ func endpointURL(base string, model string, stream bool) (string, error) {
 	if strings.Contains(parsed.Path, ":generateContent") || strings.Contains(parsed.Path, ":streamGenerateContent") {
 		return parsed.String(), nil
 	}
-	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/v1beta/models/" + model + ":" + method
+	if strings.HasSuffix(parsed.Path, "/v1beta") {
+		parsed.Path = strings.TrimRight(parsed.Path, "/") + "/models/" + model + ":" + method
+	} else {
+		parsed.Path = strings.TrimRight(parsed.Path, "/") + "/v1beta/models/" + model + ":" + method
+	}
 	return parsed.String(), nil
 }
 
@@ -142,12 +150,60 @@ func parseUsage(body []byte) tokenusage.Actual {
 			PromptTokenCount     int64 `json:"promptTokenCount"`
 			CandidatesTokenCount int64 `json:"candidatesTokenCount"`
 			TotalTokenCount      int64 `json:"totalTokenCount"`
+			CachedContentTokens  int64 `json:"cachedContentTokenCount"`
+			ThoughtsTokenCount   int64 `json:"thoughtsTokenCount"`
+			PromptTokensDetails  []struct {
+				Modality   string `json:"modality"`
+				TokenCount int64  `json:"tokenCount"`
+			} `json:"promptTokensDetails"`
+			CandidatesTokensDetails []struct {
+				Modality   string `json:"modality"`
+				TokenCount int64  `json:"tokenCount"`
+			} `json:"candidatesTokensDetails"`
 		} `json:"usageMetadata"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return tokenusage.Actual{}
 	}
-	return tokenusage.Actual{InputTokens: payload.Usage.PromptTokenCount, OutputTokens: payload.Usage.CandidatesTokenCount, TotalTokens: payload.Usage.TotalTokenCount}
+	actual := tokenusage.Actual{
+		InputTokens:       payload.Usage.PromptTokenCount,
+		OutputTokens:      payload.Usage.CandidatesTokenCount,
+		TotalTokens:       payload.Usage.TotalTokenCount,
+		CachedInputTokens: payload.Usage.CachedContentTokens,
+		ReasoningTokens:   payload.Usage.ThoughtsTokenCount,
+	}
+	for _, detail := range payload.Usage.PromptTokensDetails {
+		addModalityInput(&actual, detail.Modality, detail.TokenCount)
+	}
+	for _, detail := range payload.Usage.CandidatesTokensDetails {
+		addModalityOutput(&actual, detail.Modality, detail.TokenCount)
+	}
+	if actual.TotalTokens == 0 {
+		actual.TotalTokens = actual.InputTokens + actual.OutputTokens
+	}
+	return actual
+}
+
+func addModalityInput(actual *tokenusage.Actual, modality string, tokens int64) {
+	switch strings.ToUpper(modality) {
+	case "AUDIO":
+		actual.AudioInputTokens += tokens
+	case "IMAGE":
+		actual.ImageInputTokens += tokens
+	case "VIDEO":
+		actual.VideoInputTokens += tokens
+	}
+}
+
+func addModalityOutput(actual *tokenusage.Actual, modality string, tokens int64) {
+	switch strings.ToUpper(modality) {
+	case "AUDIO":
+		actual.AudioOutputTokens += tokens
+	case "IMAGE":
+		actual.ImageOutputTokens += tokens
+	case "VIDEO":
+		actual.VideoOutputTokens += tokens
+	}
 }
 
 func safeHeaders(header http.Header) http.Header {
@@ -169,6 +225,7 @@ func safeStreamHeaders(header http.Header) http.Header {
 
 type httpStream struct {
 	body   io.ReadCloser
+	cancel context.CancelFunc
 	actual tokenusage.Actual
 }
 
@@ -191,7 +248,11 @@ func (s *httpStream) Usage() tokenusage.Actual {
 }
 
 func (s *httpStream) Close() error {
-	return s.body.Close()
+	err := s.body.Close()
+	if s.cancel != nil {
+		s.cancel()
+	}
+	return err
 }
 
 func (s *httpStream) observeUsage(chunk []byte) {
@@ -206,7 +267,7 @@ func (s *httpStream) observeUsage(chunk []byte) {
 		}
 		usage := parseUsage([]byte(data))
 		if usage.TotalTokens > 0 {
-			s.actual = usage
+			s.actual = tokenusage.Merge(s.actual, usage)
 		}
 	}
 }

@@ -288,6 +288,9 @@ docker_compose exec -T redis redis-cli GET "${PROJECT_NAME}:snapshot:active" | g
 echo "rc_smoke=gateway_snapshot_watch"
 wait_for "gateway active snapshot" bash -c "headers=\$(mktemp); body=\$(mktemp); code=\$(curl -sS -D \"\$headers\" -o \"\$body\" -w '%{http_code}' -H 'Authorization: Bearer ${API_KEY}' -H 'Content-Type: application/json' -d '{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"rc smoke\"}]}' 'http://127.0.0.1:${GATEWAY_PORT}/v1/chat/completions'); grep -qi '^X-Gateway-Snapshot-Version: snap-' \"\$headers\" && grep -q 'chat.completion' \"\$body\" && test \"\$code\" = 200"
 
+echo "rc_smoke=portal_customer_acceptance"
+(cd "${ROOT_DIR}" && go run ./tools/portal-smoke -gateway-url "http://127.0.0.1:${GATEWAY_PORT}" -api-key "${API_KEY}" -model "gpt-4o-mini" -create-derived-key)
+
 echo "rc_smoke=configd_rollback"
 curl -fsS -X POST -H "X-Admin-Token: ${ADMIN_TOKEN}" "http://127.0.0.1:${CONFIGD_PORT}/configd/snapshots/rollback" >/dev/null
 wait_for "gateway rollback snapshot" bash -c "curl -fsS -H 'Authorization: Bearer ${API_KEY}' -H 'Content-Type: application/json' -d '{\"model\":\"gpt-4o-mini\",\"messages\":[{\"role\":\"user\",\"content\":\"rc rollback\"}]}' 'http://127.0.0.1:${GATEWAY_PORT}/v1/chat/completions' | grep -q 'chat.completion'"

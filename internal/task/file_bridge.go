@@ -46,6 +46,8 @@ func (b *FileBridge) HandleFileOperation(ctx context.Context, state *engine.Requ
 		MIMEType:       state.Parsed.File.MIMEType,
 		UploadPath:     state.Parsed.File.UploadPath,
 		Source:         string(state.Parsed.File.Operation),
+		ContentHash:    state.Parsed.File.ContentHash,
+		SourceURL:      state.Parsed.File.SourceURL,
 	}
 	file, _, err := b.service.CreateFile(ctx, request)
 	if err != nil {

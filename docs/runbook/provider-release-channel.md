@@ -36,7 +36,7 @@ curl -fsS -X POST -H "X-Admin-Token: ${ADMIN_TOKEN}" \
 - OpenAI-compatible：`/v1/chat/completions` 非流式和流式各 1 次。
 - Claude：`/v1/messages` 非流式和流式各 1 次。
 - Gemini：`/v1beta/models/{model}:generateContent` 和 `:streamGenerateContent` 各 1 次。
-- Replicate Unified Media：创建 image task，确认内部 task 返回 running；worker poll 后 task 变为 succeeded，result 包含 `provider=replicate`、prediction `id`、`output`、`urls`、`metrics`；callback outbox delivered；billing settlement 或 failed settlement replay 没有 backlog。
+- Replicate Unified Media：创建 image task，确认内部 task 返回 running；worker poll 后 task 变为 succeeded，result 包含 `provider=replicate`、prediction `id`、`output`、`results`、`assets`、`provider_metadata`、`urls`、`metrics`；callback outbox delivered；billing settlement 或 failed settlement replay 没有 backlog。
 
 ## 失败处理
 

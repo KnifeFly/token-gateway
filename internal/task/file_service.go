@@ -49,6 +49,8 @@ type FileCreateRequest struct {
 	MIMEType       string
 	UploadPath     string
 	Source         string
+	ContentHash    string
+	SourceURL      string
 }
 
 // FindIdempotentFile returns an existing file for a matching idempotency key.
@@ -96,6 +98,8 @@ func (s *FileService) CreateFile(ctx context.Context, request FileCreateRequest)
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
+	sourceURL := strings.TrimSpace(request.SourceURL)
+	expiresAt := now.Add(s.ttl)
 	file := FileAsset{
 		ID:           newID("file"),
 		TenantID:     request.TenantID,
@@ -107,13 +111,14 @@ func (s *FileService) CreateFile(ctx context.Context, request FileCreateRequest)
 		SizeBytes:    request.SizeBytes,
 		MIMEType:     mimeType,
 		UploadPath:   strings.TrimSpace(request.UploadPath),
-		FileURL:      "file://" + fileName,
-		DownloadURL:  "file://" + fileName,
+		FileURL:      sourceURL,
 		Source:       request.Source,
+		ContentHash:  strings.TrimSpace(request.ContentHash),
+		SourceURL:    sourceURL,
+		Transient:    true,
 		CreatedAt:    now,
+		ExpiresAt:    &expiresAt,
 	}
-	file.FileURL = "file://" + file.ID + "/" + file.FileName
-	file.DownloadURL = file.FileURL
 	idem := newIdempotencyRecord(request.TenantID, request.APIKeyID, request.Endpoint, request.IdempotencyKey, requestHash(request.RequestBody), ResourceFile, s.ttl, now)
 	created, err := s.repo.CreateFile(ctx, file, idem)
 	return created, false, err

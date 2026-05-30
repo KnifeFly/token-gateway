@@ -65,7 +65,7 @@ GET  /v1/credits
 
 统一媒体协议采用“**统一 URI + model 参数 + 动态模型 schema**”机制。
 
-`/v1/files/*` 在当前路线中只表达 transient input asset：系统可接收 URL、base64 或 multipart 输入，用于请求归一化、幂等校验、大小限制和转发给上游 provider。Gateway 不做对象存储，不承诺文件持久化、下载地址、生命周期管理、病毒扫描或存储 SLA。生成结果也优先透传 provider result URL 或客户自有存储 URL。
+`/v1/files/*` 在当前路线中只表达 transient input asset：系统可接收 URL、base64 或 multipart 输入，用于请求归一化、幂等校验、大小限制和转发给上游 provider。Gateway 不做对象存储，不承诺文件持久化、下载地址、生命周期管理、病毒扫描或存储 SLA。生成结果优先透传 provider result URL 或客户自有存储 URL，并通过 task `results`、`assets`、`usage` 和非敏感 `provider_metadata` 进入查询、callback 和结算。
 
 示例：
 
@@ -110,7 +110,7 @@ GET  /v1/portal/tasks
 GET  /v1/portal/tasks/{task_id}
 ```
 
-Portal 不允许配置 provider channel、route、price、limit、plugin、snapshot、emergency action，也不引入 RBAC。首个 API key 仍由 admin/control API 创建；portal 创建的派生 key 只能继承当前 tenant/project 和模型权限子集。
+Portal 不允许配置 provider channel、route、price、limit、plugin、snapshot、emergency action，也不引入 RBAC。首个 API key 仍由 admin/control API 创建；portal 创建的派生 key 只能继承当前 tenant/project 和模型权限子集，历史 plaintext key 不可查询。Task 查询只返回当前 tenant/project 范围，并过滤敏感 metadata。
 
 ---
 
@@ -924,6 +924,14 @@ semantic cache
 ```
 
 这些能力需要重新产品决策后另立路线和任务板。
+
+### 16.4 客户接入验收收口
+
+P9 只补齐客户接入验收资产：Portal smoke CLI、OpenAPI import preflight、RC smoke 集成和客户验收 runbook。P9 不新增产品接口，也不改变 16.2 和 16.3 的范围边界。
+
+### 16.5 发布交接收口
+
+P10 只补齐发布交接资产：release handoff CLI、PR 模板、发布证据字段、验证命令和回滚字段。P10 不新增产品接口，也不改变 16.2、16.3 和 16.4 的范围边界。
 
 ---
 

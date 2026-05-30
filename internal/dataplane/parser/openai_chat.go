@@ -97,12 +97,14 @@ func (p *Parser) parseOpenAIChat(state *engine.RequestState, body []byte) error 
 		if message.Role == "" {
 			return apperr.InvalidArgument(fmt.Sprintf("messages[%d].role is required", i))
 		}
-		if len(message.Content) == 0 {
-			return apperr.InvalidArgument(fmt.Sprintf("messages[%d].content is required", i))
+		if len(message.Content) == 0 && len(message.ToolCalls) == 0 && len(message.FunctionCall) == 0 {
+			return apperr.InvalidArgument(fmt.Sprintf("messages[%d].content or tool_calls is required", i))
 		}
 		var content any
-		if err := json.Unmarshal(message.Content, &content); err != nil {
-			return apperr.InvalidArgument(fmt.Sprintf("messages[%d].content is invalid", i), apperr.WithCause(err))
+		if len(message.Content) > 0 {
+			if err := json.Unmarshal(message.Content, &content); err != nil {
+				return apperr.InvalidArgument(fmt.Sprintf("messages[%d].content is invalid", i), apperr.WithCause(err))
+			}
 		}
 		messages = append(messages, engine.OpenAIChatMessage{Role: message.Role, Content: content})
 	}
@@ -229,6 +231,13 @@ func (p *Parser) parseClaudeMessage(state *engine.RequestState, body []byte) err
 }
 
 func (p *Parser) parseGemini(state *engine.RequestState, body []byte) error {
+	var req geminiGenerateContentRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err))
+	}
+	if len(bytes.TrimSpace(req.Contents)) == 0 || bytes.Equal(bytes.TrimSpace(req.Contents), []byte("null")) {
+		return apperr.InvalidArgument("contents is required")
+	}
 	model := geminiModelFromPath(state.Incoming.Path)
 	if model == "" {
 		return apperr.InvalidArgument("model is required")
@@ -284,8 +293,10 @@ type openAIChatRequest struct {
 }
 
 type openAIChatMessage struct {
-	Role    string          `json:"role"`
-	Content json.RawMessage `json:"content"`
+	Role         string          `json:"role"`
+	Content      json.RawMessage `json:"content"`
+	ToolCalls    json.RawMessage `json:"tool_calls"`
+	FunctionCall json.RawMessage `json:"function_call"`
 }
 
 type modelStreamRequest struct {
@@ -296,6 +307,10 @@ type modelStreamRequest struct {
 type moderationRequest struct {
 	Model string          `json:"model"`
 	Input json.RawMessage `json:"input"`
+}
+
+type geminiGenerateContentRequest struct {
+	Contents json.RawMessage `json:"contents"`
 }
 
 func nativeOpenAIModelFromBody(body []byte, contentType string) (string, error) {

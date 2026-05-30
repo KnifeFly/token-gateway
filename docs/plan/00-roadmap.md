@@ -26,6 +26,8 @@
 | v1.7 provider reliability | P6 | 补齐 provider/channel 健康探测、熔断、retry budget、fallback 限制和 failure drills |
 | v1.8 media forwarding providers | P7 | 固化非存储媒体输入语义，扩展真实媒体 provider submit/poll/cancel/result URL 映射 |
 | v1.9 portal API | P8 | 提供开发者自助 portal API，覆盖模型、schema、credits、usage、API key 和 task 查询 |
+| v1.10 customer acceptance | P9 | 收口客户接入验收，补齐 Portal smoke、OpenAPI import preflight 和 RC 验收证据 |
+| v1.11 release handoff | P10 | 收口发布交接，补齐 release handoff、PR 模板和发布证据清单 |
 
 ## 交付物
 
@@ -33,7 +35,7 @@
 - `docs/plan/11-p0-production-closure.md` 到 `docs/plan/13-p2-architecture-advanced.md` 作为设计差距补齐规划。
 - `docs/plan/14-p3-production-hardening.md` 作为生产语义补齐与商用硬化规划。
 - `docs/plan/15-p4-release-candidate-readiness.md` 作为发布候选与商用上线验收规划。
-- `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/19-p8-portal-api.md` 作为剩余产品能力规划。
+- `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/21-p10-release-handoff.md` 作为剩余产品能力、客户验收和发布交接收口规划。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -58,6 +60,8 @@
 17. P6 补齐 provider 可靠性治理：健康信号、熔断、retry budget、fallback 限制、半开恢复和故障演练。
 18. P7 补齐非存储媒体转发生态：输入资产只做转发归一化，扩展真实媒体 provider task 生命周期映射。
 19. P8 补齐 portal API：模型、schema、credits、usage、API key 自助管理和 task 查询。
+20. P9 收口客户接入验收：Portal smoke、OpenAPI import preflight、RC smoke 集成和客户运行手册。
+21. P10 收口发布交接：release handoff 文档生成、PR 模板、发布字段和回滚证据清单。
 
 ## 关键设计约束
 
@@ -75,7 +79,7 @@
 - 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - P3 优先处理已实现能力的生产语义缺口，不新增大范围产品面。
 - P4 不再扩大协议面，优先把已有能力放到干净依赖环境和真实上游中验收，并形成可重复 release gate。
-- P5-P8 只覆盖当前明确要做的剩余能力；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线。
+- P5-P10 只覆盖当前明确要做的剩余能力、验收和发布交接收口；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线。
 - Semantic routing/cache 和多地域 active-active 先不做；如重新进入范围，需要另立路线和任务板。
 - 文件能力按非存储输入资产处理，gateway 不承诺媒体对象持久化、下载、生命周期或存储 SLA。
 - Portal 第一版复用 API key 鉴权，只做客户自助查询和受限 key 管理，不暴露 admin/control 配置能力。
@@ -83,9 +87,9 @@
 ## 验收标准
 
 - 每个阶段都有明确目标、交付物、实现顺序、设计约束、验收标准和风险处理。
-- `docs/tasks.md` 能直接指导 P5-P8 后续开发。
+- `docs/tasks.md` 能直接指导 P5-P10 后续开发、验收和发布交接收口。
 - M0-M9 的先后关系与最终设计包一致。
-- P0-P8 能直接指导设计差距补齐、商用硬化、发布候选验收和剩余产品能力建设，且每个阶段都有可验证的完成标准。
+- P0-P10 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收和发布交接收口，且每个阶段都有可验证的完成标准。
 - 所有 public API 变更都回到 OpenAPI 合同维护。
 
 ## 风险与处理
@@ -107,6 +111,8 @@
 | Provider 故障扩大成全局不可用 | P6 使用熔断、retry budget、fallback 限制和 emergency disable 组合治理 |
 | 媒体能力误变成对象存储产品 | P7 统一声明 transient/non-storage，只透传 provider result URL 和必要 metadata |
 | Portal 演化成第二套 admin API | P8 只开放 customer self-service，不提供 channel、route、price、limit、snapshot 或 emergency 配置 |
+| 客户验收只停留在人工 curl | P9 固化 Portal smoke CLI、OpenAPI import preflight 和 RC smoke 集成 |
+| 发布交接依赖口头同步 | P10 固化 release handoff 工具、PR 模板、验证命令和回滚证据字段 |
 
 ## 设计来源
 

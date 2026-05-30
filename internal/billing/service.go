@@ -91,6 +91,13 @@ func (w *AttemptWriter) RecordProviderAttempt(ctx context.Context, state *engine
 		EstimatedOutputTokens: state.EstimatedUsage.OutputTokens,
 		ActualInputTokens:     state.ActualUsage.InputTokens,
 		ActualOutputTokens:    state.ActualUsage.OutputTokens,
+		Retryable:             attempt.Retryable,
+		RetryBudgetConsumed:   attempt.RetryBudgetConsumed,
+		RetryBudgetRemaining:  attempt.RetryBudgetRemaining,
+		FallbackFromChannelID: attempt.FallbackFromChannelID,
+		FallbackFromProvider:  attempt.FallbackFromProvider,
+		CircuitState:          attempt.CircuitState,
+		Final:                 attempt.Final,
 	})
 }
 

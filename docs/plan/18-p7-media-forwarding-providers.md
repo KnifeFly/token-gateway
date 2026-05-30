@@ -46,6 +46,15 @@ P7 的目标是把 Unified Media 能力明确收敛为“非存储输入资产�
 | 结果 URL 过期导致客户无法取结果 | 在 task/callback 中透传 provider expiry metadata，并建议客户自有存储落盘 |
 | 不同 provider 状态机不一致 | Adapter contract 固定 normalized task status 和 provider metadata |
 
+## 执行记录
+
+- `/v1/files/*` 已收敛为 transient input asset：base64/multipart 只落 size、MIME、`sha256:` hash、source 和 expiry metadata；URL 输入只允许 `http`/`https` 并记录 `source_url`。
+- File response 不再生成 gateway `file://` 或长期 download URL；OpenAPI 明确 `file_url`/`download_url` 为可选兼容字段。
+- Task response/callback 已透出 `provider_task_id`、`provider_type`、`channel_id`、`results`、`assets`、`usage` 和 `provider_metadata`。
+- Generic HTTP media adapter 支持 provider 返回 `result_urls`、`assets`、`usage`、error 和 metadata；Replicate prediction adapter 已映射 submit、poll、cancel、result URL、usage、error 和 metadata。
+- Provider task poller 在 settlement 前归一化 provider result，确保计费和 callback 看到同一份 result JSON。
+- 覆盖测试：parser file metadata、task completion callback payload、generic provider fixture、Replicate submit/poll/cancel/failed fixture、worker poller 和 media contract tests。
+
 ## 设计来源
 
 - [路线图](./00-roadmap.md)

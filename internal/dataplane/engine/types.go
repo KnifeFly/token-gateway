@@ -334,6 +334,8 @@ type FileRequest struct {
 	SizeBytes    int64
 	MIMEType     string
 	UploadPath   string
+	ContentHash  string
+	SourceURL    string
 }
 
 // OpenAIChatMessage is a minimal OpenAI-compatible chat message.
@@ -361,15 +363,22 @@ type ProviderCandidate struct {
 
 // ProviderAttempt records one upstream attempt without sensitive data.
 type ProviderAttempt struct {
-	AttemptIndex int
-	ChannelID    string
-	ProviderType string
-	PublicModel  string
-	StatusCode   int
-	ErrorCode    string
-	Success      bool
-	StartedAt    time.Time
-	Duration     time.Duration
+	AttemptIndex          int
+	ChannelID             string
+	ProviderType          string
+	PublicModel           string
+	StatusCode            int
+	ErrorCode             string
+	Success               bool
+	StartedAt             time.Time
+	Duration              time.Duration
+	Retryable             bool
+	RetryBudgetConsumed   int
+	RetryBudgetRemaining  int
+	FallbackFromChannelID string
+	FallbackFromProvider  string
+	CircuitState          string
+	Final                 bool
 }
 
 // ProviderResult is the successful provider dispatch result.

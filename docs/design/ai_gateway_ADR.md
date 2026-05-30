@@ -291,7 +291,7 @@ RouteSignals 从 Redis hash 读取 channel 级健康、权重、延迟、成本�
 
 ---
 
-# ADR-0011: 当前路线收敛为 Provider 兼容、可靠性、非存储媒体转发和 Portal API
+# ADR-0011: 当前路线收敛为 Provider 兼容、可靠性、非存储媒体转发、Portal API、客户验收和发布交接
 
 ## Status
 
@@ -303,7 +303,7 @@ M0-P4 已经完成主体网关、账务、snapshot、worker、媒体任务和发
 
 ## Decision
 
-当前后续路线只推进 P5 Provider 协议兼容、P6 Provider 可靠性、P7 非存储媒体转发生态和 P8 Portal API。
+当前后续路线只推进 P5 Provider 协议兼容、P6 Provider 可靠性、P7 非存储媒体转发生态、P8 Portal API、P9 客户接入验收收口和 P10 发布交接收口。
 
 明确当前不做：
 
@@ -325,11 +325,11 @@ semantic cache
 跨地域多活
 ```
 
-`/v1/files/*` 只表达 transient/non-storage input asset，用于请求归一化、幂等校验、大小限制和 provider 转发。Portal 第一版复用 API key 鉴权，只开放模型、schema、credits、usage、API key 自助管理和 task 查询，不暴露 admin/control 配置能力。
+`/v1/files/*` 只表达 transient/non-storage input asset，用于请求归一化、幂等校验、大小限制和 provider 转发。Portal 第一版复用 API key 鉴权，只开放模型、schema、credits、usage、API key 自助管理和 task 查询，不暴露 admin/control 配置能力。P9 只补齐 Portal smoke、OpenAPI import preflight 和 RC smoke 集成，不新增产品面。P10 只补齐 release handoff、PR 模板、验证证据和回滚字段，不新增产品面。
 
 ## Consequences
 
-优点：后续路线聚焦客户接入、上游稳定性和自助查询，避免网关产品边界扩大成对象存储、审计平台或多地域平台。缺点：需要在文档和 OpenAPI 中持续标注 non-storage、not planned 和先不做边界。
+优点：后续路线聚焦客户接入、上游稳定性、自助查询和可重复验收，避免网关产品边界扩大成对象存储、审计平台或多地域平台。缺点：需要在文档和 OpenAPI 中持续标注 non-storage、not planned 和先不做边界。
 
 ## Alternatives
 

@@ -3,6 +3,7 @@ package router
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
@@ -11,13 +12,20 @@ import (
 
 // CandidateSignal contains hot-path routing signals for one candidate.
 type CandidateSignal struct {
-	Healthy         bool
-	HealthWeight    float64
-	Latency         time.Duration
-	CostMicros      int64
-	RemainingQuota  int64
-	Disabled        bool
-	ModelCompatible bool
+	Healthy          bool
+	HealthWeight     float64
+	Latency          time.Duration
+	CostMicros       int64
+	RemainingQuota   int64
+	Disabled         bool
+	ModelCompatible  bool
+	SuccessRate      float64
+	ErrorRate        float64
+	RateLimited      int64
+	ServerErrors     int64
+	Timeouts         int64
+	StreamInterrupts int64
+	CircuitState     string
 }
 
 // RouteSignals is the unified signal input consumed by routing strategies.
@@ -86,14 +94,17 @@ func (r *StrategyRegistry) Order(strategyName string, candidates []engine.Provid
 
 func (s RouteSignals) signal(candidate engine.ProviderCandidate) CandidateSignal {
 	if s.Candidates == nil {
-		return CandidateSignal{Healthy: true, HealthWeight: 1, ModelCompatible: true}
+		return defaultCandidateSignal()
 	}
 	signal, ok := s.Candidates[candidate.ChannelID]
 	if !ok {
-		return CandidateSignal{Healthy: true, HealthWeight: 1, ModelCompatible: true}
+		return defaultCandidateSignal()
 	}
 	if signal.HealthWeight == 0 {
 		signal.HealthWeight = 1
+	}
+	if signal.CircuitState == "" {
+		signal.CircuitState = CircuitClosed
 	}
 	return signal
 }
@@ -102,7 +113,7 @@ func filterUsable(candidates []engine.ProviderCandidate, signals RouteSignals) [
 	out := make([]engine.ProviderCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		signal := signals.signal(candidate)
-		if signal.Disabled || !signal.ModelCompatible || !signal.Healthy {
+		if signal.Disabled || !signal.ModelCompatible || !signal.Healthy || strings.EqualFold(signal.CircuitState, CircuitOpen) {
 			continue
 		}
 		out = append(out, candidate)

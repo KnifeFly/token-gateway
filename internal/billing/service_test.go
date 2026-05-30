@@ -147,6 +147,42 @@ func TestSettlementPlannerBillsPartialStreamClientDisconnect(t *testing.T) {
 	}
 }
 
+func TestAttemptWriterRecordsReliabilityFields(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	state := &engine.RequestState{
+		RequestID:      "req_attempt",
+		TenantID:       "tenant_1",
+		ProjectID:      "project_1",
+		APIKeyID:       "key_1",
+		EstimatedUsage: tokenusage.Estimate{InputTokens: 10, OutputTokens: 20},
+		ActualUsage:    tokenusage.Actual{InputTokens: 10, OutputTokens: 5},
+	}
+	attempt := engine.ProviderAttempt{
+		AttemptIndex:          2,
+		ChannelID:             "channel_2",
+		ProviderType:          "openai_compatible",
+		PublicModel:           "gpt-4o-mini",
+		StatusCode:            200,
+		Success:               true,
+		Retryable:             true,
+		RetryBudgetConsumed:   2,
+		RetryBudgetRemaining:  0,
+		FallbackFromChannelID: "channel_1",
+		FallbackFromProvider:  "openai_compatible",
+		CircuitState:          "half_open",
+		Final:                 true,
+	}
+
+	if err := NewAttemptWriter(repo).RecordProviderAttempt(ctx, state, attempt); err != nil {
+		t.Fatalf("RecordProviderAttempt() error = %v", err)
+	}
+	got := repo.attempts["req_attempt:2:channel_2"]
+	if !got.Retryable || got.RetryBudgetConsumed != 2 || got.RetryBudgetRemaining != 0 || got.FallbackFromChannelID != "channel_1" || got.CircuitState != "half_open" || !got.Final {
+		t.Fatalf("usage attempt = %#v", got)
+	}
+}
+
 func settlementState(holdID string) *engine.RequestState {
 	return &engine.RequestState{
 		RequestID:      "req_1",

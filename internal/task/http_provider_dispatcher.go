@@ -111,7 +111,15 @@ func (d *HTTPProviderTaskDispatcher) Submit(ctx context.Context, request Provide
 func (a *GenericHTTPProviderTaskAdapter) Submit(ctx context.Context, request ProviderTaskRequest) (*ProviderTask, error) {
 	if strings.HasPrefix(request.Channel.BaseURL, "mock://") {
 		externalID := fmt.Sprintf("external_%s_%s", request.Candidate.ChannelID, request.Task.ID)
-		return &ProviderTask{ExternalID: externalID, Status: StatusRunning, Progress: 1}, nil
+		return &ProviderTask{
+			ExternalID: externalID,
+			Status:     StatusRunning,
+			Progress:   1,
+			ProviderMetadata: map[string]string{
+				"external_task_id": externalID,
+				"provider":         firstNonEmpty(request.Candidate.ProviderType, "mock_media"),
+			},
+		}, nil
 	}
 	endpoint, err := providerTaskURL(request.Channel.BaseURL, "/v1/tasks")
 	if err != nil {
@@ -142,7 +150,12 @@ func (a *GenericHTTPProviderTaskAdapter) Submit(ctx context.Context, request Pro
 	if status == "" {
 		status = StatusRunning
 	}
-	return &ProviderTask{ExternalID: externalID, Status: status, Progress: out.Progress}, nil
+	return &ProviderTask{
+		ExternalID:       externalID,
+		Status:           status,
+		Progress:         out.Progress,
+		ProviderMetadata: out.ProviderMetadata,
+	}, nil
 }
 
 // Poll fetches the current upstream provider task status.
@@ -178,14 +191,18 @@ func (a *GenericHTTPProviderTaskAdapter) Poll(ctx context.Context, task Task, ch
 	if status == "" {
 		return nil, apperr.ProviderError("provider task response has invalid status")
 	}
-	return &ProviderTaskResult{
-		Status:       status,
-		Progress:     out.Progress,
-		Result:       out.Result,
-		Usage:        out.Usage.actual(),
-		ErrorCode:    out.ErrorCode,
-		ErrorMessage: out.ErrorMessage,
-	}, nil
+	result := ProviderTaskResult{
+		Status:           status,
+		Progress:         out.Progress,
+		Result:           out.Result,
+		Assets:           assetsFromProviderTaskResponse(out, task),
+		Usage:            out.Usage.actual(),
+		ErrorCode:        out.ErrorCode,
+		ErrorMessage:     out.ErrorMessage,
+		ProviderMetadata: out.ProviderMetadata,
+	}
+	result = NormalizeProviderTaskResult(result)
+	return &result, nil
 }
 
 // Cancel asks the upstream provider to cancel an async task.
@@ -336,18 +353,30 @@ func firstNonEmpty(values ...string) string {
 }
 
 func mockProviderTaskResult(task Task) *ProviderTaskResult {
-	resultURL := fmt.Sprintf("mock://%s/%s", strings.ReplaceAll(string(task.Kind), ".", "_"), task.ID)
-	result, _ := json.Marshal(map[string]any{"results": []string{resultURL}})
+	provider := firstNonEmpty(task.ProviderType, "mock_media")
+	resultURL := fmt.Sprintf("https://provider.example/mock-results/%s/%s", strings.ReplaceAll(string(task.Kind), ".", "_"), task.ID)
+	asset := ResultAsset{URL: resultURL, Type: task.MediaType, Provider: provider}
+	metadata := map[string]string{
+		"external_task_id": task.ProviderTaskID,
+		"provider":         provider,
+	}
+	result, _ := json.Marshal(map[string]any{
+		"results":           []string{resultURL},
+		"assets":            []ResultAsset{asset},
+		"provider_metadata": metadata,
+	})
 	usage := tokenusage.Actual{
 		InputTokens:  int64(len(task.Input) / 4),
 		OutputTokens: 32,
 	}
 	usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	return &ProviderTaskResult{
-		Status:   StatusSucceeded,
-		Progress: 100,
-		Result:   result,
-		Usage:    usage,
+		Status:           StatusSucceeded,
+		Progress:         100,
+		Result:           result,
+		Assets:           []ResultAsset{asset},
+		Usage:            usage,
+		ProviderMetadata: metadata,
 	}
 }
 
@@ -372,14 +401,33 @@ type providerSubmitRequest struct {
 }
 
 type providerTaskResponse struct {
-	ID             string            `json:"id"`
-	ExternalTaskID string            `json:"external_task_id"`
-	Status         Status            `json:"status"`
-	Progress       int               `json:"progress"`
-	Result         json.RawMessage   `json:"result"`
-	Usage          providerTaskUsage `json:"usage"`
-	ErrorCode      string            `json:"error_code"`
-	ErrorMessage   string            `json:"error_message"`
+	ID               string            `json:"id"`
+	ExternalTaskID   string            `json:"external_task_id"`
+	Status           Status            `json:"status"`
+	Progress         int               `json:"progress"`
+	Result           json.RawMessage   `json:"result"`
+	ResultURLs       []string          `json:"result_urls"`
+	Assets           []ResultAsset     `json:"assets"`
+	Usage            providerTaskUsage `json:"usage"`
+	ErrorCode        string            `json:"error_code"`
+	ErrorMessage     string            `json:"error_message"`
+	ProviderMetadata map[string]string `json:"provider_metadata"`
+}
+
+func assetsFromProviderTaskResponse(out providerTaskResponse, task Task) []ResultAsset {
+	if len(out.Assets) > 0 {
+		return out.Assets
+	}
+	assets := make([]ResultAsset, 0, len(out.ResultURLs))
+	provider := firstNonEmpty(task.ProviderType, "generic")
+	for _, resultURL := range out.ResultURLs {
+		assets = append(assets, ResultAsset{
+			URL:      strings.TrimSpace(resultURL),
+			Type:     task.MediaType,
+			Provider: provider,
+		})
+	}
+	return assets
 }
 
 type providerTaskUsage struct {

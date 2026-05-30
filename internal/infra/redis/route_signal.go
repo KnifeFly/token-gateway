@@ -11,13 +11,20 @@ import (
 
 // RouteSignal is one hot routing signal snapshot for a provider channel.
 type RouteSignal struct {
-	Healthy         *bool
-	HealthWeight    float64
-	Latency         time.Duration
-	CostMicros      int64
-	RemainingQuota  int64
-	Disabled        *bool
-	ModelCompatible *bool
+	Healthy          *bool
+	HealthWeight     float64
+	Latency          time.Duration
+	CostMicros       int64
+	RemainingQuota   int64
+	Disabled         *bool
+	ModelCompatible  *bool
+	SuccessRate      float64
+	ErrorRate        float64
+	RateLimited      int64
+	ServerErrors     int64
+	Timeouts         int64
+	StreamInterrupts int64
+	CircuitState     string
 }
 
 // RouteSignalStore reads and writes hot route signals in Redis.
@@ -92,6 +99,27 @@ func (s *RouteSignalStore) SetRouteSignal(ctx context.Context, channelID string,
 	if signal.ModelCompatible != nil {
 		values["model_compatible"] = boolString(*signal.ModelCompatible)
 	}
+	if signal.SuccessRate > 0 {
+		values["success_rate"] = strconv.FormatFloat(signal.SuccessRate, 'f', -1, 64)
+	}
+	if signal.ErrorRate > 0 {
+		values["error_rate"] = strconv.FormatFloat(signal.ErrorRate, 'f', -1, 64)
+	}
+	if signal.RateLimited > 0 {
+		values["rate_limited"] = signal.RateLimited
+	}
+	if signal.ServerErrors > 0 {
+		values["server_errors"] = signal.ServerErrors
+	}
+	if signal.Timeouts > 0 {
+		values["timeouts"] = signal.Timeouts
+	}
+	if signal.StreamInterrupts > 0 {
+		values["stream_interrupts"] = signal.StreamInterrupts
+	}
+	if signal.CircuitState != "" {
+		values["circuit_state"] = signal.CircuitState
+	}
 	if len(values) == 0 {
 		return nil
 	}
@@ -111,13 +139,20 @@ func (s *RouteSignalStore) key(channelID string) string {
 
 func parseRouteSignal(values map[string]string) RouteSignal {
 	return RouteSignal{
-		Healthy:         optionalBool(values["healthy"]),
-		HealthWeight:    floatValue(values["health_weight"]),
-		Latency:         time.Duration(int64Value(values["latency_ms"])) * time.Millisecond,
-		CostMicros:      int64Value(values["cost_micros"]),
-		RemainingQuota:  int64Value(values["remaining_quota"]),
-		Disabled:        optionalBool(values["disabled"]),
-		ModelCompatible: optionalBool(values["model_compatible"]),
+		Healthy:          optionalBool(values["healthy"]),
+		HealthWeight:     floatValue(values["health_weight"]),
+		Latency:          time.Duration(int64Value(values["latency_ms"])) * time.Millisecond,
+		CostMicros:       int64Value(values["cost_micros"]),
+		RemainingQuota:   int64Value(values["remaining_quota"]),
+		Disabled:         optionalBool(values["disabled"]),
+		ModelCompatible:  optionalBool(values["model_compatible"]),
+		SuccessRate:      floatValue(values["success_rate"]),
+		ErrorRate:        floatValue(values["error_rate"]),
+		RateLimited:      int64Value(values["rate_limited"]),
+		ServerErrors:     int64Value(values["server_errors"]),
+		Timeouts:         int64Value(values["timeouts"]),
+		StreamInterrupts: int64Value(values["stream_interrupts"]),
+		CircuitState:     strings.TrimSpace(values["circuit_state"]),
 	}
 }
 

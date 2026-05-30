@@ -75,6 +75,26 @@ func TestRoutePlannerSkipsEmergencyDisabledChannel(t *testing.T) {
 	}
 }
 
+func TestRoutePlannerStoresCircuitStates(t *testing.T) {
+	state := &engine.RequestState{
+		RequestedModel: "gpt-4o-mini",
+		Principal:      &engine.Principal{AllowedModels: []string{"gpt-4o-mini"}},
+		Snapshot:       routeSnapshot{},
+	}
+	provider := staticSignalProvider{signals: map[string]CandidateSignal{
+		"channel_1": {Healthy: true, HealthWeight: 1, ModelCompatible: true, CircuitState: CircuitHalfOpen},
+	}}
+
+	err := NewRoutePlanner(nil).WithSignals(provider).Plan(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	states, ok := state.Internal["route.circuit_states"].(map[string]string)
+	if !ok || states["channel_1"] != CircuitHalfOpen {
+		t.Fatalf("circuit states = %#v", state.Internal["route.circuit_states"])
+	}
+}
+
 func TestWeightedRandomDistribution(t *testing.T) {
 	selector := NewWeightedRandomSelector(rand.New(rand.NewSource(9)))
 	candidates := []engine.ProviderCandidate{
@@ -133,19 +153,60 @@ func TestStrategyRegistryFiltersDisabledAndIncompatibleCandidates(t *testing.T) 
 	}
 }
 
+func TestStrategyRegistryFiltersOpenCircuitCandidates(t *testing.T) {
+	registry := NewStrategyRegistry(nil)
+	candidates := []engine.ProviderCandidate{
+		{ChannelID: "open", Priority: 1, Weight: 100},
+		{ChannelID: "half_open", Priority: 2, Weight: 100},
+	}
+	signals := RouteSignals{Candidates: map[string]CandidateSignal{
+		"open":      {Healthy: true, ModelCompatible: true, CircuitState: CircuitOpen},
+		"half_open": {Healthy: true, ModelCompatible: true, CircuitState: CircuitHalfOpen},
+	}}
+	got := registry.Order("priority", candidates, signals)
+	if len(got) != 1 || got[0].ChannelID != "half_open" {
+		t.Fatalf("ordered = %#v", got)
+	}
+}
+
+func TestCompositeSignalProviderKeepsUnhealthyRedisSignal(t *testing.T) {
+	healthy := false
+	provider := NewCompositeSignalProvider(
+		NewRedisSignalProvider(fakeRouteSignalStore{signals: map[string]redisinfra.RouteSignal{
+			"channel_1": {Healthy: &healthy},
+		}}),
+		NewCircuitBreaker(DefaultCircuitConfig()),
+	)
+
+	signals, err := provider.Signals(context.Background(), nil, []engine.ProviderCandidate{{ChannelID: "channel_1", ProviderType: "fake", PublicModel: "m"}})
+	if err != nil {
+		t.Fatalf("Signals() error = %v", err)
+	}
+	if signals.Candidates["channel_1"].Healthy {
+		t.Fatalf("signal = %#v", signals.Candidates["channel_1"])
+	}
+}
+
 func TestRedisSignalProviderLoadsHotSignals(t *testing.T) {
 	healthy := false
 	compatible := false
 	disabled := true
 	provider := NewRedisSignalProvider(fakeRouteSignalStore{signals: map[string]redisinfra.RouteSignal{
 		"channel_1": {
-			Healthy:         &healthy,
-			HealthWeight:    0.25,
-			Latency:         45 * time.Millisecond,
-			CostMicros:      12,
-			RemainingQuota:  7,
-			Disabled:        &disabled,
-			ModelCompatible: &compatible,
+			Healthy:          &healthy,
+			HealthWeight:     0.25,
+			Latency:          45 * time.Millisecond,
+			CostMicros:       12,
+			RemainingQuota:   7,
+			Disabled:         &disabled,
+			ModelCompatible:  &compatible,
+			SuccessRate:      0.75,
+			ErrorRate:        0.25,
+			RateLimited:      2,
+			ServerErrors:     3,
+			Timeouts:         4,
+			StreamInterrupts: 5,
+			CircuitState:     CircuitHalfOpen,
 		},
 	}})
 
@@ -156,6 +217,51 @@ func TestRedisSignalProviderLoadsHotSignals(t *testing.T) {
 	got := signals.Candidates["channel_1"]
 	if got.Healthy || got.ModelCompatible || !got.Disabled || got.HealthWeight != 0.25 || got.Latency != 45*time.Millisecond || got.CostMicros != 12 || got.RemainingQuota != 7 {
 		t.Fatalf("signal = %#v", got)
+	}
+	if got.SuccessRate != 0.75 || got.ErrorRate != 0.25 || got.RateLimited != 2 || got.ServerErrors != 3 || got.Timeouts != 4 || got.StreamInterrupts != 5 || got.CircuitState != CircuitHalfOpen {
+		t.Fatalf("signal = %#v", got)
+	}
+}
+
+func TestCircuitBreakerTransitionsAndSignals(t *testing.T) {
+	breaker := NewCircuitBreaker(CircuitConfig{
+		FailureThreshold:         2,
+		MinSamples:               2,
+		OpenTimeout:              time.Millisecond,
+		HalfOpenSuccessThreshold: 1,
+	})
+	candidates := []engine.ProviderCandidate{{ChannelID: "channel_1", ProviderType: "fake", PublicModel: "m"}}
+	failure := engine.ProviderAttempt{ChannelID: "channel_1", ProviderType: "fake", PublicModel: "m", ErrorCode: "provider_unavailable"}
+
+	breaker.RecordProviderAttempt(context.Background(), nil, failure)
+	breaker.RecordProviderAttempt(context.Background(), nil, failure)
+	signals, err := breaker.Signals(context.Background(), nil, candidates)
+	if err != nil {
+		t.Fatalf("Signals() error = %v", err)
+	}
+	if got := signals.Candidates["channel_1"]; got.CircuitState != CircuitOpen || got.Healthy {
+		t.Fatalf("open signal = %#v", got)
+	}
+	if ordered := NewStrategyRegistry(nil).Order("priority", candidates, signals); len(ordered) != 0 {
+		t.Fatalf("ordered = %#v", ordered)
+	}
+
+	time.Sleep(2 * time.Millisecond)
+	signals, err = breaker.Signals(context.Background(), nil, candidates)
+	if err != nil {
+		t.Fatalf("Signals() error = %v", err)
+	}
+	if got := signals.Candidates["channel_1"]; got.CircuitState != CircuitHalfOpen || !got.Healthy || got.HealthWeight >= 1 {
+		t.Fatalf("half-open signal = %#v", got)
+	}
+
+	breaker.RecordProviderAttempt(context.Background(), nil, engine.ProviderAttempt{ChannelID: "channel_1", ProviderType: "fake", PublicModel: "m", Success: true})
+	signals, err = breaker.Signals(context.Background(), nil, candidates)
+	if err != nil {
+		t.Fatalf("Signals() error = %v", err)
+	}
+	if got := signals.Candidates["channel_1"]; got.CircuitState != CircuitClosed || !got.Healthy {
+		t.Fatalf("closed signal = %#v", got)
 	}
 }
 
@@ -236,4 +342,18 @@ type fakeRouteSignalStore struct {
 
 func (s fakeRouteSignalStore) GetRouteSignals(_ context.Context, _ []string) (map[string]redisinfra.RouteSignal, error) {
 	return s.signals, nil
+}
+
+type staticSignalProvider struct {
+	signals map[string]CandidateSignal
+}
+
+func (p staticSignalProvider) Signals(_ context.Context, _ *engine.RequestState, candidates []engine.ProviderCandidate) (RouteSignals, error) {
+	out := RouteSignals{Candidates: map[string]CandidateSignal{}}
+	for _, candidate := range candidates {
+		if signal, ok := p.signals[candidate.ChannelID]; ok {
+			out.Candidates[candidate.ChannelID] = signal
+		}
+	}
+	return out, nil
 }

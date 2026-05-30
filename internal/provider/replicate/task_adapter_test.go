@@ -103,6 +103,19 @@ func TestTaskAdapterSubmitPollAndCancel(t *testing.T) {
 	if !strings.Contains(string(result.Result), "https://cdn.example/result.png") {
 		t.Fatalf("result json = %s", string(result.Result))
 	}
+	if len(result.Assets) != 1 || result.Assets[0].URL != "https://cdn.example/result.png" || result.Assets[0].Provider != "replicate" {
+		t.Fatalf("assets = %#v", result.Assets)
+	}
+	if result.ProviderMetadata["prediction_id"] != "pred_1" || result.ProviderMetadata["get_url"] == "" {
+		t.Fatalf("provider metadata = %#v", result.ProviderMetadata)
+	}
+	var resultPayload map[string]any
+	if err := json.Unmarshal(result.Result, &resultPayload); err != nil {
+		t.Fatalf("result json decode: %v", err)
+	}
+	if resultPayload["results"] == nil || resultPayload["assets"] == nil || resultPayload["provider_metadata"] == nil {
+		t.Fatalf("result payload = %#v", resultPayload)
+	}
 	if result.Usage.TotalTokens == 0 {
 		t.Fatalf("usage was not estimated: %#v", result.Usage)
 	}
@@ -111,6 +124,29 @@ func TestTaskAdapterSubmitPollAndCancel(t *testing.T) {
 	}
 	if !cancelSeen {
 		t.Fatal("cancel endpoint was not called")
+	}
+}
+
+func TestTaskAdapterPollFailedPrediction(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/predictions/pred_failed" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"id":"pred_failed","status":"failed","error":"provider rejected input"}`))
+	}))
+	defer server.Close()
+
+	result, err := NewTaskAdapter(server.Client(), nil).Poll(context.Background(), tasksvc.Task{
+		ID:             "task_1",
+		RequestID:      "req_1",
+		ProviderTaskID: "pred_failed",
+		Input:          []byte(`{"model":"image-public","prompt":"hello"}`),
+	}, engine.ChannelView{BaseURL: server.URL, Enabled: true, Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	if result.Status != tasksvc.StatusFailed || result.ErrorCode != "replicate_prediction_failed" || result.ErrorMessage != "provider rejected input" {
+		t.Fatalf("result = %#v", result)
 	}
 }
 

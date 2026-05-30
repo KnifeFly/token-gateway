@@ -83,6 +83,13 @@ type UsageAttempt struct {
 	EstimatedOutputTokens int64
 	ActualInputTokens     int64
 	ActualOutputTokens    int64
+	Retryable             bool
+	RetryBudgetConsumed   int
+	RetryBudgetRemaining  int
+	FallbackFromChannelID string
+	FallbackFromProvider  string
+	CircuitState          string
+	Final                 bool
 	CreatedAt             time.Time
 }
 

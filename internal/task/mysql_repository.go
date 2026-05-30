@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -115,10 +116,21 @@ WHERE id = ?`, providerType, channelID, providerTaskID, string(status), time.Now
 // UpdateTaskStatus updates the current task state and terminal fields.
 func (r *MySQLRepository) UpdateTaskStatus(ctx context.Context, update TaskStatusUpdate) (*Task, error) {
 	usage, _ := json.Marshal(update.Usage)
+	if update.Metadata != nil {
+		metadata, _ := json.Marshal(update.Metadata)
+		if _, err := r.db.ExecContext(ctx, `
+	UPDATE tasks
+	SET status = ?, progress = ?, result_json = ?, usage_json = ?, error_code = ?, error_message = ?, metadata_json = ?, completed_at = ?, updated_at = ?
+	WHERE id = ?`,
+			string(update.Status), update.Progress, nullableBytes(update.Result), usage, update.ErrorCode, update.ErrorMessage, metadata, update.CompletedAt, time.Now().UTC(), update.TaskID); err != nil {
+			return nil, err
+		}
+		return r.GetTaskRequired(ctx, update.TaskID)
+	}
 	if _, err := r.db.ExecContext(ctx, `
-UPDATE tasks
-SET status = ?, progress = ?, result_json = ?, usage_json = ?, error_code = ?, error_message = ?, completed_at = ?, updated_at = ?
-WHERE id = ?`,
+	UPDATE tasks
+	SET status = ?, progress = ?, result_json = ?, usage_json = ?, error_code = ?, error_message = ?, completed_at = ?, updated_at = ?
+	WHERE id = ?`,
 		string(update.Status), update.Progress, nullableBytes(update.Result), usage, update.ErrorCode, update.ErrorMessage, update.CompletedAt, time.Now().UTC(), update.TaskID); err != nil {
 		return nil, err
 	}
@@ -147,6 +159,60 @@ func (r *MySQLRepository) ListProviderTasks(ctx context.Context, limit int) ([]T
 		tasks = append(tasks, *task)
 	}
 	return tasks, rows.Err()
+}
+
+// ListTasks returns tenant/project scoped tasks ordered by newest first.
+func (r *MySQLRepository) ListTasks(ctx context.Context, filter TaskListFilter) ([]Task, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 100
+	}
+	query := taskSelectSQL + ` WHERE tenant_id = ? AND project_id = ?`
+	args := []any{filter.TenantID, filter.ProjectID}
+	if filter.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(filter.Status))
+	}
+	if filter.Cursor != "" {
+		cursor, ok, err := r.cursorTask(ctx, filter.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			query += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+			args = append(args, cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+		}
+	}
+	query += ` ORDER BY created_at DESC, id DESC LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tasks []Task
+	for rows.Next() {
+		task, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, *task)
+	}
+	return tasks, rows.Err()
+}
+
+func (r *MySQLRepository) cursorTask(ctx context.Context, taskID string) (*Task, bool, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, false, nil
+	}
+	task, err := scanTask(r.db.QueryRowContext(ctx, taskSelectSQL+" WHERE id = ?", taskID))
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return task, true, nil
 }
 
 // GetFileByIdempotency returns the file bound to one unexpired idempotency key.
@@ -180,12 +246,13 @@ func (r *MySQLRepository) CreateFile(ctx context.Context, file FileAsset, idempo
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO file_assets (
-  id, tenant_id, project_id, api_key_id, request_id, file_name, original_name, size_bytes,
-  mime_type, upload_path, file_url, download_url, source, created_at, expires_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	INSERT INTO file_assets (
+	  id, tenant_id, project_id, api_key_id, request_id, file_name, original_name, size_bytes,
+	  mime_type, upload_path, file_url, download_url, source, content_hash, source_url, transient, created_at, expires_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		file.ID, file.TenantID, file.ProjectID, file.APIKeyID, file.RequestID, file.FileName, file.OriginalName, file.SizeBytes,
-		file.MIMEType, file.UploadPath, file.FileURL, file.DownloadURL, file.Source, file.CreatedAt, file.ExpiresAt); err != nil {
+		file.MIMEType, file.UploadPath, file.FileURL, file.DownloadURL, file.Source, file.ContentHash, file.SourceURL, file.Transient,
+		file.CreatedAt, file.ExpiresAt); err != nil {
 		return nil, err
 	}
 	if idempotency != nil {
@@ -287,8 +354,8 @@ FROM tasks`
 
 const fileSelectSQL = `
 SELECT id, tenant_id, project_id, api_key_id, request_id, file_name, original_name, size_bytes,
-       mime_type, upload_path, file_url, download_url, source, created_at, expires_at
-FROM file_assets`
+       mime_type, upload_path, file_url, download_url, source, content_hash, source_url, transient, created_at, expires_at
+	FROM file_assets`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -349,7 +416,7 @@ func scanFile(row scanner) (*FileAsset, error) {
 	var expiresAt sql.NullTime
 	if err := row.Scan(
 		&file.ID, &file.TenantID, &file.ProjectID, &file.APIKeyID, &file.RequestID, &file.FileName, &file.OriginalName, &file.SizeBytes,
-		&file.MIMEType, &file.UploadPath, &file.FileURL, &file.DownloadURL, &file.Source, &file.CreatedAt, &expiresAt,
+		&file.MIMEType, &file.UploadPath, &file.FileURL, &file.DownloadURL, &file.Source, &file.ContentHash, &file.SourceURL, &file.Transient, &file.CreatedAt, &expiresAt,
 	); err != nil {
 		return nil, err
 	}

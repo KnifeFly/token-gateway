@@ -37,6 +37,17 @@ P6 的目标是把 provider/channel 从“可路由、可 fallback”推进到�
 - stream 部分输出后发生错误不会透明 fallback，settlement/finalizer 行为可验证。
 - failure drills 能复现上游故障、熔断、恢复和 emergency disable 的组合场景。
 
+## 执行记录
+
+| 任务 | 状态 | 结果 |
+|---|---|---|
+| P6/E16-T01 provider/channel 健康信号模型 | 已完成 | `RouteSignal`/`CandidateSignal` 增加成功率、错误率、429、5xx、timeout、stream interruption 和 circuit state；Redis signal、组合 signal 和 observe log 可统一读取 |
+| P6/E16-T02 circuit breaker 状态机 | 已完成 | 新增 `router.CircuitBreaker`，按 provider/channel/public model 维护 closed、open、half_open，并在路由前过滤 open candidate |
+| P6/E16-T03 retry budget 和 retry eligibility | 已完成 | dispatcher 增加 request-local `RetryPolicy`，限制 attempts/time，只允许 retryable provider error fallback |
+| P6/E16-T04 fallback 限制规则 | 已完成 | fallback 要求请求体可重放、无下游输出、错误可重试且预算未耗尽；401/403 和不可重试 provider error 直接返回 |
+| P6/E16-T05 provider attempt 追踪增强 | 已完成 | `ProviderAttempt`、`UsageAttempt`、MySQL migration 和 provider attempt log 增加 retry/fallback/circuit/final 字段 |
+| P6/E16-T06 provider failure drills | 已完成 | 新增 focused tests 和 `tests/failure/provider_reliability_drills.sh`，覆盖 429/5xx/timeout/slow/bad JSON/stream interruption/circuit/emergency disable 演练入口 |
+
 ## 风险与处理
 
 | 风险 | 处理 |

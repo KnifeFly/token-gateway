@@ -2,6 +2,9 @@ package task
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
@@ -44,6 +47,50 @@ func TestHTTPProviderTaskDispatcherUsesRegisteredAdapter(t *testing.T) {
 	}
 	if adapter.cancels != 1 {
 		t.Fatalf("cancels = %d", adapter.cancels)
+	}
+}
+
+func TestGenericHTTPProviderTaskAdapterPollNormalizesMediaResults(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/v1/tasks/external_1" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{
+			"id": "external_1",
+			"status": "succeeded",
+			"progress": 100,
+			"result_urls": ["https://cdn.example/result.png"],
+			"usage": {"input_tokens": 2, "output_tokens": 3},
+			"provider_metadata": {"job_id": "external_1"}
+		}`))
+	}))
+	defer server.Close()
+
+	adapter := NewGenericHTTPProviderTaskAdapter(server.Client(), nil)
+	result, err := adapter.Poll(context.Background(), Task{
+		ID:             "task_1",
+		ProviderType:   "generic_media",
+		ProviderTaskID: "external_1",
+		MediaType:      "image",
+	}, engine.ChannelView{BaseURL: server.URL, Enabled: true})
+	if err != nil {
+		t.Fatalf("Poll() error = %v", err)
+	}
+	if result.Status != StatusSucceeded || result.Usage.TotalTokens != 5 {
+		t.Fatalf("result = %#v", result)
+	}
+	if len(result.Assets) != 1 || result.Assets[0].URL != "https://cdn.example/result.png" || result.Assets[0].Provider != "generic_media" {
+		t.Fatalf("assets = %#v", result.Assets)
+	}
+	if result.ProviderMetadata["job_id"] != "external_1" {
+		t.Fatalf("provider metadata = %#v", result.ProviderMetadata)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(result.Result, &payload); err != nil {
+		t.Fatalf("result json: %v", err)
+	}
+	if payload["results"] == nil || payload["assets"] == nil || payload["provider_metadata"] == nil {
+		t.Fatalf("payload = %#v", payload)
 	}
 }
 

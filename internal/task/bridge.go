@@ -107,8 +107,9 @@ func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestSta
 	}
 	if providerTask.Status != "" && providerTask.Status != StatusRunning {
 		updated, err = b.service.CompleteTask(ctx, *updated, ProviderTaskResult{
-			Status:   providerTask.Status,
-			Progress: providerTask.Progress,
+			Status:           providerTask.Status,
+			Progress:         providerTask.Progress,
+			ProviderMetadata: providerTask.ProviderMetadata,
 		})
 		if err != nil {
 			return nil, err

@@ -58,6 +58,30 @@ func TestOpenAIChatParserAcceptsStream(t *testing.T) {
 	}
 }
 
+func TestOpenAIChatParserAcceptsAssistantToolCallsWithoutContent(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalOpenAIChatCompletions,
+		Incoming: engine.IncomingRequest{
+			Body: io.NopCloser(strings.NewReader(`{
+				"model":"gpt-4o-mini",
+				"messages":[
+					{"role":"user","content":"call a tool"},
+					{"role":"assistant","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]}
+				],
+				"tools":[{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}]
+			}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(2048).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.RequestedModel != "gpt-4o-mini" {
+		t.Fatalf("RequestedModel = %q", state.RequestedModel)
+	}
+}
+
 func TestParserGeminiModelFromPath(t *testing.T) {
 	state := &engine.RequestState{
 		CanonicalAPI: engine.CanonicalGeminiGenerateContent,
@@ -73,6 +97,22 @@ func TestParserGeminiModelFromPath(t *testing.T) {
 	}
 	if state.RequestedModel != "gemini-2.5-flash" || !state.Stream {
 		t.Fatalf("model = %q stream = %v", state.RequestedModel, state.Stream)
+	}
+}
+
+func TestParserGeminiRequiresValidContents(t *testing.T) {
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalGeminiGenerateContent,
+		Incoming: engine.IncomingRequest{
+			Path: "/v1beta/models/gemini-2.5-flash:generateContent",
+			Body: io.NopCloser(strings.NewReader(`{"tools":[]}`)),
+		},
+	}
+
+	err := NewOpenAIChatParser(1024).Parse(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeInvalidArgument {
+		t.Fatalf("error = %v, want invalid argument", err)
 	}
 }
 
@@ -184,6 +224,71 @@ func TestParserFileBase64(t *testing.T) {
 	}
 	if state.Parsed.File == nil || state.Parsed.File.SizeBytes != 2 || state.IdempotencyKey != "idem-file" {
 		t.Fatalf("file = %#v idempotency = %q", state.Parsed.File, state.IdempotencyKey)
+	}
+	if !strings.HasPrefix(state.Parsed.File.ContentHash, "sha256:") {
+		t.Fatalf("content hash = %q", state.Parsed.File.ContentHash)
+	}
+}
+
+func TestParserFileURLRequiresHTTPAndRecordsSourceURL(t *testing.T) {
+	parser := NewOpenAIChatParser(1024)
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalFileUploadURL,
+		Incoming: engine.IncomingRequest{
+			Path: "/v1/files/upload/url",
+			Body: io.NopCloser(strings.NewReader(`{"url":"https://assets.example/input.png"}`)),
+		},
+	}
+
+	if err := parser.Parse(context.Background(), state); err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.Parsed.File == nil || state.Parsed.File.SourceURL != "https://assets.example/input.png" || state.Parsed.File.MIMEType != "image/png" {
+		t.Fatalf("file = %#v", state.Parsed.File)
+	}
+
+	state = &engine.RequestState{
+		CanonicalAPI: engine.CanonicalFileUploadURL,
+		Incoming: engine.IncomingRequest{
+			Path: "/v1/files/upload/url",
+			Body: io.NopCloser(strings.NewReader(`{"url":"file:///tmp/input.png"}`)),
+		},
+	}
+	err := parser.Parse(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeInvalidArgument {
+		t.Fatalf("error = %v, want invalid argument", err)
+	}
+}
+
+func TestParserFileStreamRecordsHashAndSize(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "image.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := part.Write([]byte("png-bytes")); err != nil {
+		t.Fatalf("part.Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalFileUploadStream,
+		Incoming: engine.IncomingRequest{
+			Path:   "/v1/files/upload",
+			Header: http.Header{"Content-Type": []string{writer.FormDataContentType()}},
+			Body:   io.NopCloser(bytes.NewReader(body.Bytes())),
+		},
+	}
+
+	err = NewOpenAIChatParser(4096).Parse(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if state.Parsed.File == nil || state.Parsed.File.SizeBytes != int64(len("png-bytes")) || !strings.HasPrefix(state.Parsed.File.ContentHash, "sha256:") {
+		t.Fatalf("file = %#v", state.Parsed.File)
 	}
 }
 

@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -121,6 +122,9 @@ func (r *MemoryRepository) UpdateTaskStatus(_ context.Context, update TaskStatus
 	task.Usage = update.Usage
 	task.ErrorCode = update.ErrorCode
 	task.ErrorMessage = update.ErrorMessage
+	if update.Metadata != nil {
+		task.Metadata = cloneMetadata(update.Metadata)
+	}
 	task.CompletedAt = update.CompletedAt
 	task.UpdatedAt = time.Now().UTC()
 	r.tasks[task.ID] = task
@@ -145,6 +149,50 @@ func (r *MemoryRepository) ListProviderTasks(_ context.Context, limit int) ([]Ta
 		if task.Status == StatusQueued || task.Status == StatusRunning {
 			tasks = append(tasks, *cloneTask(task))
 		}
+	}
+	return tasks, nil
+}
+
+// ListTasks returns tenant/project scoped tasks ordered by newest first.
+func (r *MemoryRepository) ListTasks(_ context.Context, filter TaskListFilter) ([]Task, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if filter.Limit <= 0 {
+		filter.Limit = 100
+	}
+	tasks := make([]Task, 0, len(r.tasks))
+	for _, task := range r.tasks {
+		if filter.TenantID != "" && task.TenantID != filter.TenantID {
+			continue
+		}
+		if filter.ProjectID != "" && task.ProjectID != filter.ProjectID {
+			continue
+		}
+		if filter.Status != "" && task.Status != filter.Status {
+			continue
+		}
+		tasks = append(tasks, *cloneTask(task))
+	}
+	sort.Slice(tasks, func(i, j int) bool {
+		if tasks[i].CreatedAt.Equal(tasks[j].CreatedAt) {
+			return tasks[i].ID > tasks[j].ID
+		}
+		return tasks[i].CreatedAt.After(tasks[j].CreatedAt)
+	})
+	if filter.Cursor != "" {
+		start := -1
+		for i, task := range tasks {
+			if task.ID == filter.Cursor {
+				start = i + 1
+				break
+			}
+		}
+		if start >= 0 {
+			tasks = tasks[start:]
+		}
+	}
+	if len(tasks) > filter.Limit {
+		tasks = tasks[:filter.Limit]
 	}
 	return tasks, nil
 }

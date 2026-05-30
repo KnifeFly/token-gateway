@@ -724,6 +724,7 @@ paths:
       tags:
       - OpenAI Compatible
       summary: OpenAI-compatible chat completions
+      description: P5 兼容边界：JSON 字段默认透传，网关只按路由改写 model；支持 tools/tool_choice、multimodal content array、stream usage 和稳定 provider error class。
       operationId: createChatCompletion
       requestBody:
         required: true
@@ -750,6 +751,7 @@ paths:
       tags:
       - OpenAI Compatible
       summary: OpenAI-compatible Responses API
+      description: P5 兼容边界：请求字段默认透传，网关只按路由改写 model；支持 stream event passthrough，并从 response.completed.response.usage 归一化 usage。
       operationId: createResponse
       requestBody:
         required: true
@@ -800,6 +802,7 @@ paths:
       tags:
       - Claude Compatible
       summary: Claude-compatible Messages API
+      description: P5 兼容边界：保留 Anthropic-Version/Anthropic-Beta，JSON 字段默认透传，网关只按路由改写 model；支持 tools、多模态 content block、stream event passthrough、stop/usage 字段和稳定 provider error class。
       operationId: createClaudeMessage
       parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -832,6 +835,7 @@ paths:
       tags:
       - Gemini Compatible
       summary: Gemini-compatible generateContent
+      description: P5 兼容边界：contents、tools、toolConfig、safetySettings、systemInstruction、generationConfig 默认透传；网关使用路由后的 model 构造 upstream URL，并归一化 usageMetadata。
       operationId: geminiGenerateContent
       parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -862,6 +866,7 @@ paths:
       tags:
       - Gemini Compatible
       summary: Gemini-compatible streamGenerateContent
+      description: P5 兼容边界：SSE event 透传，stream 关闭时归一化 usageMetadata；请求体字段行为与 generateContent 一致。
       operationId: geminiStreamGenerateContent
       parameters:
       - $ref: '#/components/parameters/XRequestID'
@@ -1629,6 +1634,12 @@ components:
           - rate_limited
           - content_policy_violation
           - provider_error
+          - provider_request_invalid
+          - provider_auth_failed
+          - provider_not_found
+          - provider_rate_limited
+          - provider_timeout
+          - provider_unavailable
           - service_error
           - service_unavailable
           - generation_timeout
@@ -2441,14 +2452,28 @@ components:
           type: string
         upload_path:
           type: string
+        source:
+          type: string
+          description: Upload source, for example upload_base64, upload_url, or upload_stream.
+        content_hash:
+          type: string
+          description: SHA-256 hash for inline or multipart input when the gateway can inspect bytes.
+          example: sha256:8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4
+        source_url:
+          type: string
+          format: uri
+          description: Original URL for URL-based input assets. Empty for inline or multipart inputs.
+        transient:
+          type: boolean
+          description: Always true for current file APIs; these assets are not gateway object storage.
         file_url:
           type: string
           format: uri
-          description: Transient reference only; not a durable gateway-hosted object URL.
+          description: Optional transient provider-facing reference. For inline and multipart inputs this field is omitted because the gateway does not host bytes.
         download_url:
           type: string
           format: uri
-          description: Transient reference only; clients should not rely on gateway storage.
+          description: Deprecated/optional transient reference. Clients must not rely on gateway download hosting.
         upload_time:
           type: string
           format: date-time
@@ -2476,6 +2501,36 @@ components:
             used_bytes:
               type: integer
               format: int64
+            quota_kind:
+              type: string
+              enum:
+              - transient_input_asset
+    TaskResultAsset:
+      type: object
+      description: Provider-hosted media result metadata. URLs are returned by the provider or customer storage, not by gateway object storage.
+      properties:
+        url:
+          type: string
+          format: uri
+        type:
+          type: string
+          enum:
+          - image
+          - video
+          - audio
+          - music
+          - text
+        mime_type:
+          type: string
+        provider:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
     TaskObject:
       type: object
       required:
@@ -2524,11 +2579,30 @@ components:
           - image
           - audio
           - video
+        provider_task_id:
+          type: string
+          description: Upstream provider task/prediction id when dispatched.
+        provider_type:
+          type: string
+          description: Provider adapter name used for the task.
+        channel_id:
+          type: string
+          description: Gateway provider channel id selected for this task.
         results:
           type: array
+          description: Provider result URLs normalized from provider output or result assets.
           items:
             type: string
             format: uri
+        assets:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskResultAsset'
+        provider_metadata:
+          type: object
+          description: Non-secret provider metadata such as prediction id, provider status, or provider self links.
+          additionalProperties:
+            type: string
         error:
           $ref: '#/components/schemas/TaskError'
         task_info:
@@ -2848,7 +2922,7 @@ components:
             type: object
             required:
             - role
-            - content
+            additionalProperties: true
             properties:
               role:
                 type: string
@@ -2869,6 +2943,14 @@ components:
                 type: string
               tool_call_id:
                 type: string
+              tool_calls:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: true
+              function_call:
+                type: object
+                additionalProperties: true
         temperature:
           type: number
         top_p:
@@ -2913,6 +2995,9 @@ components:
           type: object
           additionalProperties:
             type: string
+        stream_options:
+          type: object
+          additionalProperties: true
     OpenAIChatCompletionResponse:
       type: object
       properties:
@@ -3042,6 +3127,22 @@ components:
         cached_input_tokens:
           type: integer
         reasoning_tokens:
+          type: integer
+        cache_creation_input_tokens:
+          type: integer
+        cache_read_input_tokens:
+          type: integer
+        audio_input_tokens:
+          type: integer
+        audio_output_tokens:
+          type: integer
+        image_input_tokens:
+          type: integer
+        image_output_tokens:
+          type: integer
+        video_input_tokens:
+          type: integer
+        video_output_tokens:
           type: integer
     ClaudeMessageRequest:
       type: object

@@ -3,6 +3,7 @@ package task
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
@@ -41,6 +42,7 @@ func FileQuotaResponse(quota FileQuota) (*engine.GatewayResponse, error) {
 			"remaining_files": quota.RemainingFiles,
 			"max_bytes":       quota.MaxBytes,
 			"used_bytes":      quota.UsedBytes,
+			"quota_kind":      "transient_input_asset",
 		},
 	})
 	if err != nil {
@@ -59,6 +61,8 @@ func TaskObject(task *Task) map[string]any {
 		object = "audio.generation.task"
 	}
 	result := resultURLs(task.Result)
+	assets := resultAssets(task.Result)
+	providerMetadata := resultProviderMetadata(task.Result)
 	payload := map[string]any{
 		"id":       task.ID,
 		"object":   object,
@@ -72,6 +76,21 @@ func TaskObject(task *Task) map[string]any {
 			"can_cancel": !IsTerminal(task.Status),
 		},
 		"metadata": task.Metadata,
+	}
+	if task.ProviderTaskID != "" {
+		payload["provider_task_id"] = task.ProviderTaskID
+	}
+	if task.ProviderType != "" {
+		payload["provider_type"] = task.ProviderType
+	}
+	if task.ChannelID != "" {
+		payload["channel_id"] = task.ChannelID
+	}
+	if len(assets) > 0 {
+		payload["assets"] = assets
+	}
+	if len(providerMetadata) > 0 {
+		payload["provider_metadata"] = providerMetadata
 	}
 	if task.ErrorCode != "" || task.ErrorMessage != "" {
 		payload["error"] = map[string]any{
@@ -104,9 +123,17 @@ func FileObject(file *FileAsset) map[string]any {
 		"file_size":     file.SizeBytes,
 		"mime_type":     file.MIMEType,
 		"upload_path":   file.UploadPath,
-		"file_url":      file.FileURL,
-		"download_url":  file.DownloadURL,
+		"source":        file.Source,
+		"content_hash":  file.ContentHash,
+		"source_url":    file.SourceURL,
+		"transient":     file.Transient,
 		"upload_time":   file.CreatedAt.Format(time.RFC3339),
+	}
+	if file.FileURL != "" {
+		payload["file_url"] = file.FileURL
+	}
+	if file.DownloadURL != "" {
+		payload["download_url"] = file.DownloadURL
 	}
 	if file.ExpiresAt != nil {
 		payload["expires_at"] = file.ExpiresAt.Format(time.RFC3339)
@@ -145,18 +172,103 @@ func resultURLs(raw json.RawMessage) []string {
 	if len(raw) == 0 {
 		return nil
 	}
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	if urls := stringList(payload["results"]); len(urls) > 0 {
+		return urls
+	}
+	if url := stringValue(payload["url"]); url != "" {
+		return []string{url}
+	}
+	if assets := resultAssets(raw); len(assets) > 0 {
+		return urlsFromAssets(assets)
+	}
+	return collectURLs(payload["output"])
+}
+
+func resultAssets(raw json.RawMessage) []ResultAsset {
+	if len(raw) == 0 {
+		return nil
+	}
 	var payload struct {
-		Results []string `json:"results"`
-		URL     string   `json:"url"`
+		Assets []ResultAsset `json:"assets"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
 		return nil
 	}
-	if len(payload.Results) > 0 {
-		return payload.Results
+	return normalizeResultAssets(payload.Assets)
+}
+
+func resultProviderMetadata(raw json.RawMessage) map[string]string {
+	if len(raw) == 0 {
+		return nil
 	}
-	if payload.URL != "" {
-		return []string{payload.URL}
+	var payload struct {
+		ProviderMetadata map[string]string `json:"provider_metadata"`
 	}
-	return nil
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil
+	}
+	return cleanMetadata(payload.ProviderMetadata)
+}
+
+func stringList(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var values []string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+func stringValue(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
+}
+
+func collectURLs(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil
+	}
+	var urls []string
+	collectURLValues(value, &urls)
+	return urls
+}
+
+func collectURLValues(value any, urls *[]string) {
+	switch typed := value.(type) {
+	case string:
+		typed = strings.TrimSpace(typed)
+		if typed != "" && hasURLScheme(typed) {
+			*urls = append(*urls, typed)
+		}
+	case []any:
+		for _, item := range typed {
+			collectURLValues(item, urls)
+		}
+	case map[string]any:
+		for _, item := range typed {
+			collectURLValues(item, urls)
+		}
+	}
 }

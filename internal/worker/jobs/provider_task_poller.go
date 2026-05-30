@@ -78,6 +78,8 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 		if result == nil || !tasksvc.IsTerminal(result.Status) {
 			continue
 		}
+		normalized := tasksvc.NormalizeProviderTaskResult(*result)
+		result = &normalized
 		settlementTask := task
 		settlementTask.Status = result.Status
 		settlementTask.Result = result.Result

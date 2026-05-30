@@ -47,6 +47,16 @@ P8 的目标是为开发者自助门户提供第一版 customer-facing API。Por
 | Usage 报表暴露内部账务细节 | Portal response 使用客户视角 schema，不返回 provider cost 或 repair internals |
 | 与已有 `/v1/models`、`/v1/credits` 重叠 | 保留现有公开 API，Portal 路径作为前端聚合和权限边界更清晰的版本 |
 
+## 执行记录
+
+- OpenAPI 已包含 Portal tag、`/v1/portal/*` paths、Portal usage/API key/task schemas 和 Bearer API key security。
+- 新增 `internal/portal` service，复用 runtime snapshot、API key principal、commercial reporting、admin API key service 和 task repository；不引入 RBAC，也不暴露 admin/control 配置能力。
+- 新增 `internal/transport/portalhttp` handler 并接入 gateway bootstrap，共享现有 snapshot provider 和 snapshot authenticator。
+- Portal models/schema 按当前 API key `allowed_models` 过滤；credits/usage 只返回客户视角余额、用量和扣费摘要，不返回 provider cost 或 failed settlement repair internals。
+- Portal API key 自助管理只能在当前 tenant/project 创建派生 key，`allowed_models` 必须是当前 key 权限子集；列表不返回 plaintext/hash，禁止当前 key 自禁用。
+- Portal task 列表和详情只读当前 tenant/project，下发前过滤敏感 metadata key。
+- 覆盖测试：Portal handler 权限边界、OpenAPI contract、task scope filtering、API key 子集校验和 bootstrap wiring focused tests。
+
 ## 设计来源
 
 - [路线图](./00-roadmap.md)
