@@ -111,7 +111,6 @@ type TracingConfig struct {
 // GatewayConfig groups data-plane behavior toggles.
 type GatewayConfig struct {
 	Body        BodyConfig         `yaml:"body"`
-	Snapshot    SnapshotConfig     `yaml:"snapshot"`
 	Protocol    ProtocolConfig     `yaml:"protocol"`
 	Idempotency IdempotencyConfig  `yaml:"idempotency"`
 	Seed        SeedSnapshotConfig `yaml:"seed_snapshot"`
@@ -122,12 +121,6 @@ type GatewayConfig struct {
 // BodyConfig controls request body limits.
 type BodyConfig struct {
 	MaxBytes int64 `yaml:"max_bytes"`
-}
-
-// SnapshotConfig controls runtime snapshot staleness policy.
-type SnapshotConfig struct {
-	SoftTTL Duration `yaml:"soft_ttl"`
-	HardTTL Duration `yaml:"hard_ttl"`
 }
 
 // ProtocolConfig controls fallback protocol classification.
@@ -261,10 +254,6 @@ func DefaultConfig() Config {
 		Gateway: GatewayConfig{
 			Body: BodyConfig{
 				MaxBytes: 4 << 20,
-			},
-			Snapshot: SnapshotConfig{
-				SoftTTL: Duration{30 * time.Second},
-				HardTTL: Duration{2 * time.Minute},
 			},
 			Protocol: ProtocolConfig{
 				DefaultMode: "auto",

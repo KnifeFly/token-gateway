@@ -9,14 +9,6 @@ groups:
         annotations:
           summary: Failed settlement backlog is non-zero.
           description: Repairable settlement failures have been pending for more than 5 minutes.
-      - alert: TokenGatewaySnapshotStale
-        expr: token_gateway_snapshot_staleness_seconds > 300
-        for: 5m
-        labels:
-          severity: warn
-        annotations:
-          summary: Runtime snapshot is stale.
-          description: The active data-plane snapshot has not refreshed within the expected window.
       - alert: TokenGatewayProviderErrorRate
         expr: sum(rate(token_gateway_provider_attempts_total{outcome="failure"}[5m])) / clamp_min(sum(rate(token_gateway_provider_attempts_total[5m])), 1) > 0.2
         for: 10m

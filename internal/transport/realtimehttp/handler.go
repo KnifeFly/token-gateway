@@ -376,7 +376,7 @@ func externalType(code apperr.Code) string {
 		return "authentication_error"
 	case apperr.CodeForbidden, apperr.CodePolicyDenied:
 		return "permission_error"
-	case apperr.CodeInternal, apperr.CodeConfigUnavailable, apperr.CodeServiceUnavailable, apperr.CodeSnapshotStale:
+	case apperr.CodeInternal, apperr.CodeConfigUnavailable, apperr.CodeServiceUnavailable:
 		return "service_error"
 	default:
 		return "invalid_request_error"

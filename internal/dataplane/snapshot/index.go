@@ -409,21 +409,8 @@ func limitKey(scope engine.LimitScope) string {
 	return fmt.Sprintf("limit:%s:%s:%s:%s:%s:%s", scope.TenantID, scope.ProjectID, scope.APIKeyID, scope.PublicModel, scope.ProviderType, scope.ChannelID)
 }
 
-// StalePolicy controls request behavior when the active snapshot is old.
-type StalePolicy struct {
-	SoftTTL time.Duration
-	HardTTL time.Duration
-}
-
 // ProviderOption configures a Provider.
 type ProviderOption func(*Provider)
-
-// WithStalePolicy configures soft and hard snapshot age limits.
-func WithStalePolicy(policy StalePolicy) ProviderOption {
-	return func(p *Provider) {
-		p.policy = policy
-	}
-}
 
 // WithMetrics updates snapshot staleness from request attachment.
 func WithMetrics(metrics *Metrics) ProviderOption {
@@ -435,7 +422,6 @@ func WithMetrics(metrics *Metrics) ProviderOption {
 // Provider attaches the current Store snapshot to a RequestState.
 type Provider struct {
 	store   *Store
-	policy  StalePolicy
 	metrics *Metrics
 }
 
@@ -460,15 +446,6 @@ func (p *Provider) Attach(_ context.Context, state *engine.RequestState) error {
 	ref := current.Ref()
 	if p.metrics != nil {
 		p.metrics.Observe(ref)
-	}
-	if !ref.CreatedAt.IsZero() {
-		age := time.Since(ref.CreatedAt)
-		if p.policy.HardTTL > 0 && age > p.policy.HardTTL {
-			return apperr.SnapshotStale("runtime snapshot is stale", apperr.WithTemporary())
-		}
-		if p.policy.SoftTTL > 0 && age > p.policy.SoftTTL && state != nil && state.Internal != nil {
-			state.Internal["snapshot_stale"] = "soft"
-		}
 	}
 	state.PinSnapshot(current)
 	return nil

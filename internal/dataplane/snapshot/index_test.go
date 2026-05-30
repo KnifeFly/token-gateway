@@ -106,7 +106,7 @@ func TestBuildIndexesRuntimeSnapshot(t *testing.T) {
 	}
 }
 
-func TestProviderRejectsHardStaleSnapshot(t *testing.T) {
+func TestProviderAttachesOldSnapshot(t *testing.T) {
 	indexed, err := Build(cpsnapshot.RuntimeSnapshot{
 		Version:   "old",
 		CreatedAt: time.Now().UTC().Add(-time.Hour),
@@ -119,39 +119,13 @@ func TestProviderRejectsHardStaleSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
-	provider := NewProvider(NewStore(indexed), WithStalePolicy(StalePolicy{
-		SoftTTL: time.Minute,
-		HardTTL: 2 * time.Minute,
-	}))
-	err = provider.Attach(context.Background(), &engine.RequestState{Internal: map[string]any{}})
-	if err == nil {
-		t.Fatal("expected stale error")
-	}
-}
-
-func TestProviderMarksSoftStaleSnapshot(t *testing.T) {
-	indexed, err := Build(cpsnapshot.RuntimeSnapshot{
-		Version:   "soft",
-		CreatedAt: time.Now().UTC().Add(-time.Minute),
-		Models: []cpsnapshot.ModelRuntime{{
-			PublicModel: "m",
-			Protocol:    string(engine.ProtocolNativeOpenAI),
-			Enabled:     true,
-		}},
-	})
-	if err != nil {
-		t.Fatalf("Build() error = %v", err)
-	}
-	provider := NewProvider(NewStore(indexed), WithStalePolicy(StalePolicy{
-		SoftTTL: time.Second,
-		HardTTL: time.Hour,
-	}))
+	provider := NewProvider(NewStore(indexed))
 	state := &engine.RequestState{Internal: map[string]any{}}
 	if err := provider.Attach(context.Background(), state); err != nil {
 		t.Fatalf("Attach() error = %v", err)
 	}
-	if state.Internal["snapshot_stale"] != "soft" {
-		t.Fatalf("stale marker = %#v", state.Internal["snapshot_stale"])
+	if state.SnapshotRef.Version != "old" {
+		t.Fatalf("snapshot version = %q", state.SnapshotRef.Version)
 	}
 }
 

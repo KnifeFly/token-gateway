@@ -30,8 +30,6 @@ const (
 	CodeIdempotencyConflict Code = "idempotency_conflict"
 	// CodePolicyDenied identifies requests blocked by policy.
 	CodePolicyDenied Code = "policy_denied"
-	// CodeSnapshotStale identifies requests rejected because runtime config is too old.
-	CodeSnapshotStale Code = "snapshot_stale"
 	// CodeFeatureNotEnabled identifies explicitly disabled product capabilities.
 	CodeFeatureNotEnabled Code = "feature_not_enabled"
 	// CodeConfigUnavailable identifies missing runtime configuration.
@@ -184,11 +182,6 @@ func ServiceUnavailable(message string, opts ...Option) *Error {
 	return New(CodeServiceUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
 
-// SnapshotStale returns an error when the runtime snapshot is too old to use.
-func SnapshotStale(message string, opts ...Option) *Error {
-	return New(CodeSnapshotStale, message, http.StatusServiceUnavailable, opts...)
-}
-
 // FeatureNotEnabled returns an error for explicitly disabled product capabilities.
 func FeatureNotEnabled(message string, opts ...Option) *Error {
 	return New(CodeFeatureNotEnabled, message, http.StatusNotImplemented, opts...)
@@ -221,8 +214,6 @@ func defaultMessage(code Code) string {
 		return "idempotency conflict"
 	case CodePolicyDenied:
 		return "policy denied"
-	case CodeSnapshotStale:
-		return "configuration snapshot is stale"
 	case CodeFeatureNotEnabled:
 		return "feature is not enabled"
 	case CodeConfigUnavailable:

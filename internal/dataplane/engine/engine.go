@@ -499,9 +499,6 @@ func addSnapshotHeader(response *GatewayResponse, state *RequestState) {
 		response.Header = http.Header{}
 	}
 	response.Header.Set("X-Gateway-Snapshot-Version", state.SnapshotRef.Version)
-	if value, ok := state.Internal["snapshot_stale"].(string); ok && value != "" {
-		response.Header.Set("X-Gateway-Snapshot-Stale", value)
-	}
 }
 
 func (e *GatewayEngine) validate() error {
@@ -627,8 +624,6 @@ func externalCode(code apperr.Code) string {
 		return "ambiguous_protocol"
 	case apperr.CodeNotFound:
 		return "resource_not_found"
-	case apperr.CodeSnapshotStale:
-		return "snapshot_stale"
 	case apperr.CodeConfigUnavailable, apperr.CodeServiceUnavailable:
 		return "service_unavailable"
 	case apperr.CodeInternal:
@@ -648,7 +643,7 @@ func externalType(code apperr.Code) string {
 		return "provider_error"
 	case apperr.CodeRateLimited:
 		return "rate_limit_error"
-	case apperr.CodeInternal, apperr.CodeConfigUnavailable, apperr.CodeServiceUnavailable, apperr.CodeSnapshotStale:
+	case apperr.CodeInternal, apperr.CodeConfigUnavailable, apperr.CodeServiceUnavailable:
 		return "service_error"
 	default:
 		return "invalid_request_error"

@@ -21,7 +21,7 @@ require_file_contains() {
 
 echo "release_gate=observability_contract"
 require_file_contains deployments/observability/prometheus-alerts.yaml "TokenGatewayFailedSettlementBacklog"
-require_file_contains deployments/observability/prometheus-alerts.yaml "TokenGatewaySnapshotStale"
+require_file_contains deployments/observability/prometheus-alerts.yaml "TokenGatewaySnapshotPublishErrors"
 require_file_contains deployments/observability/prometheus-alerts.yaml "TokenGatewayProvider5xx"
 require_file_contains deployments/observability/prometheus-alerts.yaml "TokenGatewayWorkerJobFailures"
 require_file_contains deployments/observability/prometheus-alerts.yaml "token_gateway_worker_job_runs_total"

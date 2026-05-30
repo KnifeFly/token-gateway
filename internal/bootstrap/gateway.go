@@ -229,14 +229,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
-	snapshotProvider := dpsnapshot.NewProvider(
-		snapshotStore,
-		dpsnapshot.WithStalePolicy(dpsnapshot.StalePolicy{
-			SoftTTL: cfg.Gateway.Snapshot.SoftTTL.Duration,
-			HardTTL: cfg.Gateway.Snapshot.HardTTL.Duration,
-		}),
-		dpsnapshot.WithMetrics(snapshotMetrics),
-	)
+	snapshotProvider := dpsnapshot.NewProvider(snapshotStore, dpsnapshot.WithMetrics(snapshotMetrics))
 	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
 	routePlanner := router.NewRoutePlanner(nil, emergencyDisableStore).WithSignals(
 		router.NewRedisSignalProvider(redisinfra.NewRouteSignalStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)),

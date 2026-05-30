@@ -156,9 +156,6 @@ telemetry:
 gateway:
   body:
     max_bytes: 4194304
-  snapshot:
-    soft_ttl: 30s
-    hard_ttl: 2m
   protocol:
     default_mode: auto
   idempotency:

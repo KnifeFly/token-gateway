@@ -55,7 +55,7 @@ func TestWatcherPollsPublishAndRollbackSnapshots(t *testing.T) {
 	assertCurrentSnapshotModel(t, store, first.Version, "gpt-4.1-mini", false)
 }
 
-func TestWatcherKeepsCurrentSnapshotWhenConfigdUnavailableAndStalePolicyApplies(t *testing.T) {
+func TestWatcherKeepsCurrentSnapshotWhenConfigdUnavailable(t *testing.T) {
 	current, err := Build(cpsnapshot.RuntimeSnapshot{
 		Version:   "last-known-good",
 		CreatedAt: time.Now().UTC(),
@@ -75,30 +75,6 @@ func TestWatcherKeepsCurrentSnapshotWhenConfigdUnavailableAndStalePolicyApplies(
 		t.Fatal("Poll() succeeded, want configd error")
 	}
 	assertCurrentSnapshotModel(t, store, "last-known-good", "gpt-4o-mini", true)
-
-	stale, err := Build(cpsnapshot.RuntimeSnapshot{
-		Version:   "hard-stale",
-		CreatedAt: time.Now().UTC().Add(-time.Hour),
-		Models: []cpsnapshot.ModelRuntime{{
-			PublicModel: "gpt-4o-mini",
-			Protocol:    string(engine.ProtocolNativeOpenAI),
-			Capability:  "chat",
-			Enabled:     true,
-		}},
-	})
-	if err != nil {
-		t.Fatalf("Build(stale) error = %v", err)
-	}
-	if err := store.Replace(stale); err != nil {
-		t.Fatalf("Replace(stale) error = %v", err)
-	}
-	provider := NewProvider(store, WithStalePolicy(StalePolicy{
-		SoftTTL: time.Minute,
-		HardTTL: 2 * time.Minute,
-	}))
-	if err := provider.Attach(context.Background(), &engine.RequestState{Internal: map[string]any{}}); err == nil {
-		t.Fatal("Attach() succeeded, want hard stale error")
-	}
 }
 
 func TestFallbackActiveProviderUsesFallbackWhenPrimaryUnavailable(t *testing.T) {
