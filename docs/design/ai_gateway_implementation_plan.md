@@ -19,10 +19,10 @@
 | M1 | 最小非流式数据面 | OpenAI-compatible chat non-stream 跑通 |
 | M2 | 账务闭环 | balance hold、settlement、ledger、failed replay |
 | M3 | Streaming + Native Compatible | OpenAI stream、Claude、Gemini |
-| M4 | Unified Media Async Task | 图像/视频异步任务、Idempotency-Key、callback |
+| M4 | Unified Media Async Task | 图像/视频异步任务、非存储输入资产、Idempotency-Key、callback |
 | M5 | Control Plane + Snapshot | 控制面配置、snapshot publish、key revoke blacklist |
 | M6 | Plugins + Security | 内置插件、prompt/response guard、redaction |
-| M7 | Observability + Performance | 指标、trace、性能预算、压测、故障演练 |
+| M7 | Observability + Performance | 基础指标、trace、性能预算、压测、故障演练 |
 | M8 | Realtime Reserved Extension | session 接口和 WebSocket 架构预留 |
 | M9 | Commercial Operations | 对账、报表、租户运营、灾备流程 |
 
@@ -194,7 +194,7 @@ stream close 后完成 settlement
 Idempotency-Key
 provider_task_poller
 callback_dispatcher
-file upload
+transient input asset
 ```
 
 ### 验收标准
@@ -278,7 +278,7 @@ CostGuard 可拒绝或降级
 
 ### 目标
 
-达到可生产运维。
+达到基础生产运维可见性。后续不再把生产级 Observability 扩展平台、SLO/告警平台产品化能力列入当前路线。
 
 ### 交付
 
@@ -287,8 +287,8 @@ Prometheus histogram
 OpenTelemetry traces
 structured logs
 redaction
-dashboard
-alerts
+dashboard baseline
+alert baseline
 load tests
 failure drills
 ```
@@ -375,3 +375,11 @@ ADR 更新
 故障用例
 文档更新
 ```
+
+## 14. 当前后续路线边界
+
+M0-M9 之后的执行路线以 `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/19-p8-portal-api.md` 为准。当前只继续推进 provider 协议兼容、provider 可靠性、非存储媒体转发生态和 portal API。
+
+当前不做：控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件。
+
+当前先不做：semantic routing/cache、多地域 active-active。

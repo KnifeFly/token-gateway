@@ -22,7 +22,7 @@ Worker Plane
   异步媒体任务、provider task polling、failed settlement replay、callback、对账
 ```
 
-Observability 和 Security 是横切能力，不单独作为进程。
+Observability 和 Security 是横切能力，不单独作为进程。当前路线保留基础日志、metrics、trace、redaction 和审计插件接入点，不规划独立生产级 Observability 平台。
 
 ---
 
@@ -462,6 +462,8 @@ type GatewayEngine struct {
     observe    ObserveRecorder
 }
 ```
+
+`FileService` 只表达 transient input asset 的 metadata、幂等、大小限制和 provider 转发辅助能力，不代表对象存储服务。Gateway 不承诺文件持久化、下载地址、生命周期管理或存储 SLA。
 
 ### 5.1 EngineConfig
 

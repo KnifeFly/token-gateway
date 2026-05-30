@@ -13,6 +13,10 @@ info:
 
     - 异步任务创建接口支持 Idempotency-Key，避免客户端重试导致重复扣费或重复生成。
 
+    - 文件接口只表达 transient/non-storage input asset，用于请求归一化和转发，不承诺对象存储、下载或生命周期管理。
+
+    - Portal API 提供客户自助模型、schema、credits、usage、API key 和 task 查询能力。
+
     - 预留 Realtime Session 接口，用于未来 WebSocket / WebRTC 长连接协议。
 
     - 统一错误码增加 ambiguous_protocol、idempotency_conflict、snapshot_stale、model_schema_mismatch 等建议值。
@@ -41,6 +45,7 @@ security:
 tags:
 - name: Models
 - name: Credits
+- name: Portal
 - name: Files
 - name: Tasks
 - name: Unified Image
@@ -106,6 +111,214 @@ paths:
         default:
           $ref: '#/components/responses/ErrorResponse'
       parameters: []
+  /v1/portal/models:
+    get:
+      tags:
+      - Portal
+      summary: List portal-visible models
+      description: 返回当前 API key 所属 tenant/project 可见模型，结果不得包含不可路由或无权限模型。
+      operationId: portalListModels
+      responses:
+        '200':
+          description: Portal model list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/models/{model}/schema:
+    get:
+      tags:
+      - Portal
+      summary: Get portal-visible model schema
+      description: 返回当前 API key 可访问模型的动态参数 schema。
+      operationId: portalGetModelSchema
+      parameters:
+      - name: model
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Portal model schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelSchemaResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/credits:
+    get:
+      tags:
+      - Portal
+      summary: Get portal credits
+      description: 返回当前 tenant/project 的客户视角余额和已用额度，不暴露内部 ledger 修复细节或 provider 成本。
+      operationId: portalGetCredits
+      responses:
+        '200':
+          description: Portal credits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditsResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/usage:
+    get:
+      tags:
+      - Portal
+      summary: Get portal usage report
+      description: 返回当前 tenant/project 的用量和扣费摘要，按 API key 权限过滤。
+      operationId: portalGetUsage
+      parameters:
+      - name: from
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Portal usage report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalUsageResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/api-keys:
+    get:
+      tags:
+      - Portal
+      summary: List portal API keys
+      description: 列出当前 tenant/project 下由 portal 可见的 API key，不返回 plaintext key。
+      operationId: portalListAPIKeys
+      responses:
+        '200':
+          description: Portal API key list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAPIKeyListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+    post:
+      tags:
+      - Portal
+      summary: Create portal API key
+      description: 在当前 tenant/project 下创建派生 API key。allowed_models 必须是当前 key 权限子集，不能扩大权限或额度。
+      operationId: portalCreateAPIKey
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalAPIKeyCreateRequest'
+      responses:
+        '200':
+          description: Portal API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAPIKeyCreateResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/api-keys/{key_id}/disable:
+    post:
+      tags:
+      - Portal
+      summary: Disable portal API key
+      description: 禁用当前 tenant/project 下可管理的派生 API key。
+      operationId: portalDisableAPIKey
+      parameters:
+      - $ref: '#/components/parameters/XRequestID'
+      - name: key_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Portal API key disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalAPIKey'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/tasks:
+    get:
+      tags:
+      - Portal
+      summary: List portal tasks
+      description: 返回当前 tenant/project 范围内的异步任务列表，不暴露 provider secret、内部错误或敏感 metadata。
+      operationId: portalListTasks
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Portal task list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalTaskListResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+  /v1/portal/tasks/{task_id}:
+    get:
+      tags:
+      - Portal
+      summary: Get portal task detail
+      description: 返回当前 tenant/project 范围内的任务详情。
+      operationId: portalGetTask
+      parameters:
+      - name: task_id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Portal task detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskObject'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
   /v1/tasks/{task_id}:
     get:
       tags:
@@ -153,7 +366,8 @@ paths:
     post:
       tags:
       - Files
-      summary: Upload file by Base64
+      summary: Register transient Base64 input asset
+      description: 接收 Base64 或 data URL 输入用于请求归一化、幂等校验和 provider 转发。Gateway 不做对象存储，不承诺持久化、下载地址或生命周期管理。
       operationId: uploadFileBase64
       requestBody:
         required: true
@@ -163,7 +377,7 @@ paths:
               $ref: '#/components/schemas/Base64FileUploadRequest'
       responses:
         '200':
-          description: File uploaded
+          description: Transient input asset accepted
           content:
             application/json:
               schema:
@@ -177,7 +391,8 @@ paths:
     post:
       tags:
       - Files
-      summary: Upload file from remote URL
+      summary: Register transient URL input asset
+      description: 接收远程 URL 输入用于 provider 转发和 metadata 记录。Gateway 不下载并托管对象，不承诺该 URL 的可用性或生命周期。
       operationId: uploadFileUrl
       requestBody:
         required: true
@@ -187,7 +402,7 @@ paths:
               $ref: '#/components/schemas/UrlFileUploadRequest'
       responses:
         '200':
-          description: File uploaded
+          description: Transient input asset accepted
           content:
             application/json:
               schema:
@@ -201,7 +416,8 @@ paths:
     post:
       tags:
       - Files
-      summary: Upload file by multipart stream
+      summary: Register transient multipart input asset
+      description: 接收 multipart 输入用于请求级处理和 provider 转发。Gateway 不提供对象存储或长期下载服务。
       operationId: uploadFileStream
       requestBody:
         required: true
@@ -227,7 +443,7 @@ paths:
                   description: camelCase alias of file_name
       responses:
         '200':
-          description: File uploaded
+          description: Transient input asset accepted
           content:
             application/json:
               schema:
@@ -241,7 +457,8 @@ paths:
     get:
       tags:
       - Files
-      summary: Get file quota
+      summary: Get transient input asset quota
+      description: 返回 transient input asset 的数量和大小限制，用于请求保护；该额度不是对象存储容量。
       operationId: getFileQuota
       responses:
         '200':
@@ -1543,6 +1760,114 @@ components:
         currency:
           type: string
           example: CNY
+    PortalUsageResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          example: CNY
+        totals:
+          type: object
+          properties:
+            requests:
+              type: integer
+            input_tokens:
+              type: integer
+              format: int64
+            output_tokens:
+              type: integer
+              format: int64
+            credits_used:
+              type: number
+              format: double
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              request_id:
+                type: string
+              api_key_id:
+                type: string
+              model:
+                type: string
+              capability:
+                type: string
+              status:
+                type: string
+              input_tokens:
+                type: integer
+                format: int64
+              output_tokens:
+                type: integer
+                format: int64
+              credits_used:
+                type: number
+                format: double
+              created_at:
+                type: string
+                format: date-time
+        next_cursor:
+          type: string
+          nullable: true
+    PortalAPIKey:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        allowed_models:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    PortalAPIKeyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PortalAPIKey'
+    PortalAPIKeyCreateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        allowed_models:
+          type: array
+          description: Must be a subset of the current API key allowed_models.
+          items:
+            type: string
+    PortalAPIKeyCreateResponse:
+      type: object
+      properties:
+        api_key:
+          $ref: '#/components/schemas/PortalAPIKey'
+        plaintext_key:
+          type: string
+          description: Returned once when the key is created.
+    PortalTaskListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaskObject'
+        next_cursor:
+          type: string
+          nullable: true
     AdminTenant:
       type: object
       required:
@@ -2057,6 +2382,7 @@ components:
             format: int64
     Base64FileUploadRequest:
       type: object
+      description: Transient input asset request. The gateway may inspect metadata and forward the payload, but does not persist object bytes.
       required:
       - base64_data
       properties:
@@ -2069,6 +2395,7 @@ components:
           type: string
     UrlFileUploadRequest:
       type: object
+      description: Transient input asset request by URL. The gateway records metadata for routing/task use and forwards the URL to providers when supported.
       required:
       - url
       properties:
@@ -2081,6 +2408,7 @@ components:
           type: string
     FileUploadResponse:
       type: object
+      description: Transient input asset response. Returned URLs are request metadata or provider-facing references, not gateway-hosted durable object storage URLs.
       required:
       - success
       - code
@@ -2098,6 +2426,7 @@ components:
           $ref: '#/components/schemas/FileObject'
     FileObject:
       type: object
+      description: Metadata for a transient input asset. The gateway does not guarantee long-term downloadability or object lifecycle management.
       properties:
         file_id:
           type: string
@@ -2115,9 +2444,11 @@ components:
         file_url:
           type: string
           format: uri
+          description: Transient reference only; not a durable gateway-hosted object URL.
         download_url:
           type: string
           format: uri
+          description: Transient reference only; clients should not rely on gateway storage.
         upload_time:
           type: string
           format: date-time
@@ -2126,6 +2457,7 @@ components:
           format: date-time
     FileQuotaResponse:
       type: object
+      description: Request protection quota for transient input assets, not object storage capacity.
       properties:
         success:
           type: boolean

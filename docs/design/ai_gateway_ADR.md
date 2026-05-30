@@ -288,3 +288,49 @@ RouteSignals 从 Redis hash 读取 channel 级健康、权重、延迟、成本�
 ## Alternatives
 
 请求时查询控制面或报表库：数据更完整，但破坏热路径隔离和稳定性。
+
+---
+
+# ADR-0011: 当前路线收敛为 Provider 兼容、可靠性、非存储媒体转发和 Portal API
+
+## Status
+
+Accepted
+
+## Context
+
+M0-P4 已经完成主体网关、账务、snapshot、worker、媒体任务和发布候选验收。后续如果继续把控制面安全平台、复杂财务、对象存储、完整 Realtime、生产级 Observability、WASM/动态插件、semantic routing/cache 和多地域多活都放入同一路线，会稀释 provider 兼容和客户接入的优先级。
+
+## Decision
+
+当前后续路线只推进 P5 Provider 协议兼容、P6 Provider 可靠性、P7 非存储媒体转发生态和 P8 Portal API。
+
+明确当前不做：
+
+```text
+控制面 RBAC / 审计平台
+复杂财务 / 发票闭环
+对象存储
+完整 Realtime WebSocket / WebRTC
+生产级 Observability 扩展平台
+WASM 插件
+动态脚本插件
+```
+
+明确当前先不做：
+
+```text
+semantic routing
+semantic cache
+跨地域多活
+```
+
+`/v1/files/*` 只表达 transient/non-storage input asset，用于请求归一化、幂等校验、大小限制和 provider 转发。Portal 第一版复用 API key 鉴权，只开放模型、schema、credits、usage、API key 自助管理和 task 查询，不暴露 admin/control 配置能力。
+
+## Consequences
+
+优点：后续路线聚焦客户接入、上游稳定性和自助查询，避免网关产品边界扩大成对象存储、审计平台或多地域平台。缺点：需要在文档和 OpenAPI 中持续标注 non-storage、not planned 和先不做边界。
+
+## Alternatives
+
+继续把所有能力纳入 P5 之后路线：覆盖面更广，但会让优先级和验收标准失焦。

@@ -4,8 +4,8 @@
 
 本系统不是简单的 OpenAI-compatible proxy，而是面向两类商业场景的 AI 能力运营平台：
 
-1. **上游 Agent / 网剧 Agent 使用**：需要统一的多模态生成、任务编排、素材管理、callback、幂等提交、场景/镜头元数据、失败重试。
-2. **API 转售 / Token 售卖**：需要 API key、余额、限额、模型权限、供应商路由、成本控制、账务结算、对账、审计和可观测性。
+1. **上游 Agent / 网剧 Agent 使用**：需要统一的多模态生成、任务编排、非存储输入资产转发、callback、幂等提交、场景/镜头元数据、失败重试。
+2. **API 转售 / Token 售卖**：需要 API key、余额、限额、模型权限、供应商路由、成本控制、账务结算、对账和基础审计线索。
 
 系统核心目标：
 
@@ -65,6 +65,8 @@ GET  /v1/credits
 
 统一媒体协议采用“**统一 URI + model 参数 + 动态模型 schema**”机制。
 
+`/v1/files/*` 在当前路线中只表达 transient input asset：系统可接收 URL、base64 或 multipart 输入，用于请求归一化、幂等校验、大小限制和转发给上游 provider。Gateway 不做对象存储，不承诺文件持久化、下载地址、生命周期管理、病毒扫描或存储 SLA。生成结果也优先透传 provider result URL 或客户自有存储 URL。
+
 示例：
 
 ```json
@@ -91,6 +93,24 @@ GET  /v1/credits
   }
 }
 ```
+
+#### 2.1.3 Portal API
+
+Portal API 是客户自助接口，不是 admin/control API。第一版复用 API key 鉴权，只覆盖当前 tenant/project 范围内的模型、schema、余额、用量、API key 自助管理和任务查询。
+
+```text
+GET  /v1/portal/models
+GET  /v1/portal/models/{model}/schema
+GET  /v1/portal/credits
+GET  /v1/portal/usage
+GET  /v1/portal/api-keys
+POST /v1/portal/api-keys
+POST /v1/portal/api-keys/{key_id}/disable
+GET  /v1/portal/tasks
+GET  /v1/portal/tasks/{task_id}
+```
+
+Portal 不允许配置 provider channel、route、price、limit、plugin、snapshot、emergency action，也不引入 RBAC。首个 API key 仍由 admin/control API 创建；portal 创建的派生 key 只能继承当前 tenant/project 和模型权限子集。
 
 ---
 
@@ -625,7 +645,7 @@ type RoutePlan struct {
 | least_cost | 低成本优先 | P1 |
 | health_weighted | 健康分加权 | P1 |
 | quota_aware | 供应商 quota 感知 | P2 |
-| semantic_route | 语义路由 | P2 |
+| semantic_route | 语义路由 | 先不做 |
 
 ### 10.3 默认策略
 
@@ -703,7 +723,7 @@ type IdempotencyRecord struct {
 
 ## 12. WebSocket / Realtime 预留
 
-MVP 不实现长连接，但系统应预留：
+当前路线不实现长连接或完整 Realtime，但系统保留 disabled contract 和接口预留：
 
 ```text
 POST /v1/realtime/sessions
@@ -725,6 +745,8 @@ type RealtimeEngine interface {
 ---
 
 ## 13. 可观测性
+
+当前路线保留基础 structured logs、metrics、trace、redaction 和审计插件接入点。生产级 Observability 扩展平台不进入当前路线，不再新增 dashboard/SLO/告警平台能力作为后续必做项。
 
 ### 13.1 Metrics
 
@@ -879,18 +901,29 @@ runtime snapshot
 structured logs + metrics + tracing
 ```
 
-### 16.2 MVP 不做
+### 16.2 当前不做
 
 ```text
+控制面 RBAC / 审计平台
+复杂财务 / 发票闭环
+对象存储
+完整 Realtime WebSocket / WebRTC
+生产级 Observability 扩展平台
 WASM 插件
 动态脚本插件
-完整 developer portal
-复杂 invoice
+```
+
+这些能力不进入当前路线；已有基础 admin token、结构化日志、metrics、trace、redaction、审计插件和账务流水不因此移除。
+
+### 16.3 当前先不做
+
+```text
 semantic routing
 semantic cache
-Realtime WebSocket 真正实现
 跨地域多活
 ```
+
+这些能力需要重新产品决策后另立路线和任务板。
 
 ---
 
