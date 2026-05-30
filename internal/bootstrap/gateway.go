@@ -31,6 +31,7 @@ import (
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	"github.com/KnifeFly/token-gateway/internal/portal"
 	"github.com/KnifeFly/token-gateway/internal/provider"
 	"github.com/KnifeFly/token-gateway/internal/provider/claude"
 	"github.com/KnifeFly/token-gateway/internal/provider/gemini"
@@ -39,6 +40,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/snapshotdist"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
+	"github.com/KnifeFly/token-gateway/internal/transport/portalhttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/publichttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/realtimehttp"
 )
@@ -102,7 +104,13 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 		reportRepo = reporting.NewMySQLRepository(database.DB())
 	}
 	publicHandler := publichttp.NewHandler(gatewayRuntime.snapshotProvider, gatewayRuntime.authenticator, reporting.NewService(reportRepo), logger)
-	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler, publicHandler}, gatewayRuntime.engine)
+	portalHandler := portalhttp.NewHandler(
+		gatewayRuntime.snapshotProvider,
+		gatewayRuntime.authenticator,
+		portal.NewService(gatewayRuntime.adminService, reporting.NewService(reportRepo), gatewayRuntime.taskRepo),
+		logger,
+	)
+	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler, publicHandler, portalHandler}, gatewayRuntime.engine)
 	server := httpserver.New(httpServerConfig(cfg), handler, logger)
 	return &GatewayApp{
 		server:    server,
@@ -118,6 +126,8 @@ type gatewayRuntime struct {
 	snapshotProvider engine.SnapshotProvider
 	authenticator    engine.Authenticator
 	observeRecorder  engine.ObserveRecorder
+	adminService     *admin.Service
+	taskRepo         tasksvc.Repository
 }
 
 func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*gatewayRuntime, error) {
@@ -137,8 +147,10 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	if snapshotMetrics != nil {
 		snapshotMetrics.Observe(indexed.Ref())
 	}
-	if cfg.Database.Enabled && database != nil && database.DB() != nil {
-		adminRepo := admin.NewMySQLRepository(database.DB())
+	adminRepo := admin.Repository(admin.NewMemoryRepository())
+	usingDBAdmin := cfg.Database.Enabled && database != nil && database.DB() != nil
+	if usingDBAdmin {
+		adminRepo = admin.NewMySQLRepository(database.DB())
 		activeProvider := dpsnapshot.ActiveRuntimeProvider(cpsnapshot.NewActiveProvider(adminRepo))
 		var watcherOpts []dpsnapshot.WatcherOption
 		if redisClient.Raw() != nil {
@@ -228,6 +240,12 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	pluginManager := plugin.NewManager(builtin.Registry())
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
+	adminService := admin.NewService(adminRepo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocationStore)
+	if !usingDBAdmin {
+		if err := seedLocalPortalAPIKey(ctx, cfg, adminService); err != nil {
+			return nil, err
+		}
+	}
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
 	circuitBreaker := router.NewCircuitBreaker(router.DefaultCircuitConfig())
 	snapshotProvider := dpsnapshot.NewProvider(snapshotStore, dpsnapshot.WithMetrics(snapshotMetrics))
@@ -264,6 +282,8 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		snapshotProvider: snapshotProvider,
 		authenticator:    authenticator,
 		observeRecorder:  observeRecorder,
+		adminService:     adminService,
+		taskRepo:         taskRepo,
 	}, nil
 }
 
@@ -314,6 +334,21 @@ func ensureLocalSeedBalance(ctx context.Context, cfg Config, repo billing.Reposi
 		OpeningMicros:   cfg.Gateway.Billing.LocalSeedBalanceMicros,
 		AvailableMicros: cfg.Gateway.Billing.LocalSeedBalanceMicros,
 	})
+}
+
+func seedLocalPortalAPIKey(ctx context.Context, cfg Config, service *admin.Service) error {
+	if !cfg.Gateway.Seed.Enabled || service == nil {
+		return nil
+	}
+	_, err := service.CreateAPIKey(ctx, admin.APIKey{
+		ID:            cfg.Gateway.Seed.APIKeyID,
+		TenantID:      cfg.Gateway.Seed.TenantID,
+		ProjectID:     cfg.Gateway.Seed.ProjectID,
+		Name:          "local seed key",
+		PlaintextKey:  cfg.Gateway.Seed.APIKey,
+		AllowedModels: []string{"*"},
+	})
+	return err
 }
 
 // Run starts the HTTP server until ctx is canceled.

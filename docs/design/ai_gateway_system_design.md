@@ -110,7 +110,7 @@ GET  /v1/portal/tasks
 GET  /v1/portal/tasks/{task_id}
 ```
 
-Portal 不允许配置 provider channel、route、price、limit、plugin、snapshot、emergency action，也不引入 RBAC。首个 API key 仍由 admin/control API 创建；portal 创建的派生 key 只能继承当前 tenant/project 和模型权限子集。
+Portal 不允许配置 provider channel、route、price、limit、plugin、snapshot、emergency action，也不引入 RBAC。首个 API key 仍由 admin/control API 创建；portal 创建的派生 key 只能继承当前 tenant/project 和模型权限子集，历史 plaintext key 不可查询。Task 查询只返回当前 tenant/project 范围，并过滤敏感 metadata。
 
 ---
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -158,6 +159,60 @@ func (r *MySQLRepository) ListProviderTasks(ctx context.Context, limit int) ([]T
 		tasks = append(tasks, *task)
 	}
 	return tasks, rows.Err()
+}
+
+// ListTasks returns tenant/project scoped tasks ordered by newest first.
+func (r *MySQLRepository) ListTasks(ctx context.Context, filter TaskListFilter) ([]Task, error) {
+	if filter.Limit <= 0 {
+		filter.Limit = 100
+	}
+	query := taskSelectSQL + ` WHERE tenant_id = ? AND project_id = ?`
+	args := []any{filter.TenantID, filter.ProjectID}
+	if filter.Status != "" {
+		query += ` AND status = ?`
+		args = append(args, string(filter.Status))
+	}
+	if filter.Cursor != "" {
+		cursor, ok, err := r.cursorTask(ctx, filter.Cursor)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			query += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+			args = append(args, cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+		}
+	}
+	query += ` ORDER BY created_at DESC, id DESC LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tasks []Task
+	for rows.Next() {
+		task, err := scanTask(rows)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, *task)
+	}
+	return tasks, rows.Err()
+}
+
+func (r *MySQLRepository) cursorTask(ctx context.Context, taskID string) (*Task, bool, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, false, nil
+	}
+	task, err := scanTask(r.db.QueryRowContext(ctx, taskSelectSQL+" WHERE id = ?", taskID))
+	if err == sql.ErrNoRows {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return task, true, nil
 }
 
 // GetFileByIdempotency returns the file bound to one unexpired idempotency key.
