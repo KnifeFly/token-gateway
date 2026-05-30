@@ -121,6 +121,9 @@ func (r *MemoryRepository) DisableAPIKey(_ context.Context, keyID string, revoke
 func (r *MemoryRepository) UpsertModel(_ context.Context, model ModelConfig) (*ModelConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if len(model.Schema) == 0 {
+		model.Schema = json.RawMessage(`{}`)
+	}
 	r.models[model.PublicModel] = model
 	return clone(model), nil
 }
@@ -149,7 +152,10 @@ func (r *MemoryRepository) UpsertPrice(_ context.Context, price PriceRuleConfig)
 func (r *MemoryRepository) UpsertLimit(_ context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.limits[limit.PublicModel] = limit
+	if limit.ID == "" {
+		limit.ID = limitRuleID(limit)
+	}
+	r.limits[limit.ID] = limit
 	return clone(limit), nil
 }
 

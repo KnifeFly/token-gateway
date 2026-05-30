@@ -28,8 +28,11 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}
 	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
 		PublicModel: "gpt-4o-mini",
+		Aliases:     []string{"gpt-4o-mini-alias"},
+		DisplayName: "GPT 4o Mini",
 		Protocol:    string(engine.ProtocolNativeOpenAI),
 		Capability:  "chat",
+		Schema:      json.RawMessage(`{"type":"object","required":["model"]}`),
 		Enabled:     true,
 	}); err != nil {
 		t.Fatalf("UpsertModel() error = %v", err)
@@ -64,6 +67,23 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("UpsertPrice() error = %v", err)
 	}
+	if _, err := service.UpsertLimit(ctx, admin.LimitRuleConfig{
+		TenantID:            "tenant_1",
+		ProjectID:           "project_1",
+		APIKeyID:            key.ID,
+		PublicModel:         "gpt-4o-mini",
+		ProviderType:        "openai_compatible",
+		ChannelID:           "channel_1",
+		RPM:                 60,
+		QPS:                 1,
+		TPM:                 1000,
+		Concurrency:         5,
+		DailyBudgetMicros:   100000,
+		CostPerMinuteMicros: 1000,
+		Enabled:             true,
+	}); err != nil {
+		t.Fatalf("UpsertLimit() error = %v", err)
+	}
 	if _, err := service.UpsertPluginBinding(ctx, admin.PluginBindingConfig{
 		Name:          "prompt_guard",
 		Phase:         "pre_prompt",
@@ -84,6 +104,12 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}
 	if runtime.PriceRules[0].InputMicrosPerToken != 10 {
 		t.Fatalf("price = %#v", runtime.PriceRules)
+	}
+	if len(runtime.Models[0].Aliases) != 1 || runtime.Models[0].DisplayName != "GPT 4o Mini" || len(runtime.Models[0].ProviderMappings) != 1 {
+		t.Fatalf("model catalog = %#v", runtime.Models[0])
+	}
+	if len(runtime.LimitRules) != 1 || runtime.LimitRules[0].APIKeyID != key.ID || runtime.LimitRules[0].RPM != 60 {
+		t.Fatalf("limit rules = %#v", runtime.LimitRules)
 	}
 	if len(runtime.PluginBindings) != 1 || runtime.PluginBindings[0].Name != "prompt_guard" {
 		t.Fatalf("plugin bindings = %#v", runtime.PluginBindings)

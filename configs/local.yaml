@@ -77,11 +77,13 @@ gateway:
     local_seed_balance_micros: 1000000000
   limits:
     enabled: true
+    rpm: 3600
     qps: 60
     tpm: 60000
     concurrency: 100
     window: 1s
     lease_ttl: 30s
+    deny_cache_ttl: 1s
     key_prefix: token-gateway-local
 
 control:

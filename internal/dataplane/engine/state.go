@@ -40,6 +40,7 @@ type RequestState struct {
 	Parsed         ParsedRequest
 	EstimatedUsage tokenusage.Estimate
 	ActualUsage    tokenusage.Actual
+	PolicyDecision PolicyDecision
 	RoutePlan      *RoutePlan
 	ProviderResult *ProviderResult
 	Attempts       []ProviderAttempt

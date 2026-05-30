@@ -45,7 +45,7 @@ func (h *Handler) listModels(w http.ResponseWriter, r *http.Request) {
 	models := state.Snapshot.ListModels()
 	out := make([]map[string]any, 0, len(models))
 	for _, model := range models {
-		if !model.Enabled || !modelAllowed(state.Principal.AllowedModels, model.PublicModel) {
+		if !model.Enabled || !modelAllowedForView(state.Principal.AllowedModels, model.PublicModel, model) {
 			continue
 		}
 		out = append(out, modelObject(model))
@@ -65,7 +65,7 @@ func (h *Handler) getModelSchema(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	model, found := state.Snapshot.LookupModel(modelName)
-	if !found || !model.Enabled || !modelAllowed(state.Principal.AllowedModels, model.PublicModel) {
+	if !found || !model.Enabled || !modelAllowedForView(state.Principal.AllowedModels, modelName, model) {
 		writeError(w, state.RequestID, apperr.NotFound("model not found"))
 		return
 	}
@@ -142,7 +142,9 @@ func modelObject(model engine.ModelView) map[string]any {
 		"id":                model.PublicModel,
 		"object":            "model",
 		"type":              modelType(model),
-		"display_name":      model.PublicModel,
+		"display_name":      displayName(model),
+		"description":       model.Description,
+		"aliases":           append([]string(nil), model.Aliases...),
 		"owner":             "platform",
 		"capabilities":      capabilities,
 		"input_modalities":  inputModalities(model),
@@ -224,6 +226,12 @@ func outputModalities(model engine.ModelView) []string {
 }
 
 func modelSchema(model engine.ModelView) map[string]any {
+	if len(model.Schema) > 0 && string(model.Schema) != "{}" {
+		var schema map[string]any
+		if err := json.Unmarshal(model.Schema, &schema); err == nil && len(schema) > 0 {
+			return schema
+		}
+	}
 	return map[string]any{
 		"type":     "object",
 		"required": []string{"model"},
@@ -238,6 +246,13 @@ func modelSchema(model engine.ModelView) map[string]any {
 			},
 		},
 	}
+}
+
+func displayName(model engine.ModelView) string {
+	if model.DisplayName != "" {
+		return model.DisplayName
+	}
+	return model.PublicModel
 }
 
 func creditBucket(report *reporting.TenantUsageReport) map[string]any {
@@ -278,6 +293,18 @@ func microsToCredits(value int64) float64 {
 func modelAllowed(allowed []string, model string) bool {
 	for _, value := range allowed {
 		if value == "*" || value == model {
+			return true
+		}
+	}
+	return false
+}
+
+func modelAllowedForView(allowed []string, requested string, model engine.ModelView) bool {
+	if modelAllowed(allowed, model.PublicModel) || modelAllowed(allowed, requested) {
+		return true
+	}
+	for _, alias := range model.Aliases {
+		if modelAllowed(allowed, alias) {
 			return true
 		}
 	}

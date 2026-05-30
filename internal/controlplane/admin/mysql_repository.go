@@ -98,10 +98,18 @@ func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revok
 }
 
 func (r *MySQLRepository) UpsertModel(ctx context.Context, model ModelConfig) (*ModelConfig, error) {
+	aliases, _ := json.Marshal(model.Aliases)
+	schema := []byte(model.Schema)
+	if len(schema) == 0 {
+		schema = []byte(`{}`)
+	}
 	_, err := r.db.ExecContext(ctx, `
-INSERT INTO cp_models (public_model, protocol, capability, enabled) VALUES (?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE protocol = VALUES(protocol), capability = VALUES(capability), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
-		model.PublicModel, model.Protocol, model.Capability, model.Enabled)
+INSERT INTO cp_models (public_model, aliases_json, display_name, description, protocol, capability, schema_json, enabled)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE aliases_json = VALUES(aliases_json), display_name = VALUES(display_name), description = VALUES(description),
+  protocol = VALUES(protocol), capability = VALUES(capability), schema_json = VALUES(schema_json), enabled = VALUES(enabled),
+  updated_at = CURRENT_TIMESTAMP`,
+		model.PublicModel, aliases, model.DisplayName, model.Description, model.Protocol, model.Capability, schema, model.Enabled)
 	if err != nil {
 		return nil, err
 	}
@@ -190,10 +198,21 @@ ON DUPLICATE KEY UPDATE currency = VALUES(currency), input_micros_per_token = VA
 }
 
 func (r *MySQLRepository) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*LimitRuleConfig, error) {
+	if limit.ID == "" {
+		limit.ID = limitRuleID(limit)
+	}
 	_, err := r.db.ExecContext(ctx, `
-INSERT INTO cp_limit_rules (public_model, qps, tpm, concurrency, enabled) VALUES (?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE qps = VALUES(qps), tpm = VALUES(tpm), concurrency = VALUES(concurrency), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
-		limit.PublicModel, limit.QPS, limit.TPM, limit.Concurrency, limit.Enabled)
+INSERT INTO cp_limit_rules (
+  id, tenant_id, project_id, api_key_id, public_model, provider_type, channel_id,
+  rpm, qps, tpm, concurrency, daily_budget_micros, cost_per_minute_micros, enabled
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), project_id = VALUES(project_id), api_key_id = VALUES(api_key_id),
+  public_model = VALUES(public_model), provider_type = VALUES(provider_type), channel_id = VALUES(channel_id),
+  rpm = VALUES(rpm), qps = VALUES(qps), tpm = VALUES(tpm), concurrency = VALUES(concurrency),
+  daily_budget_micros = VALUES(daily_budget_micros), cost_per_minute_micros = VALUES(cost_per_minute_micros),
+  enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		limit.ID, limit.TenantID, limit.ProjectID, limit.APIKeyID, limit.PublicModel, limit.ProviderType, limit.ChannelID,
+		limit.RPM, limit.QPS, limit.TPM, limit.Concurrency, limit.DailyBudgetMicros, limit.CostPerMinuteMicros, limit.Enabled)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +419,7 @@ WHERE id = ?`, id))
 }
 
 func (r *MySQLRepository) listModels(ctx context.Context) ([]ModelConfig, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT public_model, protocol, capability, enabled FROM cp_models ORDER BY public_model`)
+	rows, err := r.db.QueryContext(ctx, `SELECT public_model, aliases_json, display_name, description, protocol, capability, schema_json, enabled FROM cp_models ORDER BY public_model`)
 	if err != nil {
 		return nil, err
 	}
@@ -408,9 +427,18 @@ func (r *MySQLRepository) listModels(ctx context.Context) ([]ModelConfig, error)
 	var models []ModelConfig
 	for rows.Next() {
 		var model ModelConfig
-		if err := rows.Scan(&model.PublicModel, &model.Protocol, &model.Capability, &model.Enabled); err != nil {
+		var aliases []byte
+		var schema []byte
+		if err := rows.Scan(&model.PublicModel, &aliases, &model.DisplayName, &model.Description, &model.Protocol, &model.Capability, &schema, &model.Enabled); err != nil {
 			return nil, err
 		}
+		if len(aliases) > 0 {
+			_ = json.Unmarshal(aliases, &model.Aliases)
+		}
+		if len(schema) == 0 {
+			schema = []byte(`{}`)
+		}
+		model.Schema = json.RawMessage(schema)
 		models = append(models, model)
 	}
 	return models, rows.Err()
@@ -513,7 +541,10 @@ func (r *MySQLRepository) listPrices(ctx context.Context) ([]PriceRuleConfig, er
 }
 
 func (r *MySQLRepository) listLimits(ctx context.Context) ([]LimitRuleConfig, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT public_model, qps, tpm, concurrency, enabled FROM cp_limit_rules`)
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, tenant_id, project_id, api_key_id, public_model, provider_type, channel_id,
+       rpm, qps, tpm, concurrency, daily_budget_micros, cost_per_minute_micros, enabled
+FROM cp_limit_rules`)
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +552,8 @@ func (r *MySQLRepository) listLimits(ctx context.Context) ([]LimitRuleConfig, er
 	var limits []LimitRuleConfig
 	for rows.Next() {
 		var limit LimitRuleConfig
-		if err := rows.Scan(&limit.PublicModel, &limit.QPS, &limit.TPM, &limit.Concurrency, &limit.Enabled); err != nil {
+		if err := rows.Scan(&limit.ID, &limit.TenantID, &limit.ProjectID, &limit.APIKeyID, &limit.PublicModel, &limit.ProviderType, &limit.ChannelID,
+			&limit.RPM, &limit.QPS, &limit.TPM, &limit.Concurrency, &limit.DailyBudgetMicros, &limit.CostPerMinuteMicros, &limit.Enabled); err != nil {
 			return nil, err
 		}
 		limits = append(limits, limit)

@@ -88,6 +88,49 @@ func TestWeightedRandomDistribution(t *testing.T) {
 	}
 }
 
+func TestStrategyRegistryOrdersByHealthCostLatencyAndQuota(t *testing.T) {
+	registry := NewStrategyRegistry(NewPrioritySelector(NewWeightedRandomSelector(rand.New(rand.NewSource(1)))))
+	candidates := []engine.ProviderCandidate{
+		{ChannelID: "a", Priority: 2, Weight: 100},
+		{ChannelID: "b", Priority: 1, Weight: 10},
+		{ChannelID: "c", Priority: 3, Weight: 50},
+	}
+	signals := RouteSignals{Candidates: map[string]CandidateSignal{
+		"a": {Healthy: true, HealthWeight: 0.5, CostMicros: 30, Latency: 30, RemainingQuota: 10, ModelCompatible: true},
+		"b": {Healthy: true, HealthWeight: 4, CostMicros: 10, Latency: 20, RemainingQuota: 5, ModelCompatible: true},
+		"c": {Healthy: true, HealthWeight: 1, CostMicros: 20, Latency: 10, RemainingQuota: 50, ModelCompatible: true},
+	}}
+
+	if got := registry.Order("health_weighted", candidates, signals); got[0].ChannelID != "a" {
+		t.Fatalf("health weighted first = %q", got[0].ChannelID)
+	}
+	if got := registry.Order("least_cost", candidates, signals); got[0].ChannelID != "b" {
+		t.Fatalf("least cost first = %q", got[0].ChannelID)
+	}
+	if got := registry.Order("least_latency", candidates, signals); got[0].ChannelID != "c" {
+		t.Fatalf("least latency first = %q", got[0].ChannelID)
+	}
+	if got := registry.Order("quota_aware", candidates, signals); got[0].ChannelID != "c" {
+		t.Fatalf("quota aware first = %q", got[0].ChannelID)
+	}
+}
+
+func TestStrategyRegistryFiltersDisabledAndIncompatibleCandidates(t *testing.T) {
+	registry := NewStrategyRegistry(nil)
+	candidates := []engine.ProviderCandidate{
+		{ChannelID: "disabled", Priority: 1, Weight: 100},
+		{ChannelID: "usable", Priority: 2, Weight: 100},
+	}
+	signals := RouteSignals{Candidates: map[string]CandidateSignal{
+		"disabled": {Healthy: true, Disabled: true, ModelCompatible: true},
+		"usable":   {Healthy: true, ModelCompatible: true},
+	}}
+	got := registry.Order("priority", candidates, signals)
+	if len(got) != 1 || got[0].ChannelID != "usable" {
+		t.Fatalf("ordered = %#v", got)
+	}
+}
+
 type routeSnapshot struct{}
 
 func (routeSnapshot) Ref() engine.SnapshotRef { return engine.SnapshotRef{Version: "test"} }
@@ -135,6 +178,8 @@ func (routeSnapshot) LookupPrice(string) (engine.PriceRuleView, bool) {
 func (routeSnapshot) LookupLimit(string) (engine.LimitRuleView, bool) {
 	return engine.LimitRuleView{}, false
 }
+
+func (routeSnapshot) LookupLimits(engine.LimitScope) []engine.LimitRuleView { return nil }
 
 func (routeSnapshot) LookupPluginBindings(string) []engine.PluginBindingView {
 	return nil

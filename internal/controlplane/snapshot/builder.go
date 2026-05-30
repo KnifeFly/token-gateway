@@ -42,6 +42,7 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 		SchemaVersion: "m6",
 		CreatedAt:     time.Now().UTC(),
 	}
+	providerMappings := providerMappingsByModel(cfg.Channels)
 	for _, key := range cfg.APIKeys {
 		runtime.APIKeys = append(runtime.APIKeys, APIKeyRuntime{
 			ID:            key.ID,
@@ -54,11 +55,20 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 		})
 	}
 	for _, model := range cfg.Models {
+		schema := append(json.RawMessage(nil), model.Schema...)
+		if len(schema) == 0 {
+			schema = json.RawMessage(`{}`)
+		}
 		runtime.Models = append(runtime.Models, ModelRuntime{
-			PublicModel: model.PublicModel,
-			Protocol:    model.Protocol,
-			Capability:  model.Capability,
-			Enabled:     model.Enabled,
+			PublicModel:      model.PublicModel,
+			Aliases:          append([]string(nil), model.Aliases...),
+			DisplayName:      model.DisplayName,
+			Description:      model.Description,
+			Protocol:         model.Protocol,
+			Capability:       model.Capability,
+			Schema:           schema,
+			ProviderMappings: append([]ProviderModelMappingRuntime(nil), providerMappings[model.PublicModel]...),
+			Enabled:          model.Enabled,
 		})
 	}
 	for _, channel := range cfg.Channels {
@@ -112,11 +122,20 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 	}
 	for _, limit := range cfg.Limits {
 		runtime.LimitRules = append(runtime.LimitRules, LimitRuleRuntime{
-			PublicModel: limit.PublicModel,
-			QPS:         limit.QPS,
-			TPM:         limit.TPM,
-			Concurrency: limit.Concurrency,
-			Enabled:     limit.Enabled,
+			ID:                  limit.ID,
+			TenantID:            limit.TenantID,
+			ProjectID:           limit.ProjectID,
+			APIKeyID:            limit.APIKeyID,
+			PublicModel:         limit.PublicModel,
+			ProviderType:        limit.ProviderType,
+			ChannelID:           limit.ChannelID,
+			RPM:                 limit.RPM,
+			QPS:                 limit.QPS,
+			TPM:                 limit.TPM,
+			Concurrency:         limit.Concurrency,
+			DailyBudgetMicros:   limit.DailyBudgetMicros,
+			CostPerMinuteMicros: limit.CostPerMinuteMicros,
+			Enabled:             limit.Enabled,
 		})
 	}
 	for _, binding := range cfg.Plugins {
@@ -154,12 +173,28 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 // Validate rejects bad runtime snapshots before publication.
 func Validate(runtime RuntimeSnapshot) error {
 	models := map[string]ModelRuntime{}
+	aliases := map[string]string{}
 	for _, model := range runtime.Models {
 		if model.PublicModel == "" || model.Protocol == "" || model.Capability == "" {
 			return apperr.InvalidArgument("model public_model, protocol, and capability are required")
 		}
 		if models[model.PublicModel].PublicModel != "" {
 			return apperr.InvalidArgument("duplicate model in snapshot")
+		}
+		if len(model.Schema) > 0 && !json.Valid(model.Schema) {
+			return apperr.InvalidArgument("model schema must be valid json")
+		}
+		for _, alias := range model.Aliases {
+			if alias == "" || alias == model.PublicModel {
+				continue
+			}
+			if existing := aliases[alias]; existing != "" && existing != model.PublicModel {
+				return apperr.InvalidArgument("duplicate model alias in snapshot")
+			}
+			if models[alias].PublicModel != "" {
+				return apperr.InvalidArgument("model alias conflicts with public model")
+			}
+			aliases[alias] = model.PublicModel
 		}
 		models[model.PublicModel] = model
 	}
@@ -201,7 +236,13 @@ func Validate(runtime RuntimeSnapshot) error {
 		}
 	}
 	for _, limit := range runtime.LimitRules {
-		if limit.Enabled && models[limit.PublicModel].PublicModel == "" {
+		if !limit.Enabled {
+			continue
+		}
+		if limit.TenantID == "" && limit.ProjectID == "" && limit.APIKeyID == "" && limit.PublicModel == "" && limit.ProviderType == "" && limit.ChannelID == "" {
+			return apperr.InvalidArgument("limit references empty scope")
+		}
+		if limit.PublicModel != "" && models[limit.PublicModel].PublicModel == "" {
 			return apperr.InvalidArgument("limit references unknown model")
 		}
 	}
@@ -223,6 +264,21 @@ func Validate(runtime RuntimeSnapshot) error {
 		}
 	}
 	return nil
+}
+
+func providerMappingsByModel(channels []admin.ChannelConfig) map[string][]ProviderModelMappingRuntime {
+	out := map[string][]ProviderModelMappingRuntime{}
+	for _, channel := range channels {
+		for _, model := range channel.Models {
+			out[model.PublicModel] = append(out[model.PublicModel], ProviderModelMappingRuntime{
+				ProviderType:  channel.ProviderType,
+				ChannelID:     channel.ID,
+				PublicModel:   model.PublicModel,
+				UpstreamModel: model.UpstreamModel,
+			})
+		}
+	}
+	return out
 }
 
 func validPhase(phase string) bool {

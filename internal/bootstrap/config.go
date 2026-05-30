@@ -157,13 +157,17 @@ type BillingConfig struct {
 }
 
 type LimitsConfig struct {
-	Enabled     bool     `yaml:"enabled"`
-	QPS         int64    `yaml:"qps"`
-	TPM         int64    `yaml:"tpm"`
-	Concurrency int64    `yaml:"concurrency"`
-	Window      Duration `yaml:"window"`
-	LeaseTTL    Duration `yaml:"lease_ttl"`
-	KeyPrefix   string   `yaml:"key_prefix"`
+	Enabled             bool     `yaml:"enabled"`
+	RPM                 int64    `yaml:"rpm"`
+	QPS                 int64    `yaml:"qps"`
+	TPM                 int64    `yaml:"tpm"`
+	Concurrency         int64    `yaml:"concurrency"`
+	DailyBudgetMicros   int64    `yaml:"daily_budget_micros"`
+	CostPerMinuteMicros int64    `yaml:"cost_per_minute_micros"`
+	Window              Duration `yaml:"window"`
+	LeaseTTL            Duration `yaml:"lease_ttl"`
+	DenyCacheTTL        Duration `yaml:"deny_cache_ttl"`
+	KeyPrefix           string   `yaml:"key_prefix"`
 }
 
 type ControlConfig struct {
@@ -265,13 +269,15 @@ func DefaultConfig() Config {
 				HoldTTL:               Duration{10 * time.Minute},
 			},
 			Limits: LimitsConfig{
-				Enabled:     false,
-				QPS:         60,
-				TPM:         60000,
-				Concurrency: 100,
-				Window:      Duration{time.Second},
-				LeaseTTL:    Duration{30 * time.Second},
-				KeyPrefix:   "token-gateway",
+				Enabled:      false,
+				RPM:          3600,
+				QPS:          60,
+				TPM:          60000,
+				Concurrency:  100,
+				Window:       Duration{time.Second},
+				LeaseTTL:     Duration{30 * time.Second},
+				DenyCacheTTL: Duration{time.Second},
+				KeyPrefix:    "token-gateway",
 			},
 		},
 		Control: ControlConfig{

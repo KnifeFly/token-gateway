@@ -41,10 +41,14 @@ type APIKey struct {
 
 // ModelConfig is a public model advertised by the gateway.
 type ModelConfig struct {
-	PublicModel string `json:"public_model"`
-	Protocol    string `json:"protocol"`
-	Capability  string `json:"capability"`
-	Enabled     bool   `json:"enabled"`
+	PublicModel string          `json:"public_model"`
+	Aliases     []string        `json:"aliases,omitempty"`
+	DisplayName string          `json:"display_name,omitempty"`
+	Description string          `json:"description,omitempty"`
+	Protocol    string          `json:"protocol"`
+	Capability  string          `json:"capability"`
+	Schema      json.RawMessage `json:"schema,omitempty"`
+	Enabled     bool            `json:"enabled"`
 }
 
 // ChannelConfig is a provider channel and encrypted credential reference.
@@ -93,13 +97,22 @@ type PriceRuleConfig struct {
 	Enabled               bool   `json:"enabled"`
 }
 
-// LimitRuleConfig pins request limits for one model.
+// LimitRuleConfig pins request limits for one multi-dimensional scope.
 type LimitRuleConfig struct {
-	PublicModel string `json:"public_model"`
-	QPS         int64  `json:"qps"`
-	TPM         int64  `json:"tpm"`
-	Concurrency int64  `json:"concurrency"`
-	Enabled     bool   `json:"enabled"`
+	ID                  string `json:"id"`
+	TenantID            string `json:"tenant_id,omitempty"`
+	ProjectID           string `json:"project_id,omitempty"`
+	APIKeyID            string `json:"api_key_id,omitempty"`
+	PublicModel         string `json:"public_model,omitempty"`
+	ProviderType        string `json:"provider_type,omitempty"`
+	ChannelID           string `json:"channel_id,omitempty"`
+	RPM                 int64  `json:"rpm,omitempty"`
+	QPS                 int64  `json:"qps,omitempty"`
+	TPM                 int64  `json:"tpm,omitempty"`
+	Concurrency         int64  `json:"concurrency,omitempty"`
+	DailyBudgetMicros   int64  `json:"daily_budget_micros,omitempty"`
+	CostPerMinuteMicros int64  `json:"cost_per_minute_micros,omitempty"`
+	Enabled             bool   `json:"enabled"`
 }
 
 // PluginBindingConfig binds one built-in plugin to a runtime phase and scope.
