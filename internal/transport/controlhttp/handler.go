@@ -11,6 +11,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
+	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -19,16 +20,22 @@ type Handler struct {
 	admin      *admin.Service
 	publisher  *cpsnapshot.Publisher
 	commercial *reporting.Service
+	emergency  *redisinfra.EmergencyDisableStore
 	token      string
 	logger     *slog.Logger
 }
 
 // NewHandler returns a control-plane HTTP handler.
 func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, commercial ...*reporting.Service) http.Handler {
+	return NewHandlerWithEmergency(adminService, publisher, token, logger, nil, commercial...)
+}
+
+// NewHandlerWithEmergency returns a control-plane HTTP handler with emergency hot-disable support.
+func NewHandlerWithEmergency(adminService *admin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, emergency *redisinfra.EmergencyDisableStore, commercial ...*reporting.Service) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	h := &Handler{admin: adminService, publisher: publisher, token: token, logger: logger}
+	h := &Handler{admin: adminService, publisher: publisher, emergency: emergency, token: token, logger: logger}
 	if len(commercial) > 0 {
 		h.commercial = commercial[0]
 	}
@@ -55,6 +62,8 @@ func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, to
 	mux.HandleFunc("GET /admin/reports/agent-metadata", h.requireAdmin(h.agentMetadataReport))
 	mux.HandleFunc("POST /admin/provider-cost-profiles", h.requireAdmin(h.upsertProviderCostProfile))
 	mux.HandleFunc("POST /admin/billing/adjustments", h.requireAdmin(h.createManualAdjustment))
+	mux.HandleFunc("POST /admin/emergency/providers/", h.requireAdmin(h.providerEmergencyAction))
+	mux.HandleFunc("POST /admin/emergency/channels/", h.requireAdmin(h.channelEmergencyAction))
 	mux.HandleFunc("POST /admin/snapshots/publish", h.requireAdmin(h.publishSnapshot))
 	mux.HandleFunc("POST /admin/snapshots/rollback", h.requireAdmin(h.rollbackSnapshot))
 	return mux
@@ -115,6 +124,45 @@ func (h *Handler) apiKeyAction(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.admin.DisableAPIKey(r.Context(), keyID)
 	writeResult(w, result, err)
+}
+
+func (h *Handler) providerEmergencyAction(w http.ResponseWriter, r *http.Request) {
+	h.emergencyAction(w, r, "/admin/emergency/providers/", "provider")
+}
+
+func (h *Handler) channelEmergencyAction(w http.ResponseWriter, r *http.Request) {
+	h.emergencyAction(w, r, "/admin/emergency/channels/", "channel")
+}
+
+func (h *Handler) emergencyAction(w http.ResponseWriter, r *http.Request, prefix string, kind string) {
+	if h.emergency == nil {
+		writeError(w, apperr.ConfigUnavailable("emergency disable store is unavailable"))
+		return
+	}
+	value, action, ok := parseEmergencyPath(r.URL.Path, prefix)
+	if !ok {
+		writeError(w, apperr.NotFound("admin API not found"))
+		return
+	}
+	ttl, ok := parseEmergencyTTL(w, r)
+	if !ok {
+		return
+	}
+	var err error
+	switch {
+	case kind == "provider" && action == "disable":
+		err = h.emergency.DisableProvider(r.Context(), value, ttl)
+	case kind == "provider" && action == "enable":
+		err = h.emergency.EnableProvider(r.Context(), value)
+	case kind == "channel" && action == "disable":
+		err = h.emergency.DisableChannel(r.Context(), value, ttl)
+	case kind == "channel" && action == "enable":
+		err = h.emergency.EnableChannel(r.Context(), value)
+	default:
+		writeError(w, apperr.NotFound("admin API not found"))
+		return
+	}
+	writeResult(w, map[string]any{"kind": kind, "id": value, "action": action}, err)
 }
 
 func (h *Handler) upsertModel(w http.ResponseWriter, r *http.Request) {
@@ -345,6 +393,33 @@ func parseLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
 		return 0, false
 	}
 	return limit, true
+}
+
+func parseEmergencyPath(path string, prefix string) (value string, action string, ok bool) {
+	rest := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	value = strings.TrimSpace(parts[0])
+	action = strings.TrimSpace(parts[1])
+	if value == "" || (action != "disable" && action != "enable") {
+		return "", "", false
+	}
+	return value, action, true
+}
+
+func parseEmergencyTTL(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
+	value := strings.TrimSpace(r.URL.Query().Get("ttl_seconds"))
+	if value == "" {
+		return 0, true
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < 0 {
+		writeError(w, apperr.InvalidArgument("ttl_seconds must be a non-negative integer"))
+		return 0, false
+	}
+	return time.Duration(seconds) * time.Second, true
 }
 
 func writeResult[T any](w http.ResponseWriter, value T, err error) {

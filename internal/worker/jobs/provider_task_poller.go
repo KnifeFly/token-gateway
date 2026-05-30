@@ -67,10 +67,7 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 	for _, task := range tasks {
 		result, err := j.dispatcher.Poll(ctx, task)
 		if err != nil {
-			if _, markErr := j.tasks.MarkFailed(ctx, task.ID, "provider_poll_failed", err.Error()); markErr != nil {
-				return markErr
-			}
-			continue
+			return err
 		}
 		if result == nil || !tasksvc.IsTerminal(result.Status) {
 			continue

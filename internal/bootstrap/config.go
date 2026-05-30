@@ -175,7 +175,15 @@ type ControlConfig struct {
 }
 
 type WorkerConfig struct {
-	Enabled bool `yaml:"enabled"`
+	Enabled                  bool     `yaml:"enabled"`
+	Addr                     string   `yaml:"addr"`
+	ShutdownTimeout          Duration `yaml:"shutdown_timeout"`
+	LeaseTTL                 Duration `yaml:"lease_ttl"`
+	JobTimeout               Duration `yaml:"job_timeout"`
+	ProviderTaskPollInterval Duration `yaml:"provider_task_poll_interval"`
+	FailedSettlementInterval Duration `yaml:"failed_settlement_interval"`
+	CallbackInterval         Duration `yaml:"callback_interval"`
+	BatchSize                int      `yaml:"batch_size"`
 }
 
 // DefaultConfig returns local-safe defaults. External dependencies are disabled
@@ -272,6 +280,16 @@ func DefaultConfig() Config {
 			CredentialKey:        "local-control-plane-credential-key",
 			SnapshotPollInterval: Duration{5 * time.Second},
 			RevocationTTL:        Duration{24 * time.Hour},
+		},
+		Worker: WorkerConfig{
+			Addr:                     ":9503",
+			ShutdownTimeout:          Duration{10 * time.Second},
+			LeaseTTL:                 Duration{30 * time.Second},
+			JobTimeout:               Duration{30 * time.Second},
+			ProviderTaskPollInterval: Duration{5 * time.Second},
+			FailedSettlementInterval: Duration{time.Minute},
+			CallbackInterval:         Duration{5 * time.Second},
+			BatchSize:                100,
 		},
 	}
 }
@@ -393,6 +411,30 @@ func (c *Config) Normalize() {
 	if c.Control.RevocationTTL.Duration <= 0 {
 		c.Control.RevocationTTL = Duration{24 * time.Hour}
 	}
+	if c.Worker.Addr == "" {
+		c.Worker.Addr = ":9503"
+	}
+	if c.Worker.ShutdownTimeout.Duration <= 0 {
+		c.Worker.ShutdownTimeout = Duration{10 * time.Second}
+	}
+	if c.Worker.LeaseTTL.Duration <= 0 {
+		c.Worker.LeaseTTL = Duration{30 * time.Second}
+	}
+	if c.Worker.JobTimeout.Duration <= 0 {
+		c.Worker.JobTimeout = Duration{30 * time.Second}
+	}
+	if c.Worker.ProviderTaskPollInterval.Duration <= 0 {
+		c.Worker.ProviderTaskPollInterval = Duration{5 * time.Second}
+	}
+	if c.Worker.FailedSettlementInterval.Duration <= 0 {
+		c.Worker.FailedSettlementInterval = Duration{time.Minute}
+	}
+	if c.Worker.CallbackInterval.Duration <= 0 {
+		c.Worker.CallbackInterval = Duration{5 * time.Second}
+	}
+	if c.Worker.BatchSize <= 0 {
+		c.Worker.BatchSize = 100
+	}
 }
 
 // Validate checks the minimum viable M0 configuration.
@@ -444,6 +486,12 @@ func (c Config) Validate() error {
 	}
 	if c.Gateway.Limits.Enabled && !c.Redis.Enabled {
 		errs = append(errs, errors.New("redis must be enabled when gateway.limits is enabled"))
+	}
+	if c.Worker.Enabled && !c.Database.Enabled {
+		errs = append(errs, errors.New("database must be enabled when worker is enabled"))
+	}
+	if c.Worker.Enabled && !c.Redis.Enabled {
+		errs = append(errs, errors.New("redis must be enabled when worker is enabled"))
 	}
 	return errors.Join(errs...)
 }
@@ -503,4 +551,6 @@ func applyEnv(cfg *Config) {
 	setString("TOKEN_GATEWAY_CONTROL_ADDR", &cfg.Control.Addr)
 	setString("TOKEN_GATEWAY_CONTROL_ADMIN_TOKEN", &cfg.Control.AdminToken)
 	setString("TOKEN_GATEWAY_CONTROL_CREDENTIAL_KEY", &cfg.Control.CredentialKey)
+	setBool("TOKEN_GATEWAY_WORKER_ENABLED", &cfg.Worker.Enabled)
+	setString("TOKEN_GATEWAY_WORKER_ADDR", &cfg.Worker.Addr)
 }

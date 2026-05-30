@@ -18,6 +18,8 @@ type ProviderTaskDispatcher interface {
 type ProviderTaskRequest struct {
 	Task      Task
 	Candidate engine.ProviderCandidate
+	Channel   engine.ChannelView
+	RequestID string
 }
 
 // Bridge connects the data-plane engine to the M4 task service.
@@ -62,6 +64,10 @@ func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestSta
 	if err != nil {
 		return nil, err
 	}
+	channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
+	if !ok || !channel.Enabled {
+		return nil, apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
+	}
 	task, hit, err := b.service.CreateMediaTask(ctx, CreateTaskRequest{
 		TenantID:       state.TenantID,
 		ProjectID:      state.ProjectID,
@@ -83,7 +89,12 @@ func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestSta
 	if hit {
 		return TaskResponse(task)
 	}
-	providerTask, err := b.dispatcher.Submit(ctx, ProviderTaskRequest{Task: *task, Candidate: candidate})
+	providerTask, err := b.dispatcher.Submit(ctx, ProviderTaskRequest{
+		Task:      *task,
+		Candidate: candidate,
+		Channel:   channel,
+		RequestID: state.RequestID,
+	})
 	if err != nil {
 		_, _ = b.service.MarkFailed(ctx, task.ID, "provider_submit_failed", "provider task submit failed")
 		return nil, err

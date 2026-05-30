@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -181,6 +182,17 @@ func (s *IndexedSnapshot) Ref() engine.SnapshotRef {
 	return s.ref
 }
 
+func (s *IndexedSnapshot) ListModels() []engine.ModelView {
+	models := make([]engine.ModelView, 0, len(s.modelsByName))
+	for _, model := range s.modelsByName {
+		models = append(models, model)
+	}
+	sort.Slice(models, func(i, j int) bool {
+		return models[i].PublicModel < models[j].PublicModel
+	})
+	return models
+}
+
 func (s *IndexedSnapshot) LookupAPIKeyHash(hash string) (engine.APIKeyView, bool) {
 	value, ok := s.apiKeysByHash[hash]
 	return value, ok
@@ -249,13 +261,42 @@ func (s *Store) Replace(next *IndexedSnapshot) error {
 	return nil
 }
 
-// Provider attaches the current Store snapshot to a RequestState.
-type Provider struct {
-	store *Store
+// StalePolicy controls request behavior when the active snapshot is old.
+type StalePolicy struct {
+	SoftTTL time.Duration
+	HardTTL time.Duration
 }
 
-func NewProvider(store *Store) *Provider {
-	return &Provider{store: store}
+// ProviderOption configures a Provider.
+type ProviderOption func(*Provider)
+
+// WithStalePolicy configures soft and hard snapshot age limits.
+func WithStalePolicy(policy StalePolicy) ProviderOption {
+	return func(p *Provider) {
+		p.policy = policy
+	}
+}
+
+// WithMetrics updates snapshot staleness from request attachment.
+func WithMetrics(metrics *Metrics) ProviderOption {
+	return func(p *Provider) {
+		p.metrics = metrics
+	}
+}
+
+// Provider attaches the current Store snapshot to a RequestState.
+type Provider struct {
+	store   *Store
+	policy  StalePolicy
+	metrics *Metrics
+}
+
+func NewProvider(store *Store, opts ...ProviderOption) *Provider {
+	p := &Provider{store: store}
+	for _, opt := range opts {
+		opt(p)
+	}
+	return p
 }
 
 func (p *Provider) Attach(_ context.Context, state *engine.RequestState) error {
@@ -265,6 +306,19 @@ func (p *Provider) Attach(_ context.Context, state *engine.RequestState) error {
 	current, err := p.store.Current()
 	if err != nil {
 		return err
+	}
+	ref := current.Ref()
+	if p.metrics != nil {
+		p.metrics.Observe(ref)
+	}
+	if !ref.CreatedAt.IsZero() {
+		age := time.Since(ref.CreatedAt)
+		if p.policy.HardTTL > 0 && age > p.policy.HardTTL {
+			return apperr.SnapshotStale("runtime snapshot is stale", apperr.WithTemporary())
+		}
+		if p.policy.SoftTTL > 0 && age > p.policy.SoftTTL && state != nil && state.Internal != nil {
+			state.Internal["snapshot_stale"] = "soft"
+		}
 	}
 	state.PinSnapshot(current)
 	return nil

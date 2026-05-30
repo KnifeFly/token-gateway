@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/admission"
@@ -35,6 +36,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/provider/openai"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
+	"github.com/KnifeFly/token-gateway/internal/transport/publichttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/realtimehttp"
 )
 
@@ -92,7 +94,12 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 	if err != nil {
 		return nil, err
 	}
-	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler}, gatewayRuntime.engine)
+	reportRepo := reporting.Repository(reporting.NewMemoryRepository())
+	if cfg.Database.Enabled && database.DB() != nil {
+		reportRepo = reporting.NewMySQLRepository(database.DB())
+	}
+	publicHandler := publichttp.NewHandler(gatewayRuntime.snapshotProvider, gatewayRuntime.authenticator, reporting.NewService(reportRepo), logger)
+	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler, publicHandler}, gatewayRuntime.engine)
 	server := httpserver.New(httpServerConfig(cfg), handler, logger)
 	return &GatewayApp{
 		server:    server,
@@ -164,7 +171,8 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		return nil, err
 	}
 	taskService := tasksvc.NewServiceWithMetrics(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, taskMetrics)
-	taskDispatcher := tasksvc.NewMockProviderTaskDispatcher()
+	credentialResolver := providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)}
+	taskDispatcher := tasksvc.NewHTTPProviderTaskDispatcher(nil, credentialResolver, snapshotChannelResolver{store: snapshotStore})
 	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher)
 	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration))
 	var attemptRecorder dispatch.AttemptRecorder
@@ -205,17 +213,25 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	pluginManager := plugin.NewManager(builtin.Registry())
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
-	snapshotProvider := dpsnapshot.NewProvider(snapshotStore)
+	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
+	snapshotProvider := dpsnapshot.NewProvider(
+		snapshotStore,
+		dpsnapshot.WithStalePolicy(dpsnapshot.StalePolicy{
+			SoftTTL: cfg.Gateway.Snapshot.SoftTTL.Duration,
+			HardTTL: cfg.Gateway.Snapshot.HardTTL.Duration,
+		}),
+		dpsnapshot.WithMetrics(snapshotMetrics),
+	)
 	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
 	gatewayEngine, err := engine.New(
 		engine.WithSnapshot(snapshotProvider),
 		engine.WithClassifier(classifier.NewDefault()),
 		engine.WithParser(parser.NewOpenAIChatParser(cfg.Gateway.Body.MaxBytes)),
 		engine.WithAuthenticator(authenticator),
-		engine.WithRoutePlanner(router.NewRoutePlanner(nil)),
+		engine.WithRoutePlanner(router.NewRoutePlanner(nil, emergencyDisableStore)),
 		engine.WithAdmission(admissionController),
 		engine.WithLimitEnforcer(limitEnforcer),
-		engine.WithDispatcher(dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)}, logger)),
+		engine.WithDispatcher(dispatch.NewWithCredentials(registry, observeRecorder, attemptRecorder, credentialResolver, logger, emergencyDisableStore)),
 		engine.WithSettlement(settlementService),
 		engine.WithStreamFinalizer(streamFinalizer),
 		engine.WithTaskBridge(taskBridge),
@@ -251,6 +267,22 @@ func (r providerCredentialResolver) ResolveProviderAPIKey(_ context.Context, cha
 		return channel.APIKey, nil
 	}
 	return r.codec.Decrypt(channel.EncryptedAPIKey)
+}
+
+type snapshotChannelResolver struct {
+	store *dpsnapshot.Store
+}
+
+func (r snapshotChannelResolver) ResolveProviderChannel(_ context.Context, channelID string) (engine.ChannelView, bool, error) {
+	if r.store == nil {
+		return engine.ChannelView{}, false, nil
+	}
+	current, err := r.store.Current()
+	if err != nil {
+		return engine.ChannelView{}, false, err
+	}
+	channel, ok := current.LookupChannel(channelID)
+	return channel, ok, nil
 }
 
 func ensureLocalSeedBalance(ctx context.Context, cfg Config, repo billing.Repository) error {

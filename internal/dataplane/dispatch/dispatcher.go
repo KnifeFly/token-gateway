@@ -20,6 +20,7 @@ type Dispatcher struct {
 	observe     engine.ObserveRecorder
 	attempts    AttemptRecorder
 	credentials CredentialResolver
+	disable     DisableChecker
 	logger      *slog.Logger
 }
 
@@ -33,18 +34,28 @@ type CredentialResolver interface {
 	ResolveProviderAPIKey(ctx context.Context, channel engine.ChannelView) (string, error)
 }
 
+// DisableChecker checks emergency provider/channel disables.
+type DisableChecker interface {
+	IsProviderDisabled(ctx context.Context, providerType string) (bool, error)
+	IsChannelDisabled(ctx context.Context, channelID string) (bool, error)
+}
+
 func New(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, logger *slog.Logger) *Dispatcher {
 	return NewWithCredentials(registry, observe, attempts, nil, logger)
 }
 
-func NewWithCredentials(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, credentials CredentialResolver, logger *slog.Logger) *Dispatcher {
+func NewWithCredentials(registry *provider.Registry, observe engine.ObserveRecorder, attempts AttemptRecorder, credentials CredentialResolver, logger *slog.Logger, disable ...DisableChecker) *Dispatcher {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	if observe == nil {
 		observe = engine.NoopObserveRecorder{}
 	}
-	return &Dispatcher{registry: registry, observe: observe, attempts: attempts, credentials: credentials, logger: logger}
+	d := &Dispatcher{registry: registry, observe: observe, attempts: attempts, credentials: credentials, logger: logger}
+	if len(disable) > 0 {
+		d.disable = disable[0]
+	}
+	return d
 }
 
 func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (*engine.ProviderResult, error) {
@@ -61,6 +72,15 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
 		if !ok || !channel.Enabled {
 			lastErr = apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
+			continue
+		}
+		disabled, err := d.isDisabled(ctx, channel.ProviderType, channel.ID)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if disabled {
+			lastErr = apperr.ServiceUnavailable("provider channel is disabled", apperr.WithTemporary())
 			continue
 		}
 		apiKey := channel.APIKey
@@ -146,6 +166,17 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 		lastErr = apperr.ServiceUnavailable("provider is unavailable", apperr.WithTemporary())
 	}
 	return nil, lastErr
+}
+
+func (d *Dispatcher) isDisabled(ctx context.Context, providerType, channelID string) (bool, error) {
+	if d.disable == nil {
+		return false, nil
+	}
+	providerDisabled, err := d.disable.IsProviderDisabled(ctx, providerType)
+	if err != nil || providerDisabled {
+		return providerDisabled, err
+	}
+	return d.disable.IsChannelDisabled(ctx, channelID)
 }
 
 func (d *Dispatcher) recordAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) error {

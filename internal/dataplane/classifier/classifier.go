@@ -22,6 +22,7 @@ var endpoints = []engine.EndpointSpec{
 	openAIChatEndpoint,
 	{Method: http.MethodPost, Path: "/v1/responses", Canonical: engine.CanonicalOpenAIResponses, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/embeddings", Canonical: engine.CanonicalOpenAIEmbeddings, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
+	{Method: http.MethodPost, Path: "/v1/moderations", Canonical: engine.CanonicalOpenAIModerations, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeOpenAI}},
 	{Method: http.MethodPost, Path: "/v1/messages", Canonical: engine.CanonicalClaudeMessages, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolNativeClaude}},
 	{Method: http.MethodPost, Path: "/v1/images/generations", Canonical: engine.CanonicalImageGeneration, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},
 	{Method: http.MethodPost, Path: "/v1/images/edits", Canonical: engine.CanonicalImageEdit, AllowedMode: []engine.ProtocolMode{engine.ProtocolAuto, engine.ProtocolUnified}},

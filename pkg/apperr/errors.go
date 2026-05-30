@@ -160,6 +160,11 @@ func ServiceUnavailable(message string, opts ...Option) *Error {
 	return New(CodeServiceUnavailable, message, http.StatusServiceUnavailable, opts...)
 }
 
+// SnapshotStale returns an error when the runtime snapshot is too old to use.
+func SnapshotStale(message string, opts ...Option) *Error {
+	return New(CodeSnapshotStale, message, http.StatusServiceUnavailable, opts...)
+}
+
 // FeatureNotEnabled returns an error for explicitly disabled product capabilities.
 func FeatureNotEnabled(message string, opts ...Option) *Error {
 	return New(CodeFeatureNotEnabled, message, http.StatusNotImplemented, opts...)
