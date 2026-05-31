@@ -23,9 +23,10 @@ type Repository interface {
 
 	EnqueueCallback(ctx context.Context, event CallbackEvent) error
 	ListDueCallbacks(ctx context.Context, limit int, now time.Time) ([]CallbackEvent, error)
-	MarkCallbackDelivered(ctx context.Context, id string) error
-	MarkCallbackFailed(ctx context.Context, id string, nextRetryAt time.Time, lastError string) error
-	MarkCallbackDeadLetter(ctx context.Context, id string, lastError string) error
+	ClaimDueCallbacks(ctx context.Context, ownerID string, claimTimeout time.Duration, limit int, now time.Time) ([]CallbackEvent, error)
+	MarkCallbackDelivered(ctx context.Context, id string, ownerID string, statusCode int, latency time.Duration) error
+	MarkCallbackFailed(ctx context.Context, id string, ownerID string, nextRetryAt time.Time, lastError string, statusCode int, latency time.Duration) error
+	MarkCallbackDeadLetter(ctx context.Context, id string, ownerID string, lastError string, statusCode int, latency time.Duration) error
 }
 
 // TaskListFilter scopes customer task list queries.

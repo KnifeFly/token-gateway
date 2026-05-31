@@ -100,12 +100,15 @@ worker:
   addr: ":9503"
   shutdown_timeout: 10s
   lease_ttl: 30s
+  heartbeat_interval: 10s
   job_timeout: 30s
   provider_task_poll_interval: 5s
   failed_settlement_interval: 1m
   hold_reaper_interval: 1m
   reconciliation_interval: 15m
   callback_interval: 5s
+  callback_claim_timeout: 2m
+  callback_max_concurrency: 4
   callback_signing_secret: "local-callback-signing-secret"
   callback_max_retries: 5
   batch_size: 100

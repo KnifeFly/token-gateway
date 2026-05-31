@@ -296,12 +296,28 @@ WHERE tenant_id = ? AND project_id = ?`, tenantID, projectID).Scan(&quota.UsedFi
 
 // EnqueueCallback stores a callback event.
 func (r *MySQLRepository) EnqueueCallback(ctx context.Context, event CallbackEvent) error {
+	now := time.Now().UTC()
+	if event.ID == "" {
+		event.ID = newID("cb")
+	}
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = now
+	}
+	if event.UpdatedAt.IsZero() {
+		event.UpdatedAt = now
+	}
+	if event.Status == "" {
+		event.Status = CallbackStatusPending
+	}
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO callback_outbox (
-  id, task_id, tenant_id, project_id, url, payload_json, status, retry_count, next_retry_at, last_error, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  id, task_id, tenant_id, project_id, url, payload_json, status, retry_count, next_retry_at, last_error,
+  owner_id, claimed_at, heartbeat_at, delivery_id, last_status_code, last_latency_ms, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID, event.TaskID, event.TenantID, event.ProjectID, event.URL, []byte(event.Payload), string(event.Status),
-		event.RetryCount, event.NextRetryAt, event.LastError, event.CreatedAt, event.UpdatedAt)
+		event.RetryCount, event.NextRetryAt, event.LastError, event.OwnerID, nullableTime(event.ClaimedAt),
+		nullableTime(event.HeartbeatAt), event.DeliveryID, event.LastStatusCode, event.LastLatencyMS,
+		event.CreatedAt, event.UpdatedAt)
 	return err
 }
 
@@ -311,7 +327,9 @@ func (r *MySQLRepository) ListDueCallbacks(ctx context.Context, limit int, now t
 		limit = 100
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, task_id, tenant_id, project_id, url, payload_json, status, retry_count, next_retry_at, last_error, created_at, updated_at
+SELECT id, task_id, tenant_id, project_id, url, payload_json, status, retry_count, next_retry_at,
+       COALESCE(last_error, ''), COALESCE(owner_id, ''), claimed_at, heartbeat_at, COALESCE(delivery_id, ''),
+       last_status_code, last_latency_ms, created_at, updated_at
 FROM callback_outbox
 WHERE status = 'pending' AND next_retry_at <= ?
 ORDER BY next_retry_at ASC
@@ -331,27 +349,84 @@ LIMIT ?`, now, limit)
 	return events, rows.Err()
 }
 
+// ClaimDueCallbacks assigns due callback rows to one dispatcher owner.
+func (r *MySQLRepository) ClaimDueCallbacks(ctx context.Context, ownerID string, claimTimeout time.Duration, limit int, now time.Time) ([]CallbackEvent, error) {
+	if r == nil || r.db == nil {
+		return nil, nil
+	}
+	if ownerID == "" {
+		ownerID = newID("callback_owner")
+	}
+	if claimTimeout <= 0 {
+		claimTimeout = 5 * time.Minute
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	claimExpiredBefore := now.Add(-claimTimeout)
+	if _, err := r.db.ExecContext(ctx, `
+UPDATE callback_outbox
+SET status = ?, owner_id = ?, claimed_at = ?, heartbeat_at = ?,
+    delivery_id = IF(delivery_id = '', CONCAT('delivery_', id), delivery_id),
+    updated_at = CURRENT_TIMESTAMP
+WHERE ((status IN (?, ?) AND next_retry_at <= ?)
+   OR (status = ? AND (heartbeat_at IS NULL OR heartbeat_at <= ?)))
+ORDER BY next_retry_at ASC, created_at ASC
+LIMIT ?`,
+		CallbackStatusProcessing, ownerID, now, now,
+		CallbackStatusPending, CallbackStatusFailed, now,
+		CallbackStatusProcessing, claimExpiredBefore, limit); err != nil {
+		return nil, err
+	}
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, task_id, tenant_id, project_id, url, payload_json, status, retry_count, next_retry_at,
+       COALESCE(last_error, ''), COALESCE(owner_id, ''), claimed_at, heartbeat_at, COALESCE(delivery_id, ''),
+       last_status_code, last_latency_ms, created_at, updated_at
+FROM callback_outbox
+WHERE status = ? AND owner_id = ?
+ORDER BY next_retry_at ASC, created_at ASC
+LIMIT ?`, CallbackStatusProcessing, ownerID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []CallbackEvent
+	for rows.Next() {
+		event, err := scanCallback(rows)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, *event)
+	}
+	return events, rows.Err()
+}
+
 // MarkCallbackDelivered marks one callback as delivered.
-func (r *MySQLRepository) MarkCallbackDelivered(ctx context.Context, id string) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE callback_outbox SET status = 'delivered', updated_at = ? WHERE id = ?`, time.Now().UTC(), id)
+func (r *MySQLRepository) MarkCallbackDelivered(ctx context.Context, id string, ownerID string, statusCode int, latency time.Duration) error {
+	_, err := r.db.ExecContext(ctx, `
+UPDATE callback_outbox
+SET status = 'delivered', owner_id = '', last_status_code = ?, last_latency_ms = ?, updated_at = ?
+WHERE id = ? AND (owner_id = ? OR ? = '')`, statusCode, latency.Milliseconds(), time.Now().UTC(), id, ownerID, ownerID)
 	return err
 }
 
 // MarkCallbackFailed records callback retry state.
-func (r *MySQLRepository) MarkCallbackFailed(ctx context.Context, id string, nextRetryAt time.Time, lastError string) error {
+func (r *MySQLRepository) MarkCallbackFailed(ctx context.Context, id string, ownerID string, nextRetryAt time.Time, lastError string, statusCode int, latency time.Duration) error {
 	_, err := r.db.ExecContext(ctx, `
 UPDATE callback_outbox
-SET status = 'pending', retry_count = retry_count + 1, next_retry_at = ?, last_error = ?, updated_at = ?
-WHERE id = ?`, nextRetryAt, lastError, time.Now().UTC(), id)
+SET status = 'pending', owner_id = '', retry_count = retry_count + 1, next_retry_at = ?,
+    last_error = ?, last_status_code = ?, last_latency_ms = ?, updated_at = ?
+WHERE id = ? AND (owner_id = ? OR ? = '')`, nextRetryAt, lastError, statusCode, latency.Milliseconds(), time.Now().UTC(), id, ownerID, ownerID)
 	return err
 }
 
 // MarkCallbackDeadLetter records a terminal callback delivery failure.
-func (r *MySQLRepository) MarkCallbackDeadLetter(ctx context.Context, id string, lastError string) error {
+func (r *MySQLRepository) MarkCallbackDeadLetter(ctx context.Context, id string, ownerID string, lastError string, statusCode int, latency time.Duration) error {
 	_, err := r.db.ExecContext(ctx, `
 UPDATE callback_outbox
-SET status = 'dead_letter', retry_count = retry_count + 1, last_error = ?, updated_at = ?
-WHERE id = ?`, lastError, time.Now().UTC(), id)
+SET status = 'dead_letter', owner_id = '', retry_count = retry_count + 1,
+    last_error = ?, last_status_code = ?, last_latency_ms = ?, updated_at = ?
+WHERE id = ? AND (owner_id = ? OR ? = '')`, lastError, statusCode, latency.Milliseconds(), time.Now().UTC(), id, ownerID, ownerID)
 	return err
 }
 
@@ -442,18 +517,33 @@ func scanFile(row scanner) (*FileAsset, error) {
 func scanCallback(row scanner) (*CallbackEvent, error) {
 	var event CallbackEvent
 	var status string
+	var claimedAt, heartbeatAt sql.NullTime
 	if err := row.Scan(
 		&event.ID, &event.TaskID, &event.TenantID, &event.ProjectID, &event.URL, &event.Payload, &status,
-		&event.RetryCount, &event.NextRetryAt, &event.LastError, &event.CreatedAt, &event.UpdatedAt,
+		&event.RetryCount, &event.NextRetryAt, &event.LastError, &event.OwnerID, &claimedAt, &heartbeatAt,
+		&event.DeliveryID, &event.LastStatusCode, &event.LastLatencyMS, &event.CreatedAt, &event.UpdatedAt,
 	); err != nil {
 		return nil, err
 	}
 	event.Status = CallbackStatus(status)
+	if claimedAt.Valid {
+		event.ClaimedAt = claimedAt.Time
+	}
+	if heartbeatAt.Valid {
+		event.HeartbeatAt = heartbeatAt.Time
+	}
 	return &event, nil
 }
 
 func nullableBytes(value []byte) any {
 	if len(value) == 0 {
+		return nil
+	}
+	return value
+}
+
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
 		return nil
 	}
 	return value

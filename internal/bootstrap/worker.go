@@ -113,10 +113,15 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 			jobs.WithCallbackEgressGuard(egressGuard),
 			jobs.WithCallbackSigningSecret(cfg.Worker.CallbackSigningSecret),
 			jobs.WithCallbackMaxRetries(cfg.Worker.CallbackMaxRetries),
+			jobs.WithCallbackClaimTimeout(cfg.Worker.CallbackClaimTimeout.Duration),
+			jobs.WithCallbackMaxConcurrency(cfg.Worker.CallbackMaxConcurrency),
 		),
 	}
 	leaseStore := worker.LeaseStore(worker.NewRedisLeaseStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix))
-	runner := worker.NewRunner(jobList, leaseStore, logger, workerMetrics, worker.Config{LeaseTTL: cfg.Worker.LeaseTTL.Duration})
+	runner := worker.NewRunner(jobList, leaseStore, logger, workerMetrics, worker.Config{
+		LeaseTTL:          cfg.Worker.LeaseTTL.Duration,
+		HeartbeatInterval: cfg.Worker.HeartbeatInterval.Duration,
+	})
 	readiness := func(ctx context.Context) []httpserver.DependencyStatus {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()

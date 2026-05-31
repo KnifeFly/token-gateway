@@ -210,12 +210,15 @@ type WorkerConfig struct {
 	Addr                     string   `yaml:"addr"`
 	ShutdownTimeout          Duration `yaml:"shutdown_timeout"`
 	LeaseTTL                 Duration `yaml:"lease_ttl"`
+	HeartbeatInterval        Duration `yaml:"heartbeat_interval"`
 	JobTimeout               Duration `yaml:"job_timeout"`
 	ProviderTaskPollInterval Duration `yaml:"provider_task_poll_interval"`
 	FailedSettlementInterval Duration `yaml:"failed_settlement_interval"`
 	HoldReaperInterval       Duration `yaml:"hold_reaper_interval"`
 	ReconciliationInterval   Duration `yaml:"reconciliation_interval"`
 	CallbackInterval         Duration `yaml:"callback_interval"`
+	CallbackClaimTimeout     Duration `yaml:"callback_claim_timeout"`
+	CallbackMaxConcurrency   int      `yaml:"callback_max_concurrency"`
 	CallbackSigningSecret    string   `yaml:"callback_signing_secret"`
 	CallbackMaxRetries       int      `yaml:"callback_max_retries"`
 	BatchSize                int      `yaml:"batch_size"`
@@ -331,12 +334,15 @@ func DefaultConfig() Config {
 			Addr:                     ":9503",
 			ShutdownTimeout:          Duration{10 * time.Second},
 			LeaseTTL:                 Duration{30 * time.Second},
+			HeartbeatInterval:        Duration{10 * time.Second},
 			JobTimeout:               Duration{30 * time.Second},
 			ProviderTaskPollInterval: Duration{5 * time.Second},
 			FailedSettlementInterval: Duration{time.Minute},
 			HoldReaperInterval:       Duration{time.Minute},
 			ReconciliationInterval:   Duration{15 * time.Minute},
 			CallbackInterval:         Duration{5 * time.Second},
+			CallbackClaimTimeout:     Duration{2 * time.Minute},
+			CallbackMaxConcurrency:   4,
 			CallbackSigningSecret:    "local-callback-signing-secret",
 			CallbackMaxRetries:       5,
 			BatchSize:                100,
@@ -492,6 +498,9 @@ func (c *Config) Normalize() {
 	if c.Worker.LeaseTTL.Duration <= 0 {
 		c.Worker.LeaseTTL = Duration{30 * time.Second}
 	}
+	if c.Worker.HeartbeatInterval.Duration <= 0 {
+		c.Worker.HeartbeatInterval = Duration{c.Worker.LeaseTTL.Duration / 3}
+	}
 	if c.Worker.JobTimeout.Duration <= 0 {
 		c.Worker.JobTimeout = Duration{30 * time.Second}
 	}
@@ -509,6 +518,12 @@ func (c *Config) Normalize() {
 	}
 	if c.Worker.CallbackInterval.Duration <= 0 {
 		c.Worker.CallbackInterval = Duration{5 * time.Second}
+	}
+	if c.Worker.CallbackClaimTimeout.Duration <= 0 {
+		c.Worker.CallbackClaimTimeout = Duration{2 * time.Minute}
+	}
+	if c.Worker.CallbackMaxConcurrency <= 0 {
+		c.Worker.CallbackMaxConcurrency = 4
 	}
 	c.Worker.CallbackSigningSecret = strings.TrimSpace(c.Worker.CallbackSigningSecret)
 	if c.Worker.CallbackSigningSecret == "" {
@@ -609,6 +624,19 @@ func (c Config) Validate() error {
 	if c.Worker.Enabled && !c.Redis.Enabled {
 		errs = append(errs, errors.New("redis must be enabled when worker is enabled"))
 	}
+	if c.Worker.Enabled {
+		if c.Worker.HeartbeatInterval.Duration <= 0 {
+			errs = append(errs, errors.New("worker.heartbeat_interval must be positive when worker is enabled"))
+		}
+		if c.Worker.HeartbeatInterval.Duration > c.Worker.LeaseTTL.Duration/3 {
+			errs = append(errs, errors.New("worker.heartbeat_interval must be <= worker.lease_ttl / 3"))
+		}
+		if requiresProductionSecrets(c.Environment) &&
+			c.Worker.LeaseTTL.Duration < c.Worker.JobTimeout.Duration &&
+			c.Worker.HeartbeatInterval.Duration <= 0 {
+			errs = append(errs, errors.New("worker.lease_ttl must be >= worker.job_timeout outside local/test unless heartbeat is enabled"))
+		}
+	}
 	return errors.Join(errs...)
 }
 
@@ -688,6 +716,7 @@ func applyEnv(cfg *Config) {
 	setBool("TOKEN_GATEWAY_WORKER_ENABLED", &cfg.Worker.Enabled)
 	setString("TOKEN_GATEWAY_WORKER_ADDR", &cfg.Worker.Addr)
 	setString("TOKEN_GATEWAY_CALLBACK_SIGNING_SECRET", &cfg.Worker.CallbackSigningSecret)
+	setInt("TOKEN_GATEWAY_CALLBACK_MAX_CONCURRENCY", &cfg.Worker.CallbackMaxConcurrency)
 	setInt("TOKEN_GATEWAY_CALLBACK_MAX_RETRIES", &cfg.Worker.CallbackMaxRetries)
 }
 

@@ -7,9 +7,10 @@ import (
 
 // Metrics records worker job execution health.
 type Metrics struct {
-	runs     *prometheus.CounterVec
-	duration *prometheus.HistogramVec
-	inFlight *prometheus.GaugeVec
+	runs       *prometheus.CounterVec
+	duration   *prometheus.HistogramVec
+	inFlight   *prometheus.GaugeVec
+	heartbeats *prometheus.CounterVec
 }
 
 // NewMetrics registers worker metrics.
@@ -28,11 +29,15 @@ func NewMetrics(registry *prometheus.Registry) (*Metrics, error) {
 			Name: metricnames.MetricWorkerJobInFlight,
 			Help: "Current worker job executions.",
 		}, []string{"job"}),
+		heartbeats: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: metricnames.MetricWorkerLeaseHeartbeatsTotal,
+			Help: "Total worker lease heartbeat renewals by outcome.",
+		}, []string{"job", "outcome"}),
 	}
 	if registry == nil {
 		return m, nil
 	}
-	for _, collector := range []prometheus.Collector{m.runs, m.duration, m.inFlight} {
+	for _, collector := range []prometheus.Collector{m.runs, m.duration, m.inFlight, m.heartbeats} {
 		if err := registry.Register(collector); err != nil {
 			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
 				return nil, err
@@ -72,4 +77,14 @@ func (m *Metrics) skip(job string) {
 		return
 	}
 	m.runs.WithLabelValues(job, "skipped").Inc()
+}
+
+func (m *Metrics) heartbeat(job string, outcome string) {
+	if m == nil || m.heartbeats == nil {
+		return
+	}
+	if outcome == "" {
+		outcome = "unknown"
+	}
+	m.heartbeats.WithLabelValues(job, outcome).Inc()
 }

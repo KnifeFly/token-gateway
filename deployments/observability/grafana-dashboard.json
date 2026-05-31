@@ -44,14 +44,16 @@
       "title": "Task and Callback Health",
       "targets": [
         { "expr": "sum(rate(token_gateway_task_lifecycle_transitions_total[5m])) by (to_state)", "legendFormat": "task {{to_state}}" },
-        { "expr": "sum(rate(token_gateway_callback_retries_total[5m]))", "legendFormat": "callback retries" }
+        { "expr": "sum(rate(token_gateway_callback_retries_total[5m]))", "legendFormat": "callback retries" },
+        { "expr": "sum(rate(token_gateway_callback_deliveries_total[5m])) by (status_class, outcome)", "legendFormat": "callback {{status_class}} {{outcome}}" }
       ]
     },
     {
       "type": "timeseries",
       "title": "Worker Job Outcomes",
       "targets": [
-        { "expr": "sum(rate(token_gateway_worker_job_runs_total[5m])) by (job, outcome)", "legendFormat": "{{job}} {{outcome}}" }
+        { "expr": "sum(rate(token_gateway_worker_job_runs_total[5m])) by (job, outcome)", "legendFormat": "{{job}} {{outcome}}" },
+        { "expr": "sum(rate(token_gateway_worker_lease_heartbeats_total[5m])) by (job, outcome)", "legendFormat": "heartbeat {{job}} {{outcome}}" }
       ]
     },
     {

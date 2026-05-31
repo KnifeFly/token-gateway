@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
@@ -101,6 +102,76 @@ func TestProviderTaskPollerSettlesFailedTerminalTask(t *testing.T) {
 	}
 }
 
+func TestProviderTaskPollerIsolatesSingleTaskPollError(t *testing.T) {
+	ctx := context.Background()
+	repo := tasksvc.NewMemoryRepository()
+	service := tasksvc.NewService(repo, 0)
+
+	failedPoll, _, err := service.CreateMediaTask(ctx, tasksvc.CreateTaskRequest{
+		TenantID:    "tenant",
+		ProjectID:   "project",
+		APIKeyID:    "key",
+		RequestID:   "req_poll_error",
+		Endpoint:    "/v1/videos/generations",
+		Kind:        tasksvc.KindVideoGeneration,
+		MediaType:   "video",
+		Model:       "seedance-2.0-text-to-video",
+		Input:       []byte(`{"model":"seedance-2.0-text-to-video","prompt":"first"}`),
+		CallbackURL: "https://example.com/callback",
+	})
+	if err != nil {
+		t.Fatalf("CreateMediaTask(first) error = %v", err)
+	}
+	succeededPoll, _, err := service.CreateMediaTask(ctx, tasksvc.CreateTaskRequest{
+		TenantID:    "tenant",
+		ProjectID:   "project",
+		APIKeyID:    "key",
+		RequestID:   "req_poll_success",
+		Endpoint:    "/v1/videos/generations",
+		Kind:        tasksvc.KindVideoGeneration,
+		MediaType:   "video",
+		Model:       "seedance-2.0-text-to-video",
+		Input:       []byte(`{"model":"seedance-2.0-text-to-video","prompt":"second"}`),
+		CallbackURL: "https://example.com/callback",
+	})
+	if err != nil {
+		t.Fatalf("CreateMediaTask(second) error = %v", err)
+	}
+	if _, err := service.MarkDispatched(ctx, failedPoll.ID, "mock_media", "channel_mock_media", "external_error"); err != nil {
+		t.Fatalf("MarkDispatched(first) error = %v", err)
+	}
+	if _, err := service.MarkDispatched(ctx, succeededPoll.ID, "mock_media", "channel_mock_media", "external_success"); err != nil {
+		t.Fatalf("MarkDispatched(second) error = %v", err)
+	}
+
+	dispatcher := selectiveProviderTaskDispatcher{
+		errs: map[string]error{failedPoll.ID: errors.New("provider poll timeout")},
+		result: &tasksvc.ProviderTaskResult{
+			Status:   tasksvc.StatusSucceeded,
+			Progress: 100,
+			Result:   []byte(`{"ok":true}`),
+		},
+	}
+	poller := NewProviderTaskPoller(repo, dispatcher, service, tasksvc.NoopSettlement{}, 0, 10)
+	if err := poller.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	first, ok, err := repo.GetTask(ctx, failedPoll.ID)
+	if err != nil || !ok {
+		t.Fatalf("GetTask(first) ok = %v error = %v", ok, err)
+	}
+	second, ok, err := repo.GetTask(ctx, succeededPoll.ID)
+	if err != nil || !ok {
+		t.Fatalf("GetTask(second) ok = %v error = %v", ok, err)
+	}
+	if first.Status != tasksvc.StatusRunning {
+		t.Fatalf("first status = %s, want running", first.Status)
+	}
+	if second.Status != tasksvc.StatusSucceeded {
+		t.Fatalf("second status = %s, want succeeded", second.Status)
+	}
+}
+
 type staticProviderTaskDispatcher struct {
 	result *tasksvc.ProviderTaskResult
 }
@@ -114,6 +185,26 @@ func (d staticProviderTaskDispatcher) Poll(context.Context, tasksvc.Task) (*task
 }
 
 func (d staticProviderTaskDispatcher) Cancel(context.Context, tasksvc.Task) error {
+	return nil
+}
+
+type selectiveProviderTaskDispatcher struct {
+	errs   map[string]error
+	result *tasksvc.ProviderTaskResult
+}
+
+func (d selectiveProviderTaskDispatcher) Submit(context.Context, tasksvc.ProviderTaskRequest) (*tasksvc.ProviderTask, error) {
+	return nil, nil
+}
+
+func (d selectiveProviderTaskDispatcher) Poll(_ context.Context, task tasksvc.Task) (*tasksvc.ProviderTaskResult, error) {
+	if err := d.errs[task.ID]; err != nil {
+		return nil, err
+	}
+	return d.result, nil
+}
+
+func (d selectiveProviderTaskDispatcher) Cancel(context.Context, tasksvc.Task) error {
 	return nil
 }
 

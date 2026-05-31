@@ -44,6 +44,8 @@ const (
 
 	// CallbackStatusPending marks a callback waiting for delivery.
 	CallbackStatusPending CallbackStatus = "pending"
+	// CallbackStatusProcessing marks a callback claimed by a dispatcher.
+	CallbackStatusProcessing CallbackStatus = "processing"
 	// CallbackStatusDelivered marks a callback delivered successfully.
 	CallbackStatusDelivered CallbackStatus = "delivered"
 	// CallbackStatusFailed marks a callback that failed and may retry.
@@ -160,18 +162,24 @@ type FileQuota struct {
 
 // CallbackEvent is a retryable callback outbox row.
 type CallbackEvent struct {
-	ID          string
-	TaskID      string
-	TenantID    string
-	ProjectID   string
-	URL         string
-	Payload     json.RawMessage
-	Status      CallbackStatus
-	RetryCount  int
-	NextRetryAt time.Time
-	LastError   string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID             string
+	TaskID         string
+	TenantID       string
+	ProjectID      string
+	URL            string
+	Payload        json.RawMessage
+	Status         CallbackStatus
+	RetryCount     int
+	NextRetryAt    time.Time
+	LastError      string
+	OwnerID        string
+	ClaimedAt      time.Time
+	HeartbeatAt    time.Time
+	DeliveryID     string
+	LastStatusCode int
+	LastLatencyMS  int64
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // ProviderTask is the upstream async task handle returned by a provider.

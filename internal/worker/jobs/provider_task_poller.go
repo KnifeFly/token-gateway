@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
@@ -70,29 +71,36 @@ func (j *ProviderTaskPoller) Run(ctx context.Context) error {
 		return err
 	}
 	for _, task := range tasks {
-		// Step 1: ask the provider adapter for current terminal state.
-		result, err := j.dispatcher.Poll(ctx, task)
-		if err != nil {
-			return err
+		if err := j.processOne(ctx, task); err != nil {
+			slog.Warn("provider task poll failed", "task_id", task.ID, "provider_task_id", task.ProviderTaskID, "error", err)
 		}
-		if result == nil || !tasksvc.IsTerminal(result.Status) {
-			continue
-		}
-		normalized := tasksvc.NormalizeProviderTaskResult(*result)
-		result = &normalized
-		settlementTask := task
-		settlementTask.Status = result.Status
-		settlementTask.Result = result.Result
-		settlementTask.Usage = result.Usage
-		settlementTask.ErrorCode = result.ErrorCode
-		settlementTask.ErrorMessage = result.ErrorMessage
-		// Step 2: settle or release terminal provider work before completing the task.
-		if err := tasksvc.SettleTerminalTask(ctx, j.settlement, settlementTask, result.Usage); err != nil {
-			return err
-		}
-		if _, err := j.tasks.CompleteTask(ctx, task, *result); err != nil {
-			return err
-		}
+	}
+	return nil
+}
+
+func (j *ProviderTaskPoller) processOne(ctx context.Context, task tasksvc.Task) error {
+	// Step 1: ask the provider adapter for current terminal state.
+	result, err := j.dispatcher.Poll(ctx, task)
+	if err != nil {
+		return err
+	}
+	if result == nil || !tasksvc.IsTerminal(result.Status) {
+		return nil
+	}
+	normalized := tasksvc.NormalizeProviderTaskResult(*result)
+	result = &normalized
+	settlementTask := task
+	settlementTask.Status = result.Status
+	settlementTask.Result = result.Result
+	settlementTask.Usage = result.Usage
+	settlementTask.ErrorCode = result.ErrorCode
+	settlementTask.ErrorMessage = result.ErrorMessage
+	// Step 2: settle or release terminal provider work before completing the task.
+	if err := tasksvc.SettleTerminalTask(ctx, j.settlement, settlementTask, result.Usage); err != nil {
+		return err
+	}
+	if _, err := j.tasks.CompleteTask(ctx, task, *result); err != nil {
+		return err
 	}
 	return nil
 }
