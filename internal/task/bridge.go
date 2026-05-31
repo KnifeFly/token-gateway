@@ -25,12 +25,18 @@ type ProviderTaskRequest struct {
 	RequestID string
 }
 
+// AttemptRecorder persists async provider submit attempts.
+type AttemptRecorder interface {
+	RecordProviderAttempt(ctx context.Context, state *engine.RequestState, attempt engine.ProviderAttempt) error
+}
+
 // Bridge connects the data-plane engine to the M4 task service.
 type Bridge struct {
 	service    *Service
 	dispatcher ProviderTaskDispatcher
 	settlement Settlement
 	price      pricing.TokenPrice
+	attempts   AttemptRecorder
 }
 
 // NewBridge returns a task bridge.
@@ -46,6 +52,14 @@ func NewBridge(service *Service, dispatcher ProviderTaskDispatcher, settlement .
 func (b *Bridge) WithDefaultPrice(price pricing.TokenPrice) *Bridge {
 	if b != nil {
 		b.price = price
+	}
+	return b
+}
+
+// WithAttemptRecorder configures durable async submit attempt auditing.
+func (b *Bridge) WithAttemptRecorder(recorder AttemptRecorder) *Bridge {
+	if b != nil {
+		b.attempts = recorder
 	}
 	return b
 }
@@ -135,7 +149,9 @@ func (b *Bridge) submitCreatedTask(ctx context.Context, state *engine.RequestSta
 		channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
 		if !ok || !channel.Enabled {
 			lastErr = apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
-			recordAsyncSubmitAttempt(state, idx, candidate, false, lastErr)
+			if err := b.recordAsyncSubmitAttempt(ctx, state, task, idx, len(candidates), candidate, false, lastErr); err != nil {
+				return nil, nil, err
+			}
 			continue
 		}
 		providerTask, err := b.dispatcher.Submit(ctx, ProviderTaskRequest{
@@ -146,7 +162,9 @@ func (b *Bridge) submitCreatedTask(ctx context.Context, state *engine.RequestSta
 		})
 		if err != nil {
 			lastErr = err
-			recordAsyncSubmitAttempt(state, idx, candidate, false, err)
+			if recordErr := b.recordAsyncSubmitAttempt(ctx, state, task, idx, len(candidates), candidate, false, err); recordErr != nil {
+				return nil, nil, recordErr
+			}
 			if providerTask != nil && providerTask.ExternalID != "" {
 				updated, markErr := b.service.MarkDispatched(ctx, task.ID, candidate.ProviderType, candidate.ChannelID, providerTask.ExternalID)
 				if markErr != nil {
@@ -161,10 +179,14 @@ func (b *Bridge) submitCreatedTask(ctx context.Context, state *engine.RequestSta
 		}
 		if providerTask == nil || providerTask.ExternalID == "" {
 			lastErr = apperr.ProviderError("provider task response is missing external task id")
-			recordAsyncSubmitAttempt(state, idx, candidate, false, lastErr)
+			if err := b.recordAsyncSubmitAttempt(ctx, state, task, idx, len(candidates), candidate, false, lastErr); err != nil {
+				return nil, nil, err
+			}
 			break
 		}
-		recordAsyncSubmitAttempt(state, idx, candidate, true, nil)
+		if err := b.recordAsyncSubmitAttempt(ctx, state, task, idx, len(candidates), candidate, true, nil); err != nil {
+			return nil, nil, err
+		}
 		updated, err := b.service.MarkDispatched(ctx, task.ID, candidate.ProviderType, candidate.ChannelID, providerTask.ExternalID)
 		return updated, providerTask, err
 	}
@@ -271,16 +293,33 @@ func asyncSubmitRetryable(err error) bool {
 	return appErr.Temporary || appErr.Code == apperr.CodeServiceUnavailable || appErr.Code == apperr.CodeRateLimited
 }
 
-func recordAsyncSubmitAttempt(state *engine.RequestState, index int, candidate engine.ProviderCandidate, success bool, err error) {
+func (b *Bridge) recordAsyncSubmitAttempt(ctx context.Context, state *engine.RequestState, task Task, index int, candidateCount int, candidate engine.ProviderCandidate, success bool, err error) error {
 	if state == nil {
-		return
+		return nil
+	}
+	attempt := buildAsyncSubmitAttempt(state, task, index, candidateCount, candidate, success, err)
+	state.Attempts = append(state.Attempts, attempt)
+	if b == nil || b.attempts == nil {
+		return nil
+	}
+	return b.attempts.RecordProviderAttempt(ctx, state, attempt)
+}
+
+func buildAsyncSubmitAttempt(state *engine.RequestState, task Task, index int, candidateCount int, candidate engine.ProviderCandidate, success bool, err error) engine.ProviderAttempt {
+	if state == nil {
+		return engine.ProviderAttempt{}
 	}
 	attempt := engine.ProviderAttempt{
-		AttemptIndex: index + 1,
-		ChannelID:    candidate.ChannelID,
-		ProviderType: candidate.ProviderType,
-		PublicModel:  candidate.PublicModel,
-		Success:      success,
+		AttemptIndex:         index + 1,
+		TaskID:               task.ID,
+		ChannelID:            candidate.ChannelID,
+		ProviderType:         candidate.ProviderType,
+		PublicModel:          candidate.PublicModel,
+		UpstreamModel:        candidate.UpstreamModel,
+		Success:              success,
+		RetryBudgetConsumed:  index + 1,
+		RetryBudgetRemaining: max(candidateCount-index-1, 0),
+		Final:                success || index >= candidateCount-1,
 	}
 	if index > 0 && state.RoutePlan != nil && index-1 < len(state.RoutePlan.Candidates) {
 		prev := state.RoutePlan.Candidates[index-1]
@@ -293,6 +332,9 @@ func recordAsyncSubmitAttempt(state *engine.RequestState, index int, candidate e
 			attempt.ErrorCode = string(appErr.Code)
 			attempt.Retryable = appErr.Temporary
 		}
+		if !attempt.Retryable {
+			attempt.Final = true
+		}
 	}
-	state.Attempts = append(state.Attempts, attempt)
+	return attempt
 }

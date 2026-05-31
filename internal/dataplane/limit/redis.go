@@ -250,8 +250,8 @@ func (e *RedisEnforcer) operationsFor(state *engine.RequestState, rules []engine
 			buckets = append(buckets, e.bucketOp(scope, "tpm", tokens, rule.TPM, time.Minute))
 		}
 		if rule.DailyBudgetMicros > 0 {
-			op := e.counterOp(scope, "daily_budget", costMicros, rule.DailyBudgetMicros, untilNextUTC(now))
-			op.reason = "daily budget admission guard exceeded"
+			op := e.counterOp(scope, "daily_admission_budget", costMicros, rule.DailyBudgetMicros, untilNextUTC(now))
+			op.reason = "daily admission budget guard exceeded"
 			counters = append(counters, op)
 		}
 		if rule.CostPerMinuteMicros > 0 {

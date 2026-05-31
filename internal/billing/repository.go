@@ -19,8 +19,8 @@ type Repository interface {
 	RecordUsageAttempt(ctx context.Context, attempt UsageAttempt) error
 	Settle(ctx context.Context, plan SettlementPlan) (*SettlementResult, error)
 	SaveFailedSettlement(ctx context.Context, failed FailedSettlement) error
-	ListPendingFailedSettlements(ctx context.Context, limit int) ([]FailedSettlement, error)
-	MarkFailedSettlementReplayed(ctx context.Context, id string) error
-	MarkFailedSettlementFailed(ctx context.Context, id string, nextRetryAt time.Time, lastError string) error
+	ClaimPendingFailedSettlements(ctx context.Context, ownerID string, claimTimeout time.Duration, limit int) ([]FailedSettlement, error)
+	MarkFailedSettlementReplayed(ctx context.Context, id string, ownerID string) error
+	MarkFailedSettlementFailed(ctx context.Context, id string, ownerID string, nextRetryAt time.Time, lastError string) error
 	Reconcile(ctx context.Context) ([]ReconciliationIssue, error)
 }

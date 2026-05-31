@@ -316,42 +316,67 @@ func (r *MemoryRepository) SaveFailedSettlement(_ context.Context, failed Failed
 	return nil
 }
 
-// ListPendingFailedSettlements returns due settlement repair records.
-func (r *MemoryRepository) ListPendingFailedSettlements(_ context.Context, limit int) ([]FailedSettlement, error) {
+// ClaimPendingFailedSettlements atomically assigns due repair rows to one owner.
+func (r *MemoryRepository) ClaimPendingFailedSettlements(_ context.Context, ownerID string, claimTimeout time.Duration, limit int) ([]FailedSettlement, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if ownerID == "" {
+		ownerID = "memory-owner"
+	}
+	if claimTimeout <= 0 {
+		claimTimeout = 5 * time.Minute
+	}
 	var out []FailedSettlement
 	now := time.Now().UTC()
-	for _, failed := range r.failed {
+	for id, failed := range r.failed {
 		if len(out) >= limit {
 			break
 		}
-		if (failed.Status == FailedSettlementPending || failed.Status == FailedSettlementFailed) && !failed.NextRetryAt.After(now) {
-			out = append(out, failed)
+		due := (failed.Status == FailedSettlementPending || failed.Status == FailedSettlementFailed) && !failed.NextRetryAt.After(now)
+		expiredClaim := failed.Status == FailedSettlementProcessing && !failed.HeartbeatAt.IsZero() && failed.HeartbeatAt.Add(claimTimeout).Before(now)
+		if !due && !expiredClaim {
+			continue
 		}
+		failed.Status = FailedSettlementProcessing
+		failed.OwnerID = ownerID
+		failed.ClaimedAt = now
+		failed.HeartbeatAt = now
+		failed.UpdatedAt = now
+		r.failed[id] = failed
+		out = append(out, failed)
 	}
 	return out, nil
 }
 
 // MarkFailedSettlementReplayed marks a failed settlement as repaired.
-func (r *MemoryRepository) MarkFailedSettlementReplayed(_ context.Context, id string) error {
+func (r *MemoryRepository) MarkFailedSettlementReplayed(_ context.Context, id string, ownerID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	failed := r.failed[id]
+	if ownerID != "" && failed.OwnerID != "" && failed.OwnerID != ownerID {
+		return nil
+	}
 	failed.Status = FailedSettlementReplayed
+	failed.OwnerID = ""
+	failed.UpdatedAt = time.Now().UTC()
 	r.failed[id] = failed
 	return nil
 }
 
 // MarkFailedSettlementFailed records a failed replay attempt and next retry time.
-func (r *MemoryRepository) MarkFailedSettlementFailed(_ context.Context, id string, nextRetryAt time.Time, lastError string) error {
+func (r *MemoryRepository) MarkFailedSettlementFailed(_ context.Context, id string, ownerID string, nextRetryAt time.Time, lastError string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	failed := r.failed[id]
+	if ownerID != "" && failed.OwnerID != "" && failed.OwnerID != ownerID {
+		return nil
+	}
 	failed.Status = FailedSettlementFailed
 	failed.RetryCount++
 	failed.NextRetryAt = nextRetryAt
 	failed.LastError = lastError
+	failed.OwnerID = ""
+	failed.UpdatedAt = time.Now().UTC()
 	r.failed[id] = failed
 	return nil
 }

@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
@@ -70,6 +71,37 @@ func TestServiceCreateMediaTaskIdempotencyConflict(t *testing.T) {
 	appErr, ok := apperr.As(err)
 	if !ok || appErr.Code != apperr.CodeIdempotencyConflict {
 		t.Fatalf("error = %v, want idempotency_conflict", err)
+	}
+}
+
+func TestServiceCreateMediaTaskReplaysAfterDuplicateCreateRace(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	request := CreateTaskRequest{
+		TenantID:       "tenant",
+		ProjectID:      "project",
+		APIKeyID:       "key",
+		RequestID:      "req_1",
+		Endpoint:       "/v1/videos/generations",
+		IdempotencyKey: "idem_race",
+		Kind:           KindVideoGeneration,
+		MediaType:      "video",
+		Model:          "seedance-2.0-text-to-video",
+		Input:          []byte(`{"model":"seedance-2.0-text-to-video","prompt":"hello"}`),
+	}
+	created, hit, err := NewService(repo, 0).CreateMediaTask(ctx, request)
+	if err != nil || hit {
+		t.Fatalf("initial CreateMediaTask() task = %#v hit = %v error = %v", created, hit, err)
+	}
+
+	racing := &duplicateCreateRepository{MemoryRepository: repo, createErr: errors.New("duplicate entry")}
+	request.RequestID = "req_2"
+	replayed, hit, err := NewService(racing, 0).CreateMediaTask(ctx, request)
+	if err != nil {
+		t.Fatalf("CreateMediaTask(race replay) error = %v", err)
+	}
+	if !hit || replayed.ID != created.ID {
+		t.Fatalf("replayed = %#v hit = %v, want task %q", replayed, hit, created.ID)
 	}
 }
 
@@ -256,6 +288,15 @@ func TestFileServiceIdempotency(t *testing.T) {
 	if !hit || second.ID != first.ID {
 		t.Fatalf("duplicate file = (%q, %v), want (%q, true)", second.ID, hit, first.ID)
 	}
+}
+
+type duplicateCreateRepository struct {
+	*MemoryRepository
+	createErr error
+}
+
+func (r *duplicateCreateRepository) CreateTask(context.Context, Task, *IdempotencyRecord) (*Task, error) {
+	return nil, r.createErr
 }
 
 func TestFileServiceRejectsUnsafeSourceURL(t *testing.T) {

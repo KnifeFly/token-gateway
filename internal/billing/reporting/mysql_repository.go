@@ -141,7 +141,17 @@ func (r *MySQLRepository) ReconciliationReport(ctx context.Context) (*Reconcilia
 	if err != nil {
 		return nil, err
 	}
-	return &ReconciliationReport{GeneratedAt: time.Now().UTC(), Issues: issues, FailedSettlements: failed}, nil
+	attempts, err := r.listUsageAttempts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &ReconciliationReport{
+		GeneratedAt:       time.Now().UTC(),
+		Issues:            issues,
+		FailedSettlements: failed,
+		UsageAttempts:     attempts,
+		BudgetSemantics:   admissionBudgetSemantics(),
+	}, nil
 }
 
 // CreateManualAdjustment writes an idempotent operator balance adjustment.
@@ -380,11 +390,11 @@ WHERE provider_type = ? AND channel_id = ? AND public_model = ? AND currency = ?
 func (r *MySQLRepository) listFailedSettlements(ctx context.Context) ([]FailedSettlementSummary, error) {
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, request_id, tenant_id, project_id, hold_id, status, retry_count, next_retry_at,
-       COALESCE(last_error, ''), updated_at
+       COALESCE(last_error, ''), COALESCE(owner_id, ''), claimed_at, heartbeat_at, updated_at
 FROM failed_settlements
-WHERE status IN (?, ?)
+WHERE status IN (?, ?, ?)
 ORDER BY updated_at DESC
-LIMIT 100`, billing.FailedSettlementPending, billing.FailedSettlementFailed)
+LIMIT 100`, billing.FailedSettlementPending, billing.FailedSettlementFailed, billing.FailedSettlementProcessing)
 	if err != nil {
 		return nil, err
 	}
@@ -392,9 +402,45 @@ LIMIT 100`, billing.FailedSettlementPending, billing.FailedSettlementFailed)
 	var out []FailedSettlementSummary
 	for rows.Next() {
 		var row FailedSettlementSummary
+		var claimedAt, heartbeatAt sql.NullTime
 		if err := rows.Scan(
 			&row.ID, &row.RequestID, &row.TenantID, &row.ProjectID, &row.HoldID, &row.Status,
-			&row.RetryCount, &row.NextRetryAt, &row.LastError, &row.UpdatedAt,
+			&row.RetryCount, &row.NextRetryAt, &row.LastError, &row.OwnerID, &claimedAt, &heartbeatAt, &row.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if claimedAt.Valid {
+			row.ClaimedAt = claimedAt.Time
+		}
+		if heartbeatAt.Valid {
+			row.HeartbeatAt = heartbeatAt.Time
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func (r *MySQLRepository) listUsageAttempts(ctx context.Context) ([]UsageAttemptSummary, error) {
+	rows, err := r.db.QueryContext(ctx, `
+SELECT request_id, task_id, tenant_id, project_id, api_key_id, attempt_index, provider_type,
+       channel_id, model, upstream_model, status_code, error_code, success, retryable,
+       fallback_from_channel_id, final, created_at
+FROM usage_attempts
+WHERE final = TRUE OR success = FALSE OR task_id <> ''
+ORDER BY created_at DESC
+LIMIT 100`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []UsageAttemptSummary
+	for rows.Next() {
+		var row UsageAttemptSummary
+		if err := rows.Scan(
+			&row.RequestID, &row.TaskID, &row.TenantID, &row.ProjectID, &row.APIKeyID,
+			&row.AttemptIndex, &row.ProviderType, &row.ChannelID, &row.Model, &row.UpstreamModel,
+			&row.StatusCode, &row.ErrorCode, &row.Success, &row.Retryable,
+			&row.FallbackFromChannelID, &row.Final, &row.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

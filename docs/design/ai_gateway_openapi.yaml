@@ -2105,9 +2105,15 @@ components:
         concurrency:
           type: integer
           format: int64
+        daily_admission_budget_micros:
+          type: integer
+          format: int64
+          description: Redis admission estimate guard; actual customer spend is ledger based.
         daily_budget_micros:
           type: integer
           format: int64
+          deprecated: true
+          description: Compatibility alias for daily_admission_budget_micros.
         cost_per_minute_micros:
           type: integer
           format: int64

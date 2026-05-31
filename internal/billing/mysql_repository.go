@@ -238,14 +238,29 @@ func (r *MySQLRepository) RecordUsageAttempt(ctx context.Context, attempt UsageA
 	}
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO usage_attempts (
-  id, request_id, attempt_index, tenant_id, project_id, api_key_id, channel_id, provider_type,
-  model, status_code, error_code, success, estimated_input_tokens, estimated_output_tokens,
+  id, request_id, attempt_index, task_id, tenant_id, project_id, api_key_id, channel_id, provider_type,
+  model, upstream_model, status_code, error_code, success, estimated_input_tokens, estimated_output_tokens,
   actual_input_tokens, actual_output_tokens, retryable, retry_budget_consumed,
   retry_budget_remaining, fallback_from_channel_id, fallback_from_provider, circuit_state, final
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
-		attempt.ID, attempt.RequestID, attempt.AttemptIndex, attempt.TenantID, attempt.ProjectID,
-		attempt.APIKeyID, attempt.ChannelID, attempt.ProviderType, attempt.Model, attempt.StatusCode,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE
+  task_id = VALUES(task_id),
+  upstream_model = VALUES(upstream_model),
+  status_code = VALUES(status_code),
+  error_code = VALUES(error_code),
+  success = VALUES(success),
+  actual_input_tokens = VALUES(actual_input_tokens),
+  actual_output_tokens = VALUES(actual_output_tokens),
+  retryable = VALUES(retryable),
+  retry_budget_consumed = VALUES(retry_budget_consumed),
+  retry_budget_remaining = VALUES(retry_budget_remaining),
+  fallback_from_channel_id = VALUES(fallback_from_channel_id),
+  fallback_from_provider = VALUES(fallback_from_provider),
+  circuit_state = VALUES(circuit_state),
+  final = VALUES(final),
+  updated_at = CURRENT_TIMESTAMP`,
+		attempt.ID, attempt.RequestID, attempt.AttemptIndex, attempt.TaskID, attempt.TenantID, attempt.ProjectID,
+		attempt.APIKeyID, attempt.ChannelID, attempt.ProviderType, attempt.Model, attempt.UpstreamModel, attempt.StatusCode,
 		attempt.ErrorCode, attempt.Success, attempt.EstimatedInputTokens, attempt.EstimatedOutputTokens,
 		attempt.ActualInputTokens, attempt.ActualOutputTokens, attempt.Retryable,
 		attempt.RetryBudgetConsumed, attempt.RetryBudgetRemaining, attempt.FallbackFromChannelID,
@@ -443,18 +458,42 @@ ON DUPLICATE KEY UPDATE
 	return err
 }
 
-// ListPendingFailedSettlements returns due failed settlements ordered by retry time.
-func (r *MySQLRepository) ListPendingFailedSettlements(ctx context.Context, limit int) ([]FailedSettlement, error) {
+// ClaimPendingFailedSettlements assigns due failed settlements to one worker owner.
+func (r *MySQLRepository) ClaimPendingFailedSettlements(ctx context.Context, ownerID string, claimTimeout time.Duration, limit int) ([]FailedSettlement, error) {
 	if r == nil || r.db == nil {
 		return nil, nil
 	}
+	if ownerID == "" {
+		ownerID = newID("repair_owner")
+	}
+	if claimTimeout <= 0 {
+		claimTimeout = 5 * time.Minute
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	now := time.Now().UTC()
+	claimExpiredBefore := now.Add(-claimTimeout)
+	if _, err := r.db.ExecContext(ctx, `
+UPDATE failed_settlements
+SET status = ?, owner_id = ?, claimed_at = ?, heartbeat_at = ?, updated_at = CURRENT_TIMESTAMP
+WHERE ((status IN (?, ?) AND next_retry_at <= ?)
+   OR (status = ? AND heartbeat_at <= ?))
+ORDER BY next_retry_at ASC, created_at ASC
+LIMIT ?`,
+		FailedSettlementProcessing, ownerID, now, now,
+		FailedSettlementPending, FailedSettlementFailed, now,
+		FailedSettlementProcessing, claimExpiredBefore, limit); err != nil {
+		return nil, err
+	}
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, request_id, tenant_id, project_id, api_key_id, hold_id, payload_json, status,
-       retry_count, next_retry_at, COALESCE(last_error, ''), created_at, updated_at
+       retry_count, next_retry_at, COALESCE(last_error, ''), COALESCE(owner_id, ''),
+       claimed_at, heartbeat_at, created_at, updated_at
 FROM failed_settlements
-WHERE status IN (?, ?) AND next_retry_at <= CURRENT_TIMESTAMP
+WHERE status = ? AND owner_id = ?
 ORDER BY next_retry_at ASC, created_at ASC
-LIMIT ?`, FailedSettlementPending, FailedSettlementFailed, limit)
+LIMIT ?`, FailedSettlementProcessing, ownerID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +504,8 @@ LIMIT ?`, FailedSettlementPending, FailedSettlementFailed, limit)
 		if err := rows.Scan(
 			&failed.ID, &failed.RequestID, &failed.TenantID, &failed.ProjectID, &failed.APIKeyID,
 			&failed.HoldID, &failed.Payload, &failed.Status, &failed.RetryCount, &failed.NextRetryAt,
-			&failed.LastError, &failed.CreatedAt, &failed.UpdatedAt,
+			&failed.LastError, &failed.OwnerID, &failed.ClaimedAt, &failed.HeartbeatAt,
+			&failed.CreatedAt, &failed.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -475,20 +515,20 @@ LIMIT ?`, FailedSettlementPending, FailedSettlementFailed, limit)
 }
 
 // MarkFailedSettlementReplayed marks a failed settlement as successfully repaired.
-func (r *MySQLRepository) MarkFailedSettlementReplayed(ctx context.Context, id string) error {
+func (r *MySQLRepository) MarkFailedSettlementReplayed(ctx context.Context, id string, ownerID string) error {
 	_, err := r.db.ExecContext(ctx, `
 UPDATE failed_settlements
-SET status = ?, updated_at = CURRENT_TIMESTAMP
-WHERE id = ?`, FailedSettlementReplayed, id)
+SET status = ?, owner_id = '', updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND (owner_id = ? OR ? = '')`, FailedSettlementReplayed, id, ownerID, ownerID)
 	return err
 }
 
 // MarkFailedSettlementFailed records a failed replay attempt and retry schedule.
-func (r *MySQLRepository) MarkFailedSettlementFailed(ctx context.Context, id string, nextRetryAt time.Time, lastError string) error {
+func (r *MySQLRepository) MarkFailedSettlementFailed(ctx context.Context, id string, ownerID string, nextRetryAt time.Time, lastError string) error {
 	_, err := r.db.ExecContext(ctx, `
 UPDATE failed_settlements
-SET status = ?, retry_count = retry_count + 1, next_retry_at = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
-WHERE id = ?`, FailedSettlementFailed, nextRetryAt, lastError, id)
+SET status = ?, owner_id = '', retry_count = retry_count + 1, next_retry_at = ?, last_error = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ? AND (owner_id = ? OR ? = '')`, FailedSettlementFailed, nextRetryAt, lastError, id, ownerID, ownerID)
 	return err
 }
 

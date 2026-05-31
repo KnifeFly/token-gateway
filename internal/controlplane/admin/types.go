@@ -3,6 +3,8 @@ package admin
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
 // Tenant is a customer account boundary.
@@ -105,21 +107,22 @@ type PriceRuleConfig struct {
 
 // LimitRuleConfig pins request limits for one multi-dimensional scope.
 type LimitRuleConfig struct {
-	ID                  string `json:"id"`
-	TenantID            string `json:"tenant_id,omitempty"`
-	ProjectID           string `json:"project_id,omitempty"`
-	APIKeyID            string `json:"api_key_id,omitempty"`
-	PublicModel         string `json:"public_model,omitempty"`
-	ProviderType        string `json:"provider_type,omitempty"`
-	ChannelID           string `json:"channel_id,omitempty"`
-	RPM                 int64  `json:"rpm,omitempty"`
-	QPS                 int64  `json:"qps,omitempty"`
-	TPM                 int64  `json:"tpm,omitempty"`
-	Concurrency         int64  `json:"concurrency,omitempty"`
-	DailyBudgetMicros   int64  `json:"daily_budget_micros,omitempty"`
-	CostPerMinuteMicros int64  `json:"cost_per_minute_micros,omitempty"`
-	Enabled             bool   `json:"enabled"`
-	EnabledSet          bool   `json:"-"`
+	ID                         string `json:"id"`
+	TenantID                   string `json:"tenant_id,omitempty"`
+	ProjectID                  string `json:"project_id,omitempty"`
+	APIKeyID                   string `json:"api_key_id,omitempty"`
+	PublicModel                string `json:"public_model,omitempty"`
+	ProviderType               string `json:"provider_type,omitempty"`
+	ChannelID                  string `json:"channel_id,omitempty"`
+	RPM                        int64  `json:"rpm,omitempty"`
+	QPS                        int64  `json:"qps,omitempty"`
+	TPM                        int64  `json:"tpm,omitempty"`
+	Concurrency                int64  `json:"concurrency,omitempty"`
+	DailyAdmissionBudgetMicros int64  `json:"daily_admission_budget_micros,omitempty"`
+	DailyBudgetMicros          int64  `json:"daily_budget_micros,omitempty"`
+	CostPerMinuteMicros        int64  `json:"cost_per_minute_micros,omitempty"`
+	Enabled                    bool   `json:"enabled"`
+	EnabledSet                 bool   `json:"-"`
 }
 
 // PluginBindingConfig binds one built-in plugin to a runtime phase and scope.
@@ -274,6 +277,17 @@ func (l *LimitRuleConfig) UnmarshalJSON(data []byte) error {
 	var value alias
 	if err := json.Unmarshal(data, &value); err != nil {
 		return err
+	}
+	newField := jsonFieldPresent(data, "daily_admission_budget_micros")
+	oldField := jsonFieldPresent(data, "daily_budget_micros")
+	if newField && oldField && value.DailyAdmissionBudgetMicros != value.DailyBudgetMicros {
+		return apperr.InvalidArgument("daily_admission_budget_micros and daily_budget_micros must match when both are provided")
+	}
+	if newField && !oldField {
+		value.DailyBudgetMicros = value.DailyAdmissionBudgetMicros
+	}
+	if oldField && !newField {
+		value.DailyAdmissionBudgetMicros = value.DailyBudgetMicros
 	}
 	*l = LimitRuleConfig(value)
 	l.EnabledSet = jsonFieldPresent(data, "enabled")

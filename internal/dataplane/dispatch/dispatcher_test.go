@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/internal/provider"
@@ -188,6 +189,34 @@ func TestDispatcherStopsAtRetryBudget(t *testing.T) {
 	}
 }
 
+func TestDispatcherPersistsFinalAttemptWhenElapsedBudgetStopsFallback(t *testing.T) {
+	registry := provider.NewRegistry()
+	adapter := &channelAdapter{results: map[string]relayResult{
+		"channel_1": {err: &relay.ProviderError{StatusCode: http.StatusServiceUnavailable, Code: "provider_unavailable", Retryable: true}},
+		"channel_2": {response: okRelayResponse()},
+	}}
+	_ = registry.Register("fake", adapter)
+	recorder := &sleepingAttemptRecorder{sleep: 30 * time.Millisecond}
+	state := dispatchStateWithCandidates("channel_1", "channel_2")
+
+	_, err := New(registry, nil, recorder, nil).
+		WithRetryPolicy(RetryPolicy{MaxAttempts: 2, MaxElapsed: 20 * time.Millisecond}).
+		Dispatch(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeProviderError {
+		t.Fatalf("error = %#v, want provider error", appErr)
+	}
+	if len(adapter.calls) != 1 {
+		t.Fatalf("calls = %#v", adapter.calls)
+	}
+	if len(recorder.attempts) != 2 {
+		t.Fatalf("recorded attempts = %#v", recorder.attempts)
+	}
+	if recorder.attempts[0].Final || !recorder.attempts[1].Final {
+		t.Fatalf("recorded final states = %#v", recorder.attempts)
+	}
+}
+
 func TestDispatcherRequiresReplayableRequestForFallback(t *testing.T) {
 	registry := provider.NewRegistry()
 	adapter := &channelAdapter{results: map[string]relayResult{
@@ -274,6 +303,17 @@ type captureReliability struct {
 
 func (r *captureReliability) RecordProviderAttempt(_ context.Context, _ *engine.RequestState, attempt engine.ProviderAttempt) {
 	r.attempts = append(r.attempts, attempt)
+}
+
+type sleepingAttemptRecorder struct {
+	sleep    time.Duration
+	attempts []engine.ProviderAttempt
+}
+
+func (r *sleepingAttemptRecorder) RecordProviderAttempt(_ context.Context, _ *engine.RequestState, attempt engine.ProviderAttempt) error {
+	r.attempts = append(r.attempts, attempt)
+	time.Sleep(r.sleep)
+	return nil
 }
 
 type candidateLimiter struct {

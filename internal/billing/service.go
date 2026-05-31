@@ -89,12 +89,14 @@ func (w *AttemptWriter) RecordProviderAttempt(ctx context.Context, state *engine
 	return w.repo.RecordUsageAttempt(ctx, UsageAttempt{
 		RequestID:             state.RequestID,
 		AttemptIndex:          attempt.AttemptIndex,
+		TaskID:                attempt.TaskID,
 		TenantID:              state.TenantID,
 		ProjectID:             state.ProjectID,
 		APIKeyID:              state.APIKeyID,
 		ChannelID:             attempt.ChannelID,
 		ProviderType:          attempt.ProviderType,
 		Model:                 attempt.PublicModel,
+		UpstreamModel:         attempt.UpstreamModel,
 		StatusCode:            attempt.StatusCode,
 		ErrorCode:             attempt.ErrorCode,
 		Success:               attempt.Success,
@@ -230,8 +232,10 @@ func (s *SettlementService) RecordFailed(ctx context.Context, state *engine.Requ
 
 // FailedSettlementService replays pending failed settlements.
 type FailedSettlementService struct {
-	repo    Repository
-	metrics *Metrics
+	repo         Repository
+	metrics      *Metrics
+	ownerID      string
+	claimTimeout time.Duration
 }
 
 // NewFailedSettlementService returns a replay service without metrics.
@@ -241,7 +245,28 @@ func NewFailedSettlementService(repo Repository) *FailedSettlementService {
 
 // NewFailedSettlementServiceWithMetrics returns a replay service with optional metrics.
 func NewFailedSettlementServiceWithMetrics(repo Repository, metrics *Metrics) *FailedSettlementService {
-	return &FailedSettlementService{repo: repo, metrics: metrics}
+	return &FailedSettlementService{
+		repo:         repo,
+		metrics:      metrics,
+		ownerID:      newID("repair_owner"),
+		claimTimeout: 5 * time.Minute,
+	}
+}
+
+// WithOwner configures the repair worker owner id used for row claims.
+func (s *FailedSettlementService) WithOwner(ownerID string) *FailedSettlementService {
+	if s != nil && ownerID != "" {
+		s.ownerID = ownerID
+	}
+	return s
+}
+
+// WithClaimTimeout configures when processing rows may be reclaimed.
+func (s *FailedSettlementService) WithClaimTimeout(timeout time.Duration) *FailedSettlementService {
+	if s != nil && timeout > 0 {
+		s.claimTimeout = timeout
+	}
+	return s
 }
 
 // ReplayPending retries pending settlement repair records up to limit.
@@ -252,7 +277,7 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 	if limit <= 0 {
 		limit = 100
 	}
-	pending, err := s.repo.ListPendingFailedSettlements(ctx, limit)
+	pending, err := s.repo.ClaimPendingFailedSettlements(ctx, s.ownerID, s.claimTimeout, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -261,7 +286,7 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 		// Step 1: decode the original settlement plan exactly as recorded.
 		var plan SettlementPlan
 		if err := json.Unmarshal(failed.Payload, &plan); err != nil {
-			if markErr := s.repo.MarkFailedSettlementFailed(ctx, failed.ID, time.Now().UTC().Add(time.Minute), err.Error()); markErr != nil {
+			if markErr := s.repo.MarkFailedSettlementFailed(ctx, failed.ID, s.ownerID, time.Now().UTC().Add(time.Minute), err.Error()); markErr != nil {
 				return replayed, markErr
 			}
 			continue
@@ -270,14 +295,14 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 		// Step 2: retry settlement and move failures to a later repair window.
 		if _, err := s.repo.Settle(ctx, plan); err != nil {
 			next := time.Now().UTC().Add(time.Duration(failed.RetryCount+1) * time.Minute)
-			if markErr := s.repo.MarkFailedSettlementFailed(ctx, failed.ID, next, err.Error()); markErr != nil {
+			if markErr := s.repo.MarkFailedSettlementFailed(ctx, failed.ID, s.ownerID, next, err.Error()); markErr != nil {
 				return replayed, markErr
 			}
 			continue
 		}
 
 		// Step 3: mark successful replays so the repair worker is idempotent.
-		if err := s.repo.MarkFailedSettlementReplayed(ctx, failed.ID); err != nil {
+		if err := s.repo.MarkFailedSettlementReplayed(ctx, failed.ID, s.ownerID); err != nil {
 			return replayed, err
 		}
 		if s.metrics != nil {

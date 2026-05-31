@@ -8,7 +8,9 @@ Workers must settle async tasks from this pinned snapshot when it contains custo
 
 ## Budget Semantics
 
-Redis `daily_budget_micros` and `cost_per_minute_micros` are admission guards. They use the estimated request charge to prevent obvious overspend bursts before provider dispatch, but they are not final spend ledgers.
+Redis `daily_admission_budget_micros` and `cost_per_minute_micros` are admission guards. They use the estimated request charge to prevent obvious overspend bursts before provider dispatch, but they are not final spend ledgers.
+
+`daily_budget_micros` is still accepted as a compatibility alias. Prefer `daily_admission_budget_micros` for new control-plane and local config.
 
 Final commercial truth is:
 

@@ -195,7 +195,12 @@ func (r *MemoryRepository) ReconciliationReport(context.Context) (*Reconciliatio
 			})
 		}
 	}
-	return &ReconciliationReport{GeneratedAt: time.Now().UTC(), Issues: issues, FailedSettlements: append([]FailedSettlementSummary(nil), r.failed...)}, nil
+	return &ReconciliationReport{
+		GeneratedAt:       time.Now().UTC(),
+		Issues:            issues,
+		FailedSettlements: append([]FailedSettlementSummary(nil), r.failed...),
+		BudgetSemantics:   admissionBudgetSemantics(),
+	}, nil
 }
 
 // CreateManualAdjustment writes an idempotent balance adjustment and ledger line.

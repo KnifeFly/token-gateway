@@ -237,7 +237,9 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		settlementService = billing.NewSettlementService(repo, billing.NewSettlementPlanner(defaultPrice), billingMetrics)
 		taskSettlement = tasksvc.NewBillingSettlement(repo, defaultPrice)
 	}
-	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher, taskSettlement).WithDefaultPrice(defaultPrice)
+	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher, taskSettlement).
+		WithDefaultPrice(defaultPrice).
+		WithAttemptRecorder(attemptRecorder)
 	if cfg.Gateway.Limits.Enabled {
 		redisLimiter := limit.NewRedisEnforcer(redisClient.Raw(), limit.Config{
 			Enabled:             cfg.Gateway.Limits.Enabled,

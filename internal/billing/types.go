@@ -22,6 +22,8 @@ const (
 	FailedSettlementReplayed = "replayed"
 	// FailedSettlementFailed marks repair records whose replay failed and should retry.
 	FailedSettlementFailed = "failed"
+	// FailedSettlementProcessing marks repair records claimed by one worker.
+	FailedSettlementProcessing = "processing"
 )
 
 // BalanceAccount is a tenant/project balance bucket.
@@ -70,12 +72,14 @@ type UsageAttempt struct {
 	ID                    string
 	RequestID             string
 	AttemptIndex          int
+	TaskID                string
 	TenantID              string
 	ProjectID             string
 	APIKeyID              string
 	ChannelID             string
 	ProviderType          string
 	Model                 string
+	UpstreamModel         string
 	StatusCode            int
 	ErrorCode             string
 	Success               bool
@@ -162,6 +166,9 @@ type FailedSettlement struct {
 	RetryCount  int
 	NextRetryAt time.Time
 	LastError   string
+	OwnerID     string
+	ClaimedAt   time.Time
+	HeartbeatAt time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

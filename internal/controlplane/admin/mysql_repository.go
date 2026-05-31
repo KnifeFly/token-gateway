@@ -578,6 +578,7 @@ FROM cp_limit_rules`)
 			&limit.RPM, &limit.QPS, &limit.TPM, &limit.Concurrency, &limit.DailyBudgetMicros, &limit.CostPerMinuteMicros, &limit.Enabled); err != nil {
 			return nil, err
 		}
+		normalizeLimitBudgetAlias(&limit)
 		limits = append(limits, limit)
 	}
 	return limits, rows.Err()

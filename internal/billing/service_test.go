@@ -113,6 +113,54 @@ func TestFailedSettlementReplay(t *testing.T) {
 	}
 }
 
+func TestFailedSettlementReplayClaimsRowsByOwner(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	failed := FailedSettlement{
+		ID:          "failed_1",
+		RequestID:   "req_claim",
+		TenantID:    "tenant_1",
+		ProjectID:   "project_1",
+		APIKeyID:    "key_1",
+		HoldID:      "",
+		Payload:     []byte(`{"request_id":"req_claim","tenant_id":"tenant_1","project_id":"project_1","api_key_id":"key_1","currency":"USD","billable":false}`),
+		Status:      FailedSettlementPending,
+		NextRetryAt: time.Now().Add(-time.Minute),
+	}
+	if err := repo.SaveFailedSettlement(ctx, failed); err != nil {
+		t.Fatalf("SaveFailedSettlement() error = %v", err)
+	}
+
+	first, err := repo.ClaimPendingFailedSettlements(ctx, "owner_1", time.Minute, 10)
+	if err != nil {
+		t.Fatalf("ClaimPendingFailedSettlements(owner_1) error = %v", err)
+	}
+	second, err := repo.ClaimPendingFailedSettlements(ctx, "owner_2", time.Minute, 10)
+	if err != nil {
+		t.Fatalf("ClaimPendingFailedSettlements(owner_2) error = %v", err)
+	}
+	if len(first) != 1 || first[0].OwnerID != "owner_1" || len(second) != 0 {
+		t.Fatalf("claims first = %#v second = %#v", first, second)
+	}
+
+	repo.failed[failed.ID] = FailedSettlement{
+		ID:          failed.ID,
+		RequestID:   failed.RequestID,
+		Status:      FailedSettlementProcessing,
+		OwnerID:     "owner_1",
+		HeartbeatAt: time.Now().Add(-2 * time.Minute),
+		NextRetryAt: failed.NextRetryAt,
+		Payload:     failed.Payload,
+	}
+	reclaimed, err := repo.ClaimPendingFailedSettlements(ctx, "owner_2", time.Minute, 10)
+	if err != nil {
+		t.Fatalf("ClaimPendingFailedSettlements(reclaim) error = %v", err)
+	}
+	if len(reclaimed) != 1 || reclaimed[0].OwnerID != "owner_2" {
+		t.Fatalf("reclaimed = %#v", reclaimed)
+	}
+}
+
 func TestReleaseHoldReturnsReservedBalance(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemoryRepository()
@@ -401,9 +449,11 @@ func TestAttemptWriterRecordsReliabilityFields(t *testing.T) {
 	}
 	attempt := engine.ProviderAttempt{
 		AttemptIndex:          2,
+		TaskID:                "task_1",
 		ChannelID:             "channel_2",
 		ProviderType:          "openai_compatible",
 		PublicModel:           "gpt-4o-mini",
+		UpstreamModel:         "gpt-4o-mini-2024",
 		StatusCode:            200,
 		Success:               true,
 		Retryable:             true,
@@ -419,7 +469,7 @@ func TestAttemptWriterRecordsReliabilityFields(t *testing.T) {
 		t.Fatalf("RecordProviderAttempt() error = %v", err)
 	}
 	got := repo.attempts["req_attempt:2:channel_2"]
-	if !got.Retryable || got.RetryBudgetConsumed != 2 || got.RetryBudgetRemaining != 0 || got.FallbackFromChannelID != "channel_1" || got.CircuitState != "half_open" || !got.Final {
+	if got.TaskID != "task_1" || got.UpstreamModel != "gpt-4o-mini-2024" || !got.Retryable || got.RetryBudgetConsumed != 2 || got.RetryBudgetRemaining != 0 || got.FallbackFromChannelID != "channel_1" || got.CircuitState != "half_open" || !got.Final {
 		t.Fatalf("usage attempt = %#v", got)
 	}
 }

@@ -178,7 +178,8 @@ func TestBridgeFallsBackWhenAsyncSubmitFailsBeforeExternalTask(t *testing.T) {
 		errors: []error{apperr.ServiceUnavailable("temporary submit failure", apperr.WithTemporary())},
 		tasks:  []*ProviderTask{nil, &ProviderTask{ExternalID: "external_2", Status: StatusRunning, Progress: 1}},
 	}
-	bridge := NewBridge(service, dispatcher)
+	attempts := &bridgeAttemptRecorder{}
+	bridge := NewBridge(service, dispatcher).WithAttemptRecorder(attempts)
 	state := bridgeMediaState("req_fallback", "hold_fallback")
 	state.IdempotencyKey = ""
 	state.RoutePlan = &engine.RoutePlan{Candidates: []engine.ProviderCandidate{
@@ -197,6 +198,15 @@ func TestBridgeFallsBackWhenAsyncSubmitFailsBeforeExternalTask(t *testing.T) {
 	}
 	if len(state.Attempts) != 2 || !state.Attempts[1].Success || state.Attempts[1].FallbackFromChannelID != "channel_1" {
 		t.Fatalf("attempts = %#v", state.Attempts)
+	}
+	if len(attempts.attempts) != 2 {
+		t.Fatalf("durable attempts = %#v", attempts.attempts)
+	}
+	if attempts.attempts[0].TaskID == "" || attempts.attempts[0].Final || attempts.attempts[0].RetryBudgetRemaining != 1 {
+		t.Fatalf("first durable attempt = %#v", attempts.attempts[0])
+	}
+	if !attempts.attempts[1].Success || !attempts.attempts[1].Final || attempts.attempts[1].FallbackFromChannelID != "channel_1" {
+		t.Fatalf("second durable attempt = %#v", attempts.attempts[1])
 	}
 	tasks, err := repo.ListTasks(ctx, TaskListFilter{TenantID: "tenant_1", ProjectID: "project_1", Limit: 10})
 	if err != nil {
@@ -219,6 +229,15 @@ func (s *bridgeRecordingSettlement) Settle(_ context.Context, task Task, usage t
 }
 
 func (s *bridgeRecordingSettlement) RecordFailed(context.Context, Task, tokenusage.Actual, error) error {
+	return nil
+}
+
+type bridgeAttemptRecorder struct {
+	attempts []engine.ProviderAttempt
+}
+
+func (r *bridgeAttemptRecorder) RecordProviderAttempt(_ context.Context, _ *engine.RequestState, attempt engine.ProviderAttempt) error {
+	r.attempts = append(r.attempts, attempt)
 	return nil
 }
 

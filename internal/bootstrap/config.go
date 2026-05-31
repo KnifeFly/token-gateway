@@ -181,17 +181,18 @@ type BillingConfig struct {
 
 // LimitsConfig controls Redis-backed admission limits.
 type LimitsConfig struct {
-	Enabled             bool     `yaml:"enabled"`
-	RPM                 int64    `yaml:"rpm"`
-	QPS                 int64    `yaml:"qps"`
-	TPM                 int64    `yaml:"tpm"`
-	Concurrency         int64    `yaml:"concurrency"`
-	DailyBudgetMicros   int64    `yaml:"daily_budget_micros"`
-	CostPerMinuteMicros int64    `yaml:"cost_per_minute_micros"`
-	Window              Duration `yaml:"window"`
-	LeaseTTL            Duration `yaml:"lease_ttl"`
-	DenyCacheTTL        Duration `yaml:"deny_cache_ttl"`
-	KeyPrefix           string   `yaml:"key_prefix"`
+	Enabled                    bool     `yaml:"enabled"`
+	RPM                        int64    `yaml:"rpm"`
+	QPS                        int64    `yaml:"qps"`
+	TPM                        int64    `yaml:"tpm"`
+	Concurrency                int64    `yaml:"concurrency"`
+	DailyAdmissionBudgetMicros int64    `yaml:"daily_admission_budget_micros"`
+	DailyBudgetMicros          int64    `yaml:"daily_budget_micros"`
+	CostPerMinuteMicros        int64    `yaml:"cost_per_minute_micros"`
+	Window                     Duration `yaml:"window"`
+	LeaseTTL                   Duration `yaml:"lease_ttl"`
+	DenyCacheTTL               Duration `yaml:"deny_cache_ttl"`
+	KeyPrefix                  string   `yaml:"key_prefix"`
 }
 
 // ControlConfig controls the admin control API process.
@@ -452,6 +453,12 @@ func (c *Config) Normalize() {
 	if c.Gateway.Limits.LeaseTTL.Duration <= 0 {
 		c.Gateway.Limits.LeaseTTL = Duration{30 * time.Second}
 	}
+	if c.Gateway.Limits.DailyAdmissionBudgetMicros > 0 && c.Gateway.Limits.DailyBudgetMicros == 0 {
+		c.Gateway.Limits.DailyBudgetMicros = c.Gateway.Limits.DailyAdmissionBudgetMicros
+	}
+	if c.Gateway.Limits.DailyBudgetMicros > 0 && c.Gateway.Limits.DailyAdmissionBudgetMicros == 0 {
+		c.Gateway.Limits.DailyAdmissionBudgetMicros = c.Gateway.Limits.DailyBudgetMicros
+	}
 	if c.Gateway.Limits.KeyPrefix == "" {
 		c.Gateway.Limits.KeyPrefix = "token-gateway"
 	}
@@ -581,6 +588,11 @@ func (c Config) Validate() error {
 	}
 	if c.Gateway.Limits.Enabled && !c.Redis.Enabled {
 		errs = append(errs, errors.New("redis must be enabled when gateway.limits is enabled"))
+	}
+	if c.Gateway.Limits.DailyAdmissionBudgetMicros > 0 &&
+		c.Gateway.Limits.DailyBudgetMicros > 0 &&
+		c.Gateway.Limits.DailyAdmissionBudgetMicros != c.Gateway.Limits.DailyBudgetMicros {
+		errs = append(errs, errors.New("gateway.limits.daily_admission_budget_micros and gateway.limits.daily_budget_micros must match when both are set"))
 	}
 	if requiresProductionSecrets(c.Environment) {
 		switch c.Gateway.Auth.APIKeyHashSecret {

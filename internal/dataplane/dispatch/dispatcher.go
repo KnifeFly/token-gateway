@@ -201,6 +201,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 			ChannelID:            candidate.ChannelID,
 			ProviderType:         candidate.ProviderType,
 			PublicModel:          candidate.PublicModel,
+			UpstreamModel:        candidate.UpstreamModel,
 			StartedAt:            started,
 			Duration:             time.Since(started),
 			RetryBudgetConsumed:  retryBudgetLimit - retryBudget + 1,
@@ -281,7 +282,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, state *engine.RequestState) (
 	if lastErr == nil {
 		lastErr = apperr.ServiceUnavailable("provider is unavailable", apperr.WithTemporary())
 	}
-	markFinalAttempt(state)
+	if attempt, ok := markFinalAttempt(state); ok {
+		if recordErr := d.recordAttempt(ctx, state, attempt); recordErr != nil {
+			return nil, recordErr
+		}
+	}
 	return nil, lastErr
 }
 
@@ -357,11 +362,16 @@ func (d *Dispatcher) recordReliability(ctx context.Context, state *engine.Reques
 	}
 }
 
-func markFinalAttempt(state *engine.RequestState) {
+func markFinalAttempt(state *engine.RequestState) (engine.ProviderAttempt, bool) {
 	if state == nil || len(state.Attempts) == 0 {
-		return
+		return engine.ProviderAttempt{}, false
 	}
-	state.Attempts[len(state.Attempts)-1].Final = true
+	last := len(state.Attempts) - 1
+	if state.Attempts[last].Final {
+		return state.Attempts[last], false
+	}
+	state.Attempts[last].Final = true
+	return state.Attempts[last], true
 }
 
 func circuitStateForCandidate(state *engine.RequestState, candidate engine.ProviderCandidate) string {

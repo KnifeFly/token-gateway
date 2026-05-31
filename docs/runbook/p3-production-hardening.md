@@ -4,7 +4,7 @@
 
 This runbook verifies the P3 production semantics for:
 
-- Redis rate limiting: token buckets, TPM pre-charge, daily budget, cost-per-minute, and concurrency leases.
+- Redis rate limiting: token buckets, TPM pre-charge, daily admission budget guard, cost-per-minute, and concurrency leases.
 - Billability policy across sync, stream, and async task settlement.
 - Native OpenAI images/audio routing and model rewrite.
 - Unified Media provider task adapter registration.

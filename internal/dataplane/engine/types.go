@@ -364,9 +364,11 @@ type ProviderCandidate struct {
 // ProviderAttempt records one upstream attempt without sensitive data.
 type ProviderAttempt struct {
 	AttemptIndex          int
+	TaskID                string
 	ChannelID             string
 	ProviderType          string
 	PublicModel           string
+	UpstreamModel         string
 	StatusCode            int
 	ErrorCode             string
 	Success               bool

@@ -137,3 +137,11 @@ func normalizeLimit(limit int) int {
 func normalizeCurrency(currency string) string {
 	return strings.ToUpper(strings.TrimSpace(currency))
 }
+
+func admissionBudgetSemantics() BudgetSemantics {
+	return BudgetSemantics{
+		AdmissionGuardField: "daily_admission_budget_micros",
+		ActualSpendSource:   "usage_records + ledger_entries + reconciliation",
+		Notes:               "Redis daily admission budget is an estimate guard; customer-visible actual spend is ledger based.",
+	}
+}

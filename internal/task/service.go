@@ -117,6 +117,18 @@ func (s *Service) CreateMediaTask(ctx context.Context, request CreateTaskRequest
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}, idem)
+	if err != nil && request.IdempotencyKey != "" {
+		existing, hit, replayErr := s.FindIdempotentTask(ctx, IdempotencyCheck{
+			TenantID:       request.TenantID,
+			APIKeyID:       request.APIKeyID,
+			Endpoint:       request.Endpoint,
+			IdempotencyKey: request.IdempotencyKey,
+			Body:           request.Input,
+		})
+		if replayErr != nil || hit {
+			return existing, hit, replayErr
+		}
+	}
 	if err == nil {
 		s.recordTransition(request.Kind, "", StatusQueued)
 	}

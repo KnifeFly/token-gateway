@@ -209,6 +209,7 @@ func (s *Service) UpsertLimit(ctx context.Context, limit LimitRuleConfig) (*Limi
 	if limit.ID == "" {
 		limit.ID = limitRuleID(limit)
 	}
+	normalizeLimitBudgetAlias(&limit)
 	limit.Enabled = defaultEnabled(limit.Enabled, limit.EnabledSet)
 	return s.repo.UpsertLimit(ctx, limit)
 }
@@ -297,6 +298,18 @@ func pluginBindingID(binding PluginBindingConfig) string {
 func limitRuleID(limit LimitRuleConfig) string {
 	base := fmt.Sprintf("limit_%s_%s_%s_%s_%s_%s", limit.TenantID, limit.ProjectID, limit.APIKeyID, limit.PublicModel, limit.ProviderType, limit.ChannelID)
 	return strings.Trim(pluginBindingIDRe.ReplaceAllString(base, "_"), "_")
+}
+
+func normalizeLimitBudgetAlias(limit *LimitRuleConfig) {
+	if limit == nil {
+		return
+	}
+	if limit.DailyAdmissionBudgetMicros == 0 && limit.DailyBudgetMicros > 0 {
+		limit.DailyAdmissionBudgetMicros = limit.DailyBudgetMicros
+	}
+	if limit.DailyBudgetMicros == 0 && limit.DailyAdmissionBudgetMicros > 0 {
+		limit.DailyBudgetMicros = limit.DailyAdmissionBudgetMicros
+	}
 }
 
 func defaultEnabled(enabled bool, explicitlySet bool) bool {
