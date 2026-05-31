@@ -23,9 +23,11 @@ const (
 	MetricIdempotencyHitsTotal       = "token_gateway_idempotency_hits_total"
 	MetricTaskLifecycleTransitions   = "token_gateway_task_lifecycle_transitions_total"
 	MetricCallbackRetriesTotal       = "token_gateway_callback_retries_total"
+	MetricCallbackDeliveriesTotal    = "token_gateway_callback_deliveries_total"
 	MetricWorkerJobRunsTotal         = "token_gateway_worker_job_runs_total"
 	MetricWorkerJobDurationSeconds   = "token_gateway_worker_job_duration_seconds"
 	MetricWorkerJobInFlight          = "token_gateway_worker_job_in_flight"
+	MetricWorkerLeaseHeartbeatsTotal = "token_gateway_worker_lease_heartbeats_total"
 	MetricRealtimeSessionsTotal      = "token_gateway_realtime_sessions_total"
 	MetricRealtimeConnectionsTotal   = "token_gateway_realtime_connections_total"
 )

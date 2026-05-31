@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	metricnames "github.com/KnifeFly/token-gateway/internal/infra/telemetry"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -171,6 +172,54 @@ func TestServiceEnqueuesCallbackWhenTaskCompletes(t *testing.T) {
 	}
 	if len(callbacks) != 1 || callbacks[0].URL != "https://hooks.example/task" {
 		t.Fatalf("callbacks = %#v", callbacks)
+	}
+}
+
+func TestCallbackClaimAssignsOwnerAndReclaimsStaleRows(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	now := time.Now().UTC()
+	event := CallbackEvent{
+		ID:          "cb_claim",
+		TaskID:      "task_1",
+		TenantID:    "tenant_1",
+		ProjectID:   "project_1",
+		URL:         "https://hooks.example/task",
+		Payload:     []byte(`{"id":"task_1"}`),
+		Status:      CallbackStatusPending,
+		NextRetryAt: now.Add(-time.Second),
+	}
+	if err := repo.EnqueueCallback(ctx, event); err != nil {
+		t.Fatalf("EnqueueCallback() error = %v", err)
+	}
+
+	first, err := repo.ClaimDueCallbacks(ctx, "owner_1", time.Minute, 10, now)
+	if err != nil {
+		t.Fatalf("ClaimDueCallbacks(owner_1) error = %v", err)
+	}
+	second, err := repo.ClaimDueCallbacks(ctx, "owner_2", time.Minute, 10, now)
+	if err != nil {
+		t.Fatalf("ClaimDueCallbacks(owner_2) error = %v", err)
+	}
+	if len(first) != 1 || first[0].OwnerID != "owner_1" || first[0].DeliveryID == "" || len(second) != 0 {
+		t.Fatalf("claims first = %#v second = %#v", first, second)
+	}
+
+	repo.callbacks[event.ID] = CallbackEvent{
+		ID:          event.ID,
+		TaskID:      event.TaskID,
+		Status:      CallbackStatusProcessing,
+		OwnerID:     "owner_1",
+		HeartbeatAt: now.Add(-2 * time.Minute),
+		NextRetryAt: event.NextRetryAt,
+		Payload:     event.Payload,
+	}
+	reclaimed, err := repo.ClaimDueCallbacks(ctx, "owner_2", time.Minute, 10, now)
+	if err != nil {
+		t.Fatalf("ClaimDueCallbacks(reclaim) error = %v", err)
+	}
+	if len(reclaimed) != 1 || reclaimed[0].OwnerID != "owner_2" || reclaimed[0].Status != CallbackStatusProcessing {
+		t.Fatalf("reclaimed = %#v", reclaimed)
 	}
 }
 

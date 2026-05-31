@@ -49,6 +49,14 @@ groups:
         annotations:
           summary: Worker job failures detected.
           description: At least one production worker job is failing or panicking.
+      - alert: TokenGatewayWorkerLeaseHeartbeatErrors
+        expr: sum(rate(token_gateway_worker_lease_heartbeats_total{outcome="error"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: Worker lease heartbeat errors detected.
+          description: Worker jobs are losing lease ownership or failing lease renewal.
       - alert: TokenGatewayCallbackRetries
         expr: sum(rate(token_gateway_callback_retries_total[10m])) > 0
         for: 10m

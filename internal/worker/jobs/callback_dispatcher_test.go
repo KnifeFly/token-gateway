@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -53,6 +54,9 @@ func TestCallbackDispatcherSignsDeliveredPayload(t *testing.T) {
 	if header.Get("X-Gateway-Callback-Timestamp") == "" || !strings.HasPrefix(header.Get("X-Gateway-Callback-Signature"), "sha256=") {
 		t.Fatalf("signature headers = %#v", header)
 	}
+	if header.Get("X-Gateway-Callback-Delivery-ID") == "" || header.Get("X-Gateway-Callback-Signature-Version") != "v1" {
+		t.Fatalf("delivery headers = %#v", header)
+	}
 	due, err := repo.ListDueCallbacks(ctx, 10, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("ListDueCallbacks() error = %v", err)
@@ -94,4 +98,72 @@ func TestCallbackDispatcherDeadLettersAtRetryCeiling(t *testing.T) {
 	if len(due) != 0 {
 		t.Fatalf("dead-lettered callback is still due: %#v", due)
 	}
+}
+
+func TestCallbackDispatcherDrainsAndClosesResponseBody(t *testing.T) {
+	ctx := context.Background()
+	repo := tasksvc.NewMemoryRepository()
+	body := &trackingBody{reader: strings.NewReader("callback response body")}
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusNoContent,
+			Status:     "204 No Content",
+			Header:     make(http.Header),
+			Body:       body,
+			Request:    req,
+		}, nil
+	})}
+	if err := repo.EnqueueCallback(ctx, tasksvc.CallbackEvent{
+		ID:          "cb_1",
+		TaskID:      "task_1",
+		TenantID:    "tenant_1",
+		ProjectID:   "project_1",
+		URL:         "https://hooks.example/task",
+		Payload:     []byte(`{"id":"task_1"}`),
+		Status:      tasksvc.CallbackStatusPending,
+		NextRetryAt: time.Now().Add(-time.Second),
+	}); err != nil {
+		t.Fatalf("EnqueueCallback() error = %v", err)
+	}
+	dispatcher := NewCallbackDispatcherWithMetrics(repo, client, nil, time.Second, 10, WithCallbackOwnerID("owner_1"))
+	if err := dispatcher.Run(ctx); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !body.readEOF || !body.closed {
+		t.Fatalf("body readEOF = %v closed = %v", body.readEOF, body.closed)
+	}
+}
+
+func TestCallbackDispatcherClaimOwnerIsUniquePerRun(t *testing.T) {
+	dispatcher := NewCallbackDispatcherWithMetrics(nil, nil, nil, time.Second, 10, WithCallbackOwnerID("owner_1"))
+	first := dispatcher.claimOwnerID()
+	second := dispatcher.claimOwnerID()
+	if first == second || !strings.HasPrefix(first, "owner_1:") || !strings.HasPrefix(second, "owner_1:") {
+		t.Fatalf("owners first = %q second = %q", first, second)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type trackingBody struct {
+	reader  *strings.Reader
+	readEOF bool
+	closed  bool
+}
+
+func (b *trackingBody) Read(p []byte) (int, error) {
+	n, err := b.reader.Read(p)
+	if err == io.EOF {
+		b.readEOF = true
+	}
+	return n, err
+}
+
+func (b *trackingBody) Close() error {
+	b.closed = true
+	return nil
 }

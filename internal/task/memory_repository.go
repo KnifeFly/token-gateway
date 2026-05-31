@@ -299,48 +299,104 @@ func (r *MemoryRepository) ListDueCallbacks(_ context.Context, limit int, now ti
 	return events, nil
 }
 
+// ClaimDueCallbacks atomically assigns due callback rows to one dispatcher.
+func (r *MemoryRepository) ClaimDueCallbacks(_ context.Context, ownerID string, claimTimeout time.Duration, limit int, now time.Time) ([]CallbackEvent, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if ownerID == "" {
+		ownerID = "memory-callback-owner"
+	}
+	if claimTimeout <= 0 {
+		claimTimeout = 5 * time.Minute
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	events := make([]CallbackEvent, 0, limit)
+	for id, event := range r.callbacks {
+		if len(events) >= limit {
+			break
+		}
+		due := (event.Status == CallbackStatusPending || event.Status == CallbackStatusFailed) && !event.NextRetryAt.After(now)
+		expiredClaim := event.Status == CallbackStatusProcessing &&
+			(event.HeartbeatAt.IsZero() || !event.HeartbeatAt.Add(claimTimeout).After(now))
+		if !due && !expiredClaim {
+			continue
+		}
+		event.Status = CallbackStatusProcessing
+		event.OwnerID = ownerID
+		event.ClaimedAt = now
+		event.HeartbeatAt = now
+		if event.DeliveryID == "" {
+			event.DeliveryID = newID("cbdel")
+		}
+		event.UpdatedAt = now
+		r.callbacks[id] = event
+		events = append(events, event)
+	}
+	return events, nil
+}
+
 // MarkCallbackDelivered marks one callback as delivered.
-func (r *MemoryRepository) MarkCallbackDelivered(_ context.Context, id string) error {
+func (r *MemoryRepository) MarkCallbackDelivered(_ context.Context, id string, ownerID string, statusCode int, latency time.Duration) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	event, ok := r.callbacks[id]
 	if !ok {
 		return nil
 	}
+	if ownerID != "" && event.OwnerID != "" && event.OwnerID != ownerID {
+		return nil
+	}
 	event.Status = CallbackStatusDelivered
+	event.OwnerID = ""
+	event.LastStatusCode = statusCode
+	event.LastLatencyMS = latency.Milliseconds()
 	event.UpdatedAt = time.Now().UTC()
 	r.callbacks[id] = event
 	return nil
 }
 
 // MarkCallbackFailed records callback retry state.
-func (r *MemoryRepository) MarkCallbackFailed(_ context.Context, id string, nextRetryAt time.Time, lastError string) error {
+func (r *MemoryRepository) MarkCallbackFailed(_ context.Context, id string, ownerID string, nextRetryAt time.Time, lastError string, statusCode int, latency time.Duration) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	event, ok := r.callbacks[id]
 	if !ok {
 		return nil
 	}
+	if ownerID != "" && event.OwnerID != "" && event.OwnerID != ownerID {
+		return nil
+	}
 	event.Status = CallbackStatusPending
+	event.OwnerID = ""
 	event.RetryCount++
 	event.NextRetryAt = nextRetryAt
 	event.LastError = lastError
+	event.LastStatusCode = statusCode
+	event.LastLatencyMS = latency.Milliseconds()
 	event.UpdatedAt = time.Now().UTC()
 	r.callbacks[id] = event
 	return nil
 }
 
 // MarkCallbackDeadLetter records a terminal callback delivery failure.
-func (r *MemoryRepository) MarkCallbackDeadLetter(_ context.Context, id string, lastError string) error {
+func (r *MemoryRepository) MarkCallbackDeadLetter(_ context.Context, id string, ownerID string, lastError string, statusCode int, latency time.Duration) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	event, ok := r.callbacks[id]
 	if !ok {
 		return nil
 	}
+	if ownerID != "" && event.OwnerID != "" && event.OwnerID != ownerID {
+		return nil
+	}
 	event.Status = CallbackStatusDeadLetter
+	event.OwnerID = ""
 	event.RetryCount++
 	event.LastError = lastError
+	event.LastStatusCode = statusCode
+	event.LastLatencyMS = latency.Milliseconds()
 	event.UpdatedAt = time.Now().UTC()
 	r.callbacks[id] = event
 	return nil

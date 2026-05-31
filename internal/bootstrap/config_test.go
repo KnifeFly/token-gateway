@@ -21,6 +21,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Configd.Addr != ":9504" {
 		t.Fatalf("Configd.Addr = %q", cfg.Configd.Addr)
 	}
+	if cfg.Worker.HeartbeatInterval.Duration != 10*time.Second || cfg.Worker.CallbackMaxConcurrency != 4 {
+		t.Fatalf("worker defaults heartbeat = %s callback concurrency = %d", cfg.Worker.HeartbeatInterval.Duration, cfg.Worker.CallbackMaxConcurrency)
+	}
 }
 
 func TestLoadConfigYAMLAndEnv(t *testing.T) {
@@ -125,6 +128,28 @@ func TestValidateProductionRequiresEgressGuard(t *testing.T) {
 	}
 
 	cfg.Gateway.Egress.Enabled = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateWorkerHeartbeatMustFitLeaseTTL(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Environment = "production"
+	cfg.Gateway.Auth.APIKeyHashSecret = "prod-secret"
+	cfg.Database.Enabled = true
+	cfg.Database.DSN = "user:pass@tcp(127.0.0.1:3306)/token_gateway"
+	cfg.Redis.Enabled = true
+	cfg.Worker.Enabled = true
+	cfg.Worker.LeaseTTL = Duration{30 * time.Second}
+	cfg.Worker.HeartbeatInterval = Duration{15 * time.Second}
+	cfg.Normalize()
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected heartbeat validation error")
+	}
+
+	cfg.Worker.HeartbeatInterval = Duration{10 * time.Second}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}

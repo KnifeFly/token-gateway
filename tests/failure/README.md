@@ -25,3 +25,11 @@ tests/failure/provider_reliability_drills.sh
 
 Set `CONTROL_URL`, `ADMIN_TOKEN`, and `EMERGENCY_CHANNEL_ID` to include the
 hot emergency disable drill.
+
+P17 worker and callback stability drills replay the focused lease heartbeat,
+job concurrency, provider poll isolation, callback durable claim, callback 5xx,
+and response drain/close tests:
+
+```bash
+tests/failure/worker_callback_drills.sh
+```

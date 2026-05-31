@@ -58,6 +58,18 @@ P17 的目标是把后台 worker、provider task poller、failed settlement repl
 | poller 单任务错误被吞掉 | task-level error 必须进入日志、metrics、last_error 或 attempt audit，不允许静默 continue |
 | Runner 复杂度上升 | lease heartbeat、concurrency 和 batch isolation 分成小接口，避免把业务逻辑塞进 Runner |
 
+## 完成记录
+
+2026-05-31 P17 已落地：
+
+- `internal/worker` 为 Redis 和内存 lease 增加 owner-aware `Renew`，Runner 在 job 运行期间按 `heartbeat_interval` 续约，续约失败会取消当前 job context 并记录 `token_gateway_worker_lease_heartbeats_total`。
+- Runner 按 `MaxConcurrency()` 启动 job slot，单并发 job 仍使用原 job lease name，多并发 job 使用稳定 slot lease name；CallbackDispatcher 通过配置默认 4 并发，ProviderTaskPoller 保持 1。
+- `worker.heartbeat_interval`、`worker.callback_claim_timeout`、`worker.callback_max_concurrency` 进入配置、local yaml 和生产校验。
+- ProviderTaskPoller 拆出 `processOne`，单个 provider poll/settlement/complete error 只记录当前 task 日志并继续处理同 batch 其他 task。
+- `callback_outbox` 增加 owner/claim/heartbeat/delivery/status/latency 字段，dispatcher 每轮使用唯一 claim owner，从 pending/failed/stale processing 行进入 processing，再按 owner 标记 delivered、pending retry 或 dead_letter。
+- Callback HTTP 投递补齐 `X-Gateway-Callback-Delivery-ID`、`X-Gateway-Callback-Signature-Version`，签名覆盖 timestamp、delivery id 和 body；响应 body 会 drain/close，delivery status/latency 写回并暴露 `token_gateway_callback_deliveries_total`。
+- 新增 `docs/runbook/p17-worker-callback-stability.md` 和 `tests/failure/worker_callback_drills.sh`，覆盖 heartbeat、concurrency、poll error isolation、callback durable claim、5xx/dead-letter 和 body drain 场景。
+
 ## 设计来源
 
 - [路线图](./00-roadmap.md)
