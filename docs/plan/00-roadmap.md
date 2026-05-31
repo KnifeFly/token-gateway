@@ -2,7 +2,7 @@
 
 ## 阶段目标
 
-把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。
+把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 根据 2026-05-31 review 结果作为可靠性收敛插入阶段；当它们处于待执行状态时，优先级高于继续新增功能。
 
 ## 版本节奏
 
@@ -29,6 +29,9 @@
 | v1.10 customer acceptance | P9 | 收口客户接入验收，补齐 Portal smoke、OpenAPI import preflight 和 RC 验收证据 |
 | v1.11 release handoff | P10 | 收口发布交接，补齐 release handoff、PR 模板和发布证据清单 |
 | v1.12 model pricing catalog | P11 | 建立模型分类、复杂价格体系、渠道成本和模型目录运营能力 |
+| v1.13 review p0 correctness | P12 | 按 review P0 修复 stream lease、async idempotency、terminal task settlement 和 zero-price/no-hold 账务正确性 |
+| v1.14 review p1 commercial hardening | P13 | 按 review P1 补齐 async price pin、预算语义、egress 安全、classifier 顺序和 async fallback |
+| v1.15 review p2 engineering readiness | P14 | 按 review P2 补齐 API key HMAC、管理面安全基线、stream close 稳定性、SSE 解析、trusted proxy 和 README |
 
 ## 交付物
 
@@ -38,6 +41,7 @@
 - `docs/plan/15-p4-release-candidate-readiness.md` 作为发布候选与商用上线验收规划。
 - `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/21-p10-release-handoff.md` 作为剩余产品能力、客户验收和发布交接收口规划。
 - `docs/plan/22-p11-model-pricing-catalog.md` 作为模型分类、复杂价格体系、渠道成本和模型目录增强规划。
+- `docs/plan/23-p12-review-p0-correctness.md` 到 `docs/plan/25-p14-review-p2-engineering-readiness.md` 作为 2026-05-31 review 后的可靠性收敛规划。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -65,6 +69,9 @@
 20. P9 收口客户接入验收：Portal smoke、OpenAPI import preflight、RC smoke 集成和客户运行手册。
 21. P10 收口发布交接：release handoff 文档生成、PR 模板、发布字段和回滚证据清单。
 22. P11 补齐模型分类、分类价格模板、组件化客户售价、组件化渠道成本、模型目录展示字段和渠道测试/同步 preview。
+23. P12 收敛 review P0 正确性：stream concurrency lease、async idempotency hold、terminal task settlement、zero-price/no-hold settlement 和真实依赖回归测试。
+24. P13 收敛 review P1 商业账务与安全边界：async price pin、rate/spend budget 拆分、文件/媒体输入资产语义、egressguard、classifier 顺序和 async fallback。
+25. P14 收敛 review P2 工程交付与安全基线：API key HMAC、管理面静态 token 安全基线、stream settlement timeout、SSE parser、nil metrics、trusted proxy 和 README。
 
 ## 关键设计约束
 
@@ -83,6 +90,8 @@
 - P3 优先处理已实现能力的生产语义缺口，不新增大范围产品面。
 - P4 不再扩大协议面，优先把已有能力放到干净依赖环境和真实上游中验收，并形成可重复 release gate。
 - P5-P11 只覆盖当前明确要做的剩余能力、验收、发布交接和模型价格目录增强；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线。
+- P12-P14 是 review-driven remediation 阶段，用于可靠性收敛；它们不重新定义旧 P0-P2 历史范围，也不引入新的 public API 或大型产品面。
+- 当 review P0 正确性问题未通过验收时，暂停继续 P11 这类功能扩展，先保证账务、限流、stream 和异步任务不变量成立。
 - 价格展示币种和存储精度分离：展示使用 USD、CNY 等真实币种和人可读单位，存储使用 currency + micros 整数。
 - 模型 category 驱动可配置价格单位、默认展示方式和模型目录筛选；category 不等于 provider type、route strategy 或 New API group。
 - 客户售价和 provider 成本可以同构，但必须分表、分用途、分权限；settlement 只能使用客户售价。
@@ -93,9 +102,9 @@
 ## 验收标准
 
 - 每个阶段都有明确目标、交付物、实现顺序、设计约束、验收标准和风险处理。
-- `docs/tasks.md` 能直接指导 P5-P11 后续开发、验收、发布交接和模型价格目录增强。
+- `docs/tasks.md` 能直接指导 P5-P14 后续开发、验收、发布交接、模型价格目录增强和 review remediation。
 - M0-M9 的先后关系与最终设计包一致。
-- P0-P11 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接和模型价格目录增强，且每个阶段都有可验证的完成标准。
+- P0-P14 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强和 review remediation，且每个阶段都有可验证的完成标准。
 - 所有 public API 变更都回到 OpenAPI 合同维护。
 
 ## 风险与处理
@@ -120,6 +129,8 @@
 | 客户验收只停留在人工 curl | P9 固化 Portal smoke CLI、OpenAPI import preflight 和 RC smoke 集成 |
 | 发布交接依赖口头同步 | P10 固化 release handoff 工具、PR 模板、验证命令和回滚证据字段 |
 | 模型价格体系继续停留在 input/output token | P11 引入 category 驱动的组件化价格模板、客户售价和 provider 成本分离 |
+| Review 发现的正确性问题被功能开发淹没 | P12-P14 作为可靠性收敛插入阶段，P12 未验收前暂停继续新增功能 |
+| Review P0/P1/P2 与既有 P0/P1/P2 阶段混淆 | 使用 P12-P14 编号承载 review remediation，并在标题中保留 review priority 语义 |
 
 ## 设计来源
 

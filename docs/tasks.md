@@ -5,19 +5,21 @@
 ## 当前状态
 
 - 已完成：v2/v3 设计包归一为最终版文档；M0 Go 工程骨架、配置、错误、日志、HTTP server、metrics、DB/Redis client、migration、Makefile、compose 和 CI 已落地；M1 `/v1/chat/completions` 非流式数据面已跑通；M2 账务闭环已落地 balance account/hold、usage attempt、usage record、ledger、failed settlement replay、Redis limit 和 reconciliation；M3 已扩展 OpenAI stream/Responses/Embeddings、Claude Messages、Gemini GenerateContent/streamGenerateContent、ProviderStream/AccountingStream、SSE writer、StreamFinalizer 和 downstream disconnect 分类；M4 已落地 Unified Media async task、Task/File domain、Idempotency-Key、TaskBridge、provider task poller、callback outbox、task settlement 和 file service；M5 已落地 control API、credential encryption、snapshot build/validate/publish/watch/rollback、request pinned price、Redis revocation 和 snapshot metrics/header；M6 已落地 snapshot 驱动 plugin chain、9 个 MVP phase、内置安全/审计/指标插件和 `policy_denied` 映射；M7 已落地 metrics/tracing/redaction/load test/failure drills/dashboard/alert rules/性能预算；M8 已落地 Realtime reserved extension，未启用时稳定返回 501/`feature_not_enabled`，完整 Realtime 不进入当前路线；M9 已落地商用运营报表、对账、人工调账、模型市场配置、Agent metadata report、OpenAPI 管理接口和 backup/restore runbook；P0 已补齐 worker、异步任务、公开 API、snapshot stale policy、emergency disable 和 focused tests；P1 已补齐多维 limit rule runtime index、Redis Lua 多维限流、local deny cache、routing strategy registry、RouteSignals、显式 policy decision stage、model catalog/schema/alias/provider mapping 和 focused tests；P2 已补齐独立 configd、snapshot publish/rollback/diagnostics、IP allowlist、Model ACL、RouteOverride、Callback、CostGuard decision、classifier registry hint/body schema inference、`ambiguous_protocol` 测试和 Realtime disabled contract 边界；P3 已补齐 Redis token bucket/TPM 预扣、统一 billability policy、Native OpenAI images/audio adapter、Unified Media provider adapter contract、Redis RouteSignals、configd 分发 smoke 和生产验收文档；P4 已补齐干净依赖环境 RC smoke、worker 运营 job、真实 provider release channel、configd Redis active snapshot 分发、OpenAPI 管理面合同、发布级观测安全 release gate 和 staging 灰度上线 runbook；P5 已补齐 OpenAI/Claude/Gemini 协议兼容矩阵、SDK-compatible HTTP wire shape、stream 生命周期、tool/multimodal passthrough、usage/error normalization、contract tests 和 OpenAPI/runbook 同步；P6 已补齐 provider/channel 健康信号、熔断、retry budget、fallback 限制、provider attempt 追踪和 failure drills；P7 已补齐非存储媒体输入资产语义、media provider result asset contract、Replicate fixture 映射、callback/settlement result URL 衔接和媒体 contract tests；P8 已补齐 Portal 模型/schema、credits、usage、API key 自助管理、task 查询、权限边界测试、OpenAPI contract 和 runbook；P9 已补齐客户接入验收收口、Portal smoke CLI、RC smoke 集成、OpenAPI import preflight 和 customer acceptance runbook；P10 已补齐发布交接收口、release handoff CLI、PR 模板、发布证据字段、回滚说明和 runbook。
-- 待执行：P11 模型分类、复杂价格体系、渠道成本和模型目录运营能力；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
+- 待执行：P12-P14 review remediation 可靠性收敛；P11 模型分类、复杂价格体系、渠道成本和模型目录运营能力仍待执行，但在 P12 review P0 正确性收敛前不作为下一步入口。控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
 - 阻塞：无。
-- 下一步建议：从 P11/E21-T01/P0 开始，先定义模型 category、分类价格模板和组件化价格单位，再迁移客户售价、provider cost、settlement 和模型目录展示字段。
-- 最近验证：2026-05-30 P11 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试；2026-05-30 review hardening 修复 Portal API key 快照刷新、异步任务终态结算、控制面 `enabled=false`、admin token fail-closed 和 fallback per-candidate 限流后，`go test ./...` 与 `go vet ./...` 通过；2026-05-30 P10 `go run ./tools/release-handoff -run-checks -output /tmp/token-gateway-p10-release-handoff.md` 通过，覆盖 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`go test ./tools/portal-smoke ./tools/release-handoff ./tests/contract`、`bash -n tests/rc/clean_env_smoke.sh` 和 `tests/failure/release_gate.sh`；`git diff --check` 通过；此前 P8 `go test ./internal/portal ./internal/transport/portalhttp ./internal/task ./internal/bootstrap` 通过；此前 P7 `go test ./internal/dataplane/parser ./internal/task ./internal/provider/replicate ./internal/worker/jobs ./tests/contract` 通过；此前 `go test ./internal/dataplane/observe ./internal/dataplane/router ./internal/dataplane/dispatch ./internal/billing ./internal/infra/redis` 通过；`bash -n tests/failure/provider_reliability_drills.sh` 和 `bash -n tests/failure/release_gate.sh` 通过；非 live `tests/failure/release_gate.sh` 通过；此前 `bash tests/rc/clean_env_smoke.sh` 使用独立 Docker compose project/volume 和自动避让端口跑通 MySQL、Redis、migration、gateway、control-api、configd、worker、health/ready、Redis active snapshot key、snapshot publish/watch/rollback、gateway chat 和 metrics，输出 `rc_smoke=passed`；`make lint`、`make build`、Redis 集成、failure drills 和 load test 均通过。
+- 下一步建议：从 P12/E22-T01/P0 开始，先修正 streaming concurrency lease 的释放 ownership，并用慢速 stream + Redis lease 回归测试证明 stream close 前 lease 不会提前释放。
+- 最近验证：2026-05-31 review remediation 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试。2026-05-30 P11 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试；2026-05-30 review hardening 修复 Portal API key 快照刷新、异步任务终态结算、控制面 `enabled=false`、admin token fail-closed 和 fallback per-candidate 限流后，`go test ./...` 与 `go vet ./...` 通过；2026-05-30 P10 `go run ./tools/release-handoff -run-checks -output /tmp/token-gateway-p10-release-handoff.md` 通过，覆盖 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`go test ./tools/portal-smoke ./tools/release-handoff ./tests/contract`、`bash -n tests/rc/clean_env_smoke.sh` 和 `tests/failure/release_gate.sh`；`git diff --check` 通过；此前 P8 `go test ./internal/portal ./internal/transport/portalhttp ./internal/task ./internal/bootstrap` 通过；此前 P7 `go test ./internal/dataplane/parser ./internal/task ./internal/provider/replicate ./internal/worker/jobs ./tests/contract` 通过；此前 `go test ./internal/dataplane/observe ./internal/dataplane/router ./internal/dataplane/dispatch ./internal/billing ./internal/infra/redis` 通过；`bash -n tests/failure/provider_reliability_drills.sh` 和 `bash -n tests/failure/release_gate.sh` 通过；非 live `tests/failure/release_gate.sh` 通过；此前 `bash tests/rc/clean_env_smoke.sh` 使用独立 Docker compose project/volume 和自动避让端口跑通 MySQL、Redis、migration、gateway、control-api、configd、worker、health/ready、Redis active snapshot key、snapshot publish/watch/rollback、gateway chat 和 metrics，输出 `rc_smoke=passed`；`make lint`、`make build`、Redis 集成、failure drills 和 load test 均通过。
 
 ## 使用规则
 
 - M0-M9 任务 ID 采用 `M{milestone}/E{epic}-T{number}/P{priority}` 格式。
 - P0-P4 设计差距补齐、商用硬化和发布验收任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式。
 - P5-P11 剩余产品能力、验收、发布交接和模型价格目录增强任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，执行顺序固定为 P5、P6、P7、P8、P9、P10、P11。
+- P12-P14 review remediation 任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，来源于 2026-05-31 静态 review 的 P0/P1/P2 风险分层，执行顺序固定为 P12、P13、P14。
 - 第一轮优先完成 M0-M3 的 P0 任务，形成最小商用内核。
 - M4-M9 只拆到可执行粒度，避免早期过度展开控制面、插件和运营后台。
 - P0-P4 是 M0-M9 之后的设计差距补齐、商用硬化和发布候选验收阶段，执行顺序固定为 P0、P1、P2、P3、P4。
+- P12 未验收前，暂停继续新增 P11 这类功能扩展，优先保证账务、stream、异步任务、限流和幂等不变量成立。
 - 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - 文件能力按非存储输入资产处理；gateway 不做对象存储，不承诺媒体对象持久化、下载、生命周期或存储 SLA。
 - 每个任务完成时必须按影响范围更新代码、测试、迁移、OpenAPI、ADR、metrics、trace、日志、审计、配置、计划和故障说明。
@@ -312,6 +314,42 @@
 | [ ] | P11/E21-T08/P1 | P1 | 增加渠道测试和上游模型同步 preview 的后台能力 | control-plane service/CLI, provider adapters | 单渠道、单模型、批量测试和上游模型列表 preview 可输出新增、删除、变更、未知 category 和缺价格/成本配置 |
 | [ ] | P11/E21-T09/P1 | P1 | 补齐 OpenAPI、runbook、focused tests 和兼容测试 | `docs/design/ai_gateway_openapi.yaml`, `docs/runbook`, focused tests | 复杂价格、模型分类、渠道成本、目录展示、同步 preview 和旧价格字段兼容均可验证 |
 
+## P12 Review P0 Correctness
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | P12/E22-T01/P0 | P0 | 修正 streaming concurrency lease 释放 ownership | `internal/dataplane/engine`, `internal/dataplane/dispatch`, `internal/dataplane/stream` | stream response 返回后 request/provider concurrency lease 仍保留，`AccountingStream.Close()` 或等价 finalizer 后幂等释放 |
+| [ ] | P12/E22-T02/P0 | P0 | 增加 stream lease 回归测试 | `internal/dataplane/stream`, `internal/dataplane/limit`, Redis integration tests | 慢速/未结束 stream close 前 Redis lease 存在，close、read error、client disconnect 后 lease 消失 |
+| [ ] | P12/E22-T03/P0 | P0 | 修正 async idempotency replay 的 hold 泄漏 | `internal/dataplane/engine`, `internal/task`, `internal/dataplane/admission` | 并发同 `Idempotency-Key` replay 不新增 provider request，不遗留第二个 active hold |
+| [ ] | P12/E22-T04/P0 | P0 | 补齐 async terminal submit 结算路径 | `internal/task`, `internal/billing`, `internal/worker/jobs` | provider submit 直接返回 succeeded/failed/canceled 时，先 settlement 或 failed settlement repair，再推进任务终态 |
+| [ ] | P12/E22-T05/P0 | P0 | 明确 zero-price/no-hold settlement 语义 | `internal/billing`, `internal/dataplane/admission`, migrations if needed | 免费模型、0 价格规则、non-billable policy 不因空 hold 结算失败，并保留 usage audit 或 0 金额 ledger |
+| [ ] | P12/E22-T06/P0 | P0 | 补齐账务不变量真实依赖测试 | `tests/`, `internal/billing`, `internal/task` | 所有 billable request 的 hold 最终 settled、released 或进入 repair，MySQL/Redis 集成测试可重复执行 |
+
+## P13 Review P1 Commercial Hardening
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | P13/E23-T01/P0 | P0 | 为 async task 持久化 price snapshot | `internal/task`, `internal/controlplane/snapshot`, migrations | task 创建后保存 currency、price rule/rate、estimated output 和 route snapshot version，后续价格变更不影响结算 |
+| [ ] | P13/E23-T02/P0 | P0 | 拆分 rate limit 与 spend budget 语义 | `internal/dataplane/limit`, `internal/billing`, `docs/runbook` | Redis 预扣作为 admission guard，真实 spend budget 以 settlement/ledger/reconciliation 可解释 |
+| [ ] | P13/E23-T03/P0 | P0 | 收敛文件和媒体输入资产策略 | `internal/task`, `internal/dataplane/parser`, `docs/design`, OpenAPI | upload 若支持则真实 streaming spool/reference；若不支持则明确 URL passthrough/inline 边界并拒绝托管语义 |
+| [ ] | P13/E23-T04/P0 | P0 | 实现统一 egressguard | `pkg/egressguard` 或 `internal/infra/egress`, callback/file/provider clients | file URL、callback URL 和 provider base URL 禁止访问 private/reserved/link-local/loopback/multicast IP 与 metadata service |
+| [ ] | P13/E23-T05/P1 | P1 | 强化 callback 签名、重试和 dead-letter | `internal/task`, `internal/worker/jobs`, `docs/runbook` | callback 带 HMAC 签名，支持 allowlist、超时、retry 上限和可追踪失败终态 |
+| [ ] | P13/E23-T06/P1 | P1 | 对齐 classifier 推断顺序 | `internal/dataplane/classifier`, `internal/dataplane/parser` | 按 header、path、model registry、body schema、content-type/accept、ambiguous 顺序执行并有表驱动测试 |
+| [ ] | P13/E23-T07/P1 | P1 | 补齐 async dispatcher fallback 能力 | `internal/task`, `internal/dataplane/router`, `internal/dataplane/dispatch` | 第一个 candidate submit 失败且未创建外部任务时，可按 retry/fallback 限制尝试后续 provider/channel |
+| [ ] | P13/E23-T08/P1 | P1 | 增加商业边界 focused tests | focused package tests, contract tests | Async price pin、预算语义、egress、classifier 和 async fallback 均有可重复测试 |
+
+## P14 Review P2 Engineering Readiness
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | P14/E24-T01/P1 | P1 | API key hash 迁移到 HMAC-SHA256 | `internal/dataplane/auth`, `internal/controlplane/admin`, migrations/config | 新 key 默认 `hmac-sha256`，旧 SHA-256 在兼容窗口可验证，server secret 缺失时生产 fail-closed |
+| [ ] | P14/E24-T02/P1 | P1 | 加固 control plane 静态 token 安全基线 | `internal/transport/controlhttp`, `internal/controlplane/admin` | constant-time compare、body size limit、写 API idempotency、operator audit hook 和网络隔离说明可验证 |
+| [ ] | P14/E24-T03/P1 | P1 | 为 stream close settlement 增加 timeout | `internal/dataplane/stream`, `internal/billing` | 客户端断开不取消账务修复，DB 慢或 settlement 失败不会无限阻塞 HTTP goroutine |
+| [ ] | P14/E24-T04/P1 | P1 | 实现按 SSE event 边界的 usage parser | `internal/provider/openai`, `internal/dataplane/stream` | usage JSON 跨 read chunk 时仍可解析，`[DONE]` 和多 `data:` 行处理稳定 |
+| [ ] | P14/E24-T05/P2 | P2 | 修复 nil metrics panic 风险 | `internal/billing`, `internal/worker/jobs`, bootstrap tests | metrics 缺失时使用 no-op 或构造 fail-fast，测试/复用路径不 panic |
+| [ ] | P14/E24-T06/P2 | P2 | 引入 trusted proxy client IP 解析 | `internal/transport/httpserver`, `internal/dataplane/plugin/builtin` | 只有可信代理 CIDR 下才信任 `X-Forwarded-For`/`X-Real-IP`，默认不信任外部 header |
+| [ ] | P14/E24-T07/P2 | P2 | 补齐 README 交付入口 | `README.md`, `docs/runbook` | README 覆盖产品定位、本地启动、curl、支持 API、配置、账务、安全、worker、已知限制和生产 checklist |
+
 ## 阶段验收总览
 
 | 阶段 | 验收标准 |
@@ -338,3 +376,6 @@
 | P9 | 客户接入验收可重复执行，Portal smoke、OpenAPI import preflight 和 RC smoke 集成可形成发布证据 |
 | P10 | 发布交接可重复生成，PR 模板、release handoff、验证命令、客户验收和 rollback 字段可形成交付证据 |
 | P11 | 模型分类、复杂价格、渠道成本、模型目录展示和渠道测试/同步 preview 可验证，客户售价与 provider 成本边界清晰 |
+| P12 | Review P0 正确性问题收敛，stream lease、async idempotency、terminal task settlement、zero-price/no-hold settlement 和真实依赖账务不变量可验证 |
+| P13 | Review P1 商业账务与安全边界收敛，async price pin、预算语义、transient input asset、egressguard、classifier 和 async fallback 可验证 |
+| P14 | Review P2 工程交付与安全基线收敛，API key HMAC、管理面安全基线、stream timeout、SSE parser、trusted proxy 和 README 可验证 |
