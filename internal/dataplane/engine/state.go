@@ -117,12 +117,22 @@ func (s *RequestState) Cleanup() {
 	_ = s.Incoming.Body.Close()
 }
 
-// AddLimitRelease records a lease that should be released before request end.
+// AddLimitRelease records a lease that should be released before request or stream end.
 func (s *RequestState) AddLimitRelease(release LimitRelease) {
 	if release == nil {
 		return
 	}
 	s.LimitReleases = append(s.LimitReleases, release)
+}
+
+// DrainLimitReleases transfers lease ownership to a later close finalizer.
+func (s *RequestState) DrainLimitReleases() []LimitRelease {
+	if s == nil || len(s.LimitReleases) == 0 {
+		return nil
+	}
+	releases := append([]LimitRelease(nil), s.LimitReleases...)
+	s.LimitReleases = nil
+	return releases
 }
 
 func newID() string {

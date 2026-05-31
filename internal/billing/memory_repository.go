@@ -188,6 +188,11 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 		}, nil
 	}
 
+	charge := settlementCharge(plan)
+	if plan.HoldID == "" {
+		return r.settleWithoutHoldLocked(plan, charge)
+	}
+
 	// Step 1: lock the active hold and locate the matching balance account.
 	hold := r.holds[plan.HoldID]
 	if hold.ID == "" {
@@ -207,13 +212,6 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 	}
 
 	// Step 2: compute final charge, held-fund usage, refund, and extra debit.
-	charge := plan.AmountMicros
-	if !plan.Billable {
-		charge = 0
-	}
-	if charge < 0 {
-		charge = 0
-	}
 	fromHeld := minInt64(charge, hold.AmountMicros)
 	refund := hold.AmountMicros - fromHeld
 	extra := charge - fromHeld
@@ -227,6 +225,50 @@ func (r *MemoryRepository) Settle(_ context.Context, plan SettlementPlan) (*Sett
 	r.holds[hold.ID] = hold
 
 	// Step 3: write the usage record and immutable ledger entry together.
+	record := UsageRecord{
+		ID:           newID("usage"),
+		RequestID:    plan.RequestID,
+		TenantID:     plan.TenantID,
+		ProjectID:    plan.ProjectID,
+		APIKeyID:     plan.APIKeyID,
+		Model:        plan.Model,
+		ProviderType: plan.ProviderType,
+		ChannelID:    plan.ChannelID,
+		Usage:        plan.Usage,
+		Amount:       money.New(plan.Currency, charge),
+	}
+	entry := LedgerEntry{
+		ID:                 newID("ledger"),
+		RequestID:          plan.RequestID,
+		SettlementKind:     "usage_debit",
+		TenantID:           plan.TenantID,
+		ProjectID:          plan.ProjectID,
+		AccountID:          account.ID,
+		Currency:           plan.Currency,
+		AmountMicros:       -charge,
+		BalanceAfterMicros: account.AvailableMicros,
+		Reason:             settlementReason(plan),
+	}
+	r.records[plan.RequestID] = record
+	r.ledger[plan.RequestID] = entry
+	return &SettlementResult{UsageRecordID: record.ID, LedgerEntryID: entry.ID, AccountID: account.ID, Amount: record.Amount}, nil
+}
+
+func (r *MemoryRepository) settleWithoutHoldLocked(plan SettlementPlan, charge int64) (*SettlementResult, error) {
+	if charge > 0 {
+		return nil, fmt.Errorf("billable settlement requires a balance hold")
+	}
+	key := accountKey(plan.TenantID, plan.ProjectID, plan.Currency)
+	account := r.accounts[key]
+	if account.ID == "" {
+		account = BalanceAccount{
+			ID:        newID("acct"),
+			TenantID:  plan.TenantID,
+			ProjectID: plan.ProjectID,
+			Currency:  plan.Currency,
+		}
+		r.accounts[key] = account
+	}
 	record := UsageRecord{
 		ID:           newID("usage"),
 		RequestID:    plan.RequestID,

@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"io"
+	"sync/atomic"
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
@@ -55,6 +56,45 @@ func TestAccountingStreamSettlesOnClose(t *testing.T) {
 	}
 }
 
+func TestAccountingStreamReleasesLimitLeasesAfterClose(t *testing.T) {
+	settlement := &fakeSettlement{}
+	release := &countingRelease{}
+	state := &engine.RequestState{RequestID: "req_stream"}
+	state.AddLimitRelease(release)
+	result := &engine.ProviderResult{
+		Response: &engine.GatewayResponse{
+			Stream: &relay.StaticStream{
+				Chunks: [][]byte{[]byte("data: hello\n\n")},
+				Actual: tokenusage.Actual{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+			},
+		},
+	}
+
+	response, err := NewFinalizer(settlement, nil).Wrap(context.Background(), state, result)
+	if err != nil {
+		t.Fatalf("Wrap() error = %v", err)
+	}
+	if len(state.LimitReleases) != 0 {
+		t.Fatalf("state still owns limit releases = %d", len(state.LimitReleases))
+	}
+	if release.calls.Load() != 0 {
+		t.Fatalf("release before close = %d", release.calls.Load())
+	}
+
+	if err := response.Stream.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	if release.calls.Load() != 1 {
+		t.Fatalf("release calls = %d, want 1", release.calls.Load())
+	}
+	if err := response.Stream.Close(); err != nil {
+		t.Fatalf("second Close() error = %v", err)
+	}
+	if release.calls.Load() != 1 {
+		t.Fatalf("release calls after second close = %d, want 1", release.calls.Load())
+	}
+}
+
 type fakeSettlement struct {
 	calls int
 	usage tokenusage.Actual
@@ -67,5 +107,14 @@ func (s *fakeSettlement) Settle(_ context.Context, state *engine.RequestState) e
 }
 
 func (s *fakeSettlement) RecordFailed(context.Context, *engine.RequestState, error) error {
+	return nil
+}
+
+type countingRelease struct {
+	calls atomic.Int64
+}
+
+func (r *countingRelease) Release(context.Context) error {
+	r.calls.Add(1)
 	return nil
 }

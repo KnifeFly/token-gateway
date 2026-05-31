@@ -2,7 +2,9 @@ package engine
 
 import (
 	"context"
+	"sync"
 
+	"github.com/KnifeFly/token-gateway/internal/provider/relay"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -49,15 +51,41 @@ func (noopLimitRelease) Release(context.Context) error {
 	return nil
 }
 
-// NoopStreamFinalizer returns provider streams without extra wrapping.
+// NoopStreamFinalizer returns provider streams without settlement wrapping.
 type NoopStreamFinalizer struct{}
 
-// Wrap returns the provider response unchanged.
-func (NoopStreamFinalizer) Wrap(_ context.Context, _ *RequestState, result *ProviderResult) (*GatewayResponse, error) {
+// Wrap preserves stream-close limit ownership even when settlement is disabled.
+func (NoopStreamFinalizer) Wrap(_ context.Context, state *RequestState, result *ProviderResult) (*GatewayResponse, error) {
 	if result == nil {
 		return nil, nil
 	}
+	if result.Response != nil && result.Response.Stream != nil {
+		result.Response.Stream = &limitReleaseStream{
+			ProviderStream: result.Response.Stream,
+			releases:       state.DrainLimitReleases(),
+		}
+	}
 	return result.Response, nil
+}
+
+type limitReleaseStream struct {
+	relay.ProviderStream
+	releases []LimitRelease
+	once     sync.Once
+}
+
+func (s *limitReleaseStream) Close() error {
+	err := s.ProviderStream.Close()
+	s.once.Do(func() {
+		for i := len(s.releases) - 1; i >= 0; i-- {
+			if s.releases[i] == nil {
+				continue
+			}
+			_ = s.releases[i].Release(context.Background())
+		}
+		s.releases = nil
+	})
+	return err
 }
 
 // NoopTaskBridge rejects async task operations when no task service is configured.
@@ -69,8 +97,8 @@ func (NoopTaskBridge) CheckIdempotency(context.Context, *RequestState) (*Gateway
 }
 
 // CreateAndDispatch rejects async task creation.
-func (NoopTaskBridge) CreateAndDispatch(context.Context, *RequestState) (*GatewayResponse, error) {
-	return nil, apperr.ConfigUnavailable("task bridge is unavailable")
+func (NoopTaskBridge) CreateAndDispatch(context.Context, *RequestState) (*GatewayResponse, bool, error) {
+	return nil, false, apperr.ConfigUnavailable("task bridge is unavailable")
 }
 
 // HandleTaskOperation rejects task read and cancel operations.

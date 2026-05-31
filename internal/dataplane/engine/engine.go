@@ -298,11 +298,16 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
 	defer e.releaseLimits(ctx, state)
 
 	if state.Async {
-		response, err = e.tasks.CreateAndDispatch(ctx, state)
+		var hit bool
+		response, hit, err = e.tasks.CreateAndDispatch(ctx, state)
 		if err != nil {
 			_ = e.admission.Release(ctx, state, err)
 			response = e.errorResponse(state, err)
 			return response, nil
+		}
+		if hit {
+			_ = e.admission.Release(ctx, state, errAsyncIdempotencyReplay)
+			state.Internal["idempotency_hit"] = true
 		}
 		return response, nil
 	}
@@ -544,6 +549,8 @@ func (e *GatewayEngine) releaseLimits(ctx context.Context, state *RequestState) 
 		_ = state.LimitReleases[i].Release(ctx)
 	}
 }
+
+var errAsyncIdempotencyReplay = errors.New("async idempotency replay")
 
 func (e *GatewayEngine) runStage(ctx context.Context, state *RequestState, name string, fn func(context.Context) error) error {
 	stageCtx, span := e.observe.StartSpan(ctx, name, stageAttrs(state)...)

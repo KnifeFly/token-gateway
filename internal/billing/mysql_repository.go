@@ -264,6 +264,14 @@ func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*Set
 		result.AlreadyDone = true
 		return result, tx.Commit()
 	}
+	charge := settlementCharge(plan)
+	if plan.HoldID == "" {
+		result, err := settleWithoutHold(ctx, tx, plan, charge)
+		if err != nil {
+			return nil, err
+		}
+		return result, tx.Commit()
+	}
 
 	// Step 1: lock the hold and balance row to keep settlement idempotent.
 	hold, err := selectHoldForUpdate(ctx, tx, plan.HoldID)
@@ -285,13 +293,6 @@ func (r *MySQLRepository) Settle(ctx context.Context, plan SettlementPlan) (*Set
 	}
 
 	// Step 2: calculate held-fund consumption, refund, and extra debit.
-	charge := plan.AmountMicros
-	if !plan.Billable {
-		charge = 0
-	}
-	if charge < 0 {
-		charge = 0
-	}
 	release := hold.AmountMicros
 	fromHeld := minInt64(charge, release)
 	refund := release - fromHeld
@@ -342,6 +343,59 @@ WHERE id = ?`, HoldStatusSettled, hold.ID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return &SettlementResult{
+		UsageRecordID: usageRecordID,
+		LedgerEntryID: ledgerEntryID,
+		AccountID:     account.ID,
+		Amount:        money.New(plan.Currency, charge),
+	}, nil
+}
+
+func settleWithoutHold(ctx context.Context, tx *sql.Tx, plan SettlementPlan, charge int64) (*SettlementResult, error) {
+	if charge > 0 {
+		return nil, fmt.Errorf("billable settlement requires a balance hold")
+	}
+	account, err := selectBalanceAccountForUpdate(ctx, tx, plan.TenantID, plan.ProjectID, plan.Currency)
+	if errors.Is(err, sql.ErrNoRows) {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO balance_accounts (
+  id, tenant_id, project_id, currency, opening_micros, available_micros, held_micros
+) VALUES (?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
+			newID("acct"), plan.TenantID, plan.ProjectID, plan.Currency, int64(0), int64(0), int64(0),
+		); err != nil {
+			return nil, err
+		}
+		account, err = selectBalanceAccountForUpdate(ctx, tx, plan.TenantID, plan.ProjectID, plan.Currency)
+		if err != nil {
+			return nil, err
+		}
+	} else if err != nil {
+		return nil, err
+	}
+	usageRecordID := newID("usage")
+	ledgerEntryID := newID("ledger")
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO usage_records (
+  id, request_id, tenant_id, project_id, api_key_id, model, provider_type, channel_id,
+  input_tokens, output_tokens, total_tokens, amount_micros, currency
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		usageRecordID, plan.RequestID, plan.TenantID, plan.ProjectID, plan.APIKeyID, plan.Model,
+		plan.ProviderType, plan.ChannelID, plan.Usage.InputTokens, plan.Usage.OutputTokens,
+		plan.Usage.TotalTokens, charge, plan.Currency,
+	); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO ledger_entries (
+  id, request_id, settlement_kind, tenant_id, project_id, account_id, currency,
+  amount_micros, balance_after_micros, reason
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		ledgerEntryID, plan.RequestID, "usage_debit", plan.TenantID, plan.ProjectID, account.ID,
+		plan.Currency, -charge, account.AvailableMicros, settlementReason(plan),
+	); err != nil {
 		return nil, err
 	}
 	return &SettlementResult{

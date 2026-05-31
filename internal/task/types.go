@@ -163,7 +163,26 @@ type ProviderTask struct {
 	ExternalID       string
 	Status           Status
 	Progress         int
+	Result           json.RawMessage
+	Assets           []ResultAsset
+	Usage            tokenusage.Actual
+	ErrorCode        string
+	ErrorMessage     string
 	ProviderMetadata map[string]string
+}
+
+// ResultForTask converts a submit-time terminal provider task into a terminal result.
+func (t ProviderTask) ResultForTask() ProviderTaskResult {
+	return NormalizeProviderTaskResult(ProviderTaskResult{
+		Status:           t.Status,
+		Progress:         t.Progress,
+		Result:           t.Result,
+		Assets:           t.Assets,
+		Usage:            t.Usage,
+		ErrorCode:        t.ErrorCode,
+		ErrorMessage:     t.ErrorMessage,
+		ProviderMetadata: t.ProviderMetadata,
+	})
 }
 
 // ProviderTaskResult is the normalized provider polling result.

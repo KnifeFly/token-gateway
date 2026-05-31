@@ -2,12 +2,16 @@ package billing
 
 import (
 	"context"
+	"database/sql"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
+	_ "github.com/go-sql-driver/mysql"
 )
 
 func TestBalanceHoldAndSettlementIdempotent(t *testing.T) {
@@ -109,6 +113,160 @@ func TestFailedSettlementReplay(t *testing.T) {
 	}
 }
 
+func TestReleaseHoldReturnsReservedBalance(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	_ = repo.EnsureBalanceAccount(ctx, BalanceAccount{
+		ID:              "acct_1",
+		TenantID:        "tenant_1",
+		ProjectID:       "project_1",
+		Currency:        "USD",
+		OpeningMicros:   1000,
+		AvailableMicros: 1000,
+	})
+	balances := NewBalanceService(repo)
+	hold, err := balances.CreateHold(ctx, HoldRequest{
+		RequestID:    "req_release",
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_1",
+		Currency:     "USD",
+		AmountMicros: 300,
+		ExpiresAt:    time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateHold() error = %v", err)
+	}
+	if err := balances.ReleaseHold(ctx, hold.ID, "provider failed before output"); err != nil {
+		t.Fatalf("ReleaseHold() error = %v", err)
+	}
+	if got := repo.holds[hold.ID]; got.Status != HoldStatusReleased || got.ReleaseReason == "" {
+		t.Fatalf("hold = %#v", got)
+	}
+	account := repo.accounts[accountKey("tenant_1", "project_1", "USD")]
+	if account.AvailableMicros != 1000 || account.HeldMicros != 0 {
+		t.Fatalf("account = %#v", account)
+	}
+}
+
+func TestZeroAmountHoldSettlesWithZeroLedger(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	hold, err := NewBalanceService(repo).CreateHold(ctx, HoldRequest{
+		RequestID:    "req_1",
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_1",
+		Currency:     "USD",
+		AmountMicros: 0,
+		ExpiresAt:    time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateHold() error = %v", err)
+	}
+	if hold.ID == "" || hold.AmountMicros != 0 || hold.Status != HoldStatusActive {
+		t.Fatalf("hold = %#v", hold)
+	}
+	service := NewSettlementService(repo, NewSettlementPlanner(pricing.TokenPrice{Currency: "USD"}), nil)
+	state := settlementState(hold.ID)
+
+	if err := service.Settle(ctx, state); err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	if state.ActualChargeMicros != 0 {
+		t.Fatalf("charge = %d, want 0", state.ActualChargeMicros)
+	}
+	if got := repo.holds[hold.ID]; got.Status != HoldStatusSettled {
+		t.Fatalf("hold status = %q", got.Status)
+	}
+	if got := repo.ledger[state.RequestID]; got.AmountMicros != 0 || got.Reason != "usage settlement:provider_success" {
+		t.Fatalf("ledger = %#v", got)
+	}
+}
+
+func TestNoHoldZeroSettlementWritesUsageAndLedger(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	service := NewSettlementService(repo, NewSettlementPlanner(pricing.TokenPrice{Currency: "USD"}), nil)
+	state := settlementState("")
+	state.RequestID = "req_no_hold"
+
+	if err := service.Settle(ctx, state); err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	if repo.records[state.RequestID].ID == "" {
+		t.Fatal("missing usage record")
+	}
+	if got := repo.ledger[state.RequestID]; got.ID == "" || got.AmountMicros != 0 {
+		t.Fatalf("ledger = %#v", got)
+	}
+	if state.SettlementID == "" {
+		t.Fatal("missing settlement id")
+	}
+}
+
+func TestMySQLZeroAmountHoldSettlementIntegration(t *testing.T) {
+	dsn := os.Getenv("TOKEN_GATEWAY_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("set TOKEN_GATEWAY_MYSQL_DSN to run MySQL billing integration")
+	}
+	ctx := context.Background()
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("PingContext() error = %v", err)
+	}
+	applyMySQLBillingMigration(t, db)
+	tenantID := "tenant_p12_" + time.Now().Format("150405000000000")
+	projectID := "project_p12"
+	requestID := "req_p12_zero"
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, "DELETE FROM failed_settlements WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM ledger_entries WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM usage_records WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM usage_attempts WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM balance_holds WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM balance_accounts WHERE tenant_id = ?", tenantID)
+	})
+	repo := NewMySQLRepository(db)
+	hold, err := NewBalanceService(repo).CreateHold(ctx, HoldRequest{
+		RequestID:    requestID,
+		TenantID:     tenantID,
+		ProjectID:    projectID,
+		APIKeyID:     "key_1",
+		Currency:     "USD",
+		AmountMicros: 0,
+		ExpiresAt:    time.Now().Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateHold() error = %v", err)
+	}
+	state := settlementState(hold.ID)
+	state.RequestID = requestID
+	state.TenantID = tenantID
+	state.ProjectID = projectID
+	if err := NewSettlementService(repo, NewSettlementPlanner(pricing.TokenPrice{Currency: "USD"}), nil).Settle(ctx, state); err != nil {
+		t.Fatalf("Settle() error = %v", err)
+	}
+	var status string
+	if err := db.QueryRowContext(ctx, "SELECT status FROM balance_holds WHERE id = ?", hold.ID).Scan(&status); err != nil {
+		t.Fatalf("query hold status error = %v", err)
+	}
+	if status != HoldStatusSettled {
+		t.Fatalf("hold status = %q, want %q", status, HoldStatusSettled)
+	}
+	var amount int64
+	if err := db.QueryRowContext(ctx, "SELECT amount_micros FROM ledger_entries WHERE request_id = ?", requestID).Scan(&amount); err != nil {
+		t.Fatalf("query ledger amount error = %v", err)
+	}
+	if amount != 0 {
+		t.Fatalf("ledger amount = %d, want 0", amount)
+	}
+}
+
 func TestSettlementPlannerMarksNoOutputNotBillable(t *testing.T) {
 	planner := NewSettlementPlanner(pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 10, OutputMicrosPerToken: 20})
 	state := settlementState("hold_1")
@@ -204,3 +362,20 @@ var errInjected = assertErr("settlement failed")
 type assertErr string
 
 func (e assertErr) Error() string { return string(e) }
+
+func applyMySQLBillingMigration(t *testing.T, db *sql.DB) {
+	t.Helper()
+	raw, err := os.ReadFile("../../migrations/mysql/000002_m2_billing.up.sql")
+	if err != nil {
+		t.Fatalf("ReadFile(migration) error = %v", err)
+	}
+	for _, statement := range strings.Split(string(raw), ";") {
+		statement = strings.TrimSpace(statement)
+		if statement == "" {
+			continue
+		}
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatalf("migration statement failed: %v", err)
+		}
+	}
+}

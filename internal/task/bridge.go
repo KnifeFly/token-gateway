@@ -60,20 +60,20 @@ func (b *Bridge) CheckIdempotency(ctx context.Context, state *engine.RequestStat
 }
 
 // CreateAndDispatch creates an internal task, submits the provider task, and returns the task object.
-func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestState) (*engine.GatewayResponse, error) {
+func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestState) (*engine.GatewayResponse, bool, error) {
 	if b == nil || b.service == nil || b.dispatcher == nil {
-		return nil, apperr.ConfigUnavailable("task bridge is unavailable")
+		return nil, false, apperr.ConfigUnavailable("task bridge is unavailable")
 	}
 	if state.Parsed.Media == nil {
-		return nil, apperr.InvalidArgument("media request is required")
+		return nil, false, apperr.InvalidArgument("media request is required")
 	}
 	candidate, err := firstCandidate(state)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
 	if !ok || !channel.Enabled {
-		return nil, apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
+		return nil, false, apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
 	}
 	task, hit, err := b.service.CreateMediaTask(ctx, CreateTaskRequest{
 		TenantID:       state.TenantID,
@@ -91,10 +91,11 @@ func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestSta
 		BalanceHoldID:  state.BalanceHoldID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if hit {
-		return TaskResponse(task)
+		response, err := TaskResponse(task)
+		return response, true, err
 	}
 	providerTask, err := b.dispatcher.Submit(ctx, ProviderTaskRequest{
 		Task:      *task,
@@ -104,23 +105,30 @@ func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestSta
 	})
 	if err != nil {
 		_, _ = b.service.MarkFailed(ctx, task.ID, "provider_submit_failed", "provider task submit failed")
-		return nil, err
+		return nil, false, err
 	}
 	updated, err := b.service.MarkDispatched(ctx, task.ID, candidate.ProviderType, candidate.ChannelID, providerTask.ExternalID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if providerTask.Status != "" && providerTask.Status != StatusRunning {
-		updated, err = b.service.CompleteTask(ctx, *updated, ProviderTaskResult{
-			Status:           providerTask.Status,
-			Progress:         providerTask.Progress,
-			ProviderMetadata: providerTask.ProviderMetadata,
-		})
+	if providerTask.Status != "" && IsTerminal(providerTask.Status) {
+		result := providerTask.ResultForTask()
+		settlementTask := *updated
+		settlementTask.Status = result.Status
+		settlementTask.Result = result.Result
+		settlementTask.Usage = result.Usage
+		settlementTask.ErrorCode = result.ErrorCode
+		settlementTask.ErrorMessage = result.ErrorMessage
+		if err := SettleTerminalTask(ctx, b.settlement, settlementTask, result.Usage); err != nil {
+			return nil, false, err
+		}
+		updated, err = b.service.CompleteTask(ctx, *updated, result)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	return TaskResponse(updated)
+	response, err := TaskResponse(updated)
+	return response, false, err
 }
 
 // HandleTaskOperation handles task get/cancel operations after authentication.

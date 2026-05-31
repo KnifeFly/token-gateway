@@ -545,13 +545,16 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
     state.LimitReleases = append(state.LimitReleases, release)
 
     if state.Async {
-        return e.tasks.CreateAndDispatch(ctx, state)
+        response, replayHit, err := e.tasks.CreateAndDispatch(ctx, state)
+        if replayHit { e.admission.Release(ctx, state, ErrIdempotencyReplay) }
+        return response, err
     }
 
     result, err := e.dispatcher.Dispatch(ctx, state)
     if err != nil { return nil, e.compensate(ctx, state, err) }
 
     if result.Stream != nil {
+        // StreamFinalizer drains LimitReleases and releases them after stream close.
         return e.stream.Wrap(ctx, state, result)
     }
 

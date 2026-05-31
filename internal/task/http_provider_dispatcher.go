@@ -150,11 +150,26 @@ func (a *GenericHTTPProviderTaskAdapter) Submit(ctx context.Context, request Pro
 	if status == "" {
 		status = StatusRunning
 	}
-	return &ProviderTask{
-		ExternalID:       externalID,
+	result := NormalizeProviderTaskResult(ProviderTaskResult{
 		Status:           status,
 		Progress:         out.Progress,
+		Result:           out.Result,
+		Assets:           assetsFromProviderTaskResponse(out, request.Task),
+		Usage:            out.Usage.actual(),
+		ErrorCode:        out.ErrorCode,
+		ErrorMessage:     out.ErrorMessage,
 		ProviderMetadata: out.ProviderMetadata,
+	})
+	return &ProviderTask{
+		ExternalID:       externalID,
+		Status:           result.Status,
+		Progress:         result.Progress,
+		Result:           result.Result,
+		Assets:           result.Assets,
+		Usage:            result.Usage,
+		ErrorCode:        result.ErrorCode,
+		ErrorMessage:     result.ErrorMessage,
+		ProviderMetadata: result.ProviderMetadata,
 	}, nil
 }
 

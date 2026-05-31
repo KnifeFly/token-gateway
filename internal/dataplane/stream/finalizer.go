@@ -40,6 +40,7 @@ func (f *Finalizer) Wrap(_ context.Context, state *engine.RequestState, result *
 		source:     result.Response.Stream,
 		state:      state,
 		settlement: f.settlement,
+		releases:   state.DrainLimitReleases(),
 		startedAt:  time.Now(),
 	}
 	return result.Response, nil
@@ -50,6 +51,7 @@ type AccountingStream struct {
 	source     relay.ProviderStream
 	state      *engine.RequestState
 	settlement engine.SettlementService
+	releases   []engine.LimitRelease
 	startedAt  time.Time
 	once       sync.Once
 	closeErr   error
@@ -92,6 +94,8 @@ func (s *AccountingStream) ReportDownstreamError(err error) {
 // Close closes the provider stream and settles the request once.
 func (s *AccountingStream) Close() error {
 	s.once.Do(func() {
+		defer s.releaseLimits()
+
 		// Step 1: close upstream first so provider-owned resources are released.
 		sourceErr := s.source.Close()
 		usage := s.source.Usage()
@@ -127,6 +131,16 @@ func (s *AccountingStream) Close() error {
 		s.closeErr = sourceErr
 	})
 	return s.closeErr
+}
+
+func (s *AccountingStream) releaseLimits() {
+	for i := len(s.releases) - 1; i >= 0; i-- {
+		if s.releases[i] == nil {
+			continue
+		}
+		_ = s.releases[i].Release(context.Background())
+	}
+	s.releases = nil
 }
 
 // ClassifyDownstreamError converts local stream write errors into safe classes.
