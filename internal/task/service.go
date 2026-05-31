@@ -118,7 +118,7 @@ func (s *Service) CreateMediaTask(ctx context.Context, request CreateTaskRequest
 		UpdatedAt:      now,
 	}, idem)
 	if err == nil {
-		s.metrics.RecordTransition(request.Kind, "", StatusQueued)
+		s.recordTransition(request.Kind, "", StatusQueued)
 	}
 	return task, false, err
 }
@@ -145,7 +145,7 @@ func (s *Service) MarkDispatched(ctx context.Context, taskID, providerType, chan
 	}
 	task, err := s.repo.UpdateTaskDispatch(ctx, taskID, providerType, channelID, providerTaskID, StatusRunning)
 	if err == nil {
-		s.metrics.RecordTransition(task.Kind, StatusQueued, task.Status)
+		s.recordTransition(task.Kind, StatusQueued, task.Status)
 	}
 	return task, err
 }
@@ -162,7 +162,7 @@ func (s *Service) MarkFailed(ctx context.Context, taskID, code, message string) 
 		CompletedAt:  &now,
 	})
 	if err == nil {
-		s.metrics.RecordTransition(task.Kind, "", task.Status)
+		s.recordTransition(task.Kind, "", task.Status)
 	}
 	return task, err
 }
@@ -184,7 +184,7 @@ func (s *Service) CancelTask(ctx context.Context, tenantID, projectID, taskID st
 		CompletedAt: &now,
 	})
 	if err == nil {
-		s.metrics.RecordTransition(updated.Kind, task.Status, updated.Status)
+		s.recordTransition(updated.Kind, task.Status, updated.Status)
 	}
 	return updated, err
 }
@@ -212,7 +212,7 @@ func (s *Service) CompleteTask(ctx context.Context, task Task, result ProviderTa
 	if err != nil {
 		return nil, err
 	}
-	s.metrics.RecordTransition(updated.Kind, task.Status, updated.Status)
+	s.recordTransition(updated.Kind, task.Status, updated.Status)
 	if updated.CallbackURL != "" && IsTerminal(updated.Status) {
 		payload, marshalErr := json.Marshal(TaskObject(updated))
 		if marshalErr == nil {
@@ -231,6 +231,13 @@ func (s *Service) CompleteTask(ctx context.Context, task Task, result ProviderTa
 		}
 	}
 	return updated, nil
+}
+
+func (s *Service) recordTransition(kind Kind, from Status, to Status) {
+	if s == nil || s.metrics == nil {
+		return
+	}
+	s.metrics.RecordTransition(kind, from, to)
 }
 
 // IsTerminal reports whether a task no longer advances.

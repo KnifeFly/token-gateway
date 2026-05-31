@@ -26,14 +26,34 @@ var pluginBindingIDRe = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 type Service struct {
 	repo       Repository
 	codec      *CredentialCodec
+	hasher     *auth.APIKeyHasher
 	revocation interface {
 		Revoke(ctx context.Context, keyHash string) error
 	}
 }
 
+// ServiceOption customizes the control-plane admin service.
+type ServiceOption func(*Service)
+
 // NewService returns a control-plane admin service.
-func NewService(repo Repository, codec *CredentialCodec, revocation *redisinfra.RevocationStore) *Service {
-	return &Service{repo: repo, codec: codec, revocation: revocation}
+func NewService(repo Repository, codec *CredentialCodec, revocation *redisinfra.RevocationStore, options ...ServiceOption) *Service {
+	service := &Service{repo: repo, codec: codec, hasher: auth.NewAPIKeyHasher(""), revocation: revocation}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	if service.hasher == nil {
+		service.hasher = auth.NewAPIKeyHasher("")
+	}
+	return service
+}
+
+// WithAPIKeyHasher configures the hash format used for newly created API keys.
+func WithAPIKeyHasher(hasher *auth.APIKeyHasher) ServiceOption {
+	return func(service *Service) {
+		service.hasher = hasher
+	}
 }
 
 // UpsertTenant creates or updates a tenant.
@@ -63,7 +83,7 @@ func (s *Service) CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error)
 	if plaintext == "" {
 		plaintext = newPlaintextKey()
 	}
-	key.KeyHash = auth.HashAPIKey(plaintext)
+	key.KeyHash = s.hasher.Hash(plaintext)
 	key.PlaintextKey = plaintext
 	if key.Name == "" {
 		key.Name = "api key"

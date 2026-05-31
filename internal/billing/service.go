@@ -280,7 +280,9 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 		if err := s.repo.MarkFailedSettlementReplayed(ctx, failed.ID); err != nil {
 			return replayed, err
 		}
-		s.metrics.DecrementFailedBacklog()
+		if s.metrics != nil {
+			s.metrics.DecrementFailedBacklog()
+		}
 		replayed++
 	}
 	if s.metrics != nil {

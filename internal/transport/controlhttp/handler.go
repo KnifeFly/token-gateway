@@ -1,11 +1,17 @@
 package controlhttp
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
@@ -13,6 +19,11 @@ import (
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
+)
+
+const (
+	maxAdminBodyBytes = 1 << 20
+	idempotencyTTL    = 24 * time.Hour
 )
 
 // Handler serves M5 control-plane admin APIs.
@@ -23,6 +34,7 @@ type Handler struct {
 	emergency  *redisinfra.EmergencyDisableStore
 	token      string
 	logger     *slog.Logger
+	idem       *idempotencyStore
 }
 
 // NewHandler returns a control-plane HTTP handler.
@@ -35,7 +47,14 @@ func NewHandlerWithEmergency(adminService *admin.Service, publisher *cpsnapshot.
 	if logger == nil {
 		logger = slog.Default()
 	}
-	h := &Handler{admin: adminService, publisher: publisher, emergency: emergency, token: token, logger: logger}
+	h := &Handler{
+		admin:     adminService,
+		publisher: publisher,
+		emergency: emergency,
+		token:     token,
+		logger:    logger,
+		idem:      newIdempotencyStore(idempotencyTTL),
+	}
 	if len(commercial) > 0 {
 		h.commercial = commercial[0]
 	}
@@ -75,12 +94,66 @@ func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, apperr.ConfigUnavailable("admin token is required"))
 			return
 		}
-		if adminToken(r) != h.token {
+		if !constantTimeTokenEqual(adminToken(r), h.token) {
 			writeError(w, apperr.Unauthorized("invalid admin token"))
+			return
+		}
+		if r.ContentLength > maxAdminBodyBytes {
+			writeError(w, requestBodyTooLargeError(nil))
+			if isControlWrite(r) {
+				h.logControlAudit(r, http.StatusRequestEntityTooLarge)
+			}
+			return
+		}
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxAdminBodyBytes)
+		}
+		if isControlWrite(r) {
+			h.handleControlWrite(w, r, next)
 			return
 		}
 		next(w, r)
 	}
+}
+
+func (h *Handler) handleControlWrite(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+	if key := strings.TrimSpace(r.Header.Get("Idempotency-Key")); key != "" {
+		h.handleIdempotentControlWrite(w, r, next, key)
+		return
+	}
+	recorder := newResponseCapture(w)
+	next(recorder, r)
+	h.logControlAudit(r, recorder.statusCode())
+}
+
+func (h *Handler) handleIdempotentControlWrite(w http.ResponseWriter, r *http.Request, next http.HandlerFunc, key string) {
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeReadBodyError(w, err)
+		h.logControlAudit(r, statusFromError(err))
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	scope := idempotencyScope(r, key)
+	bodyHash := sha256.Sum256(body)
+	if entry, hit, conflict := h.idem.lookup(scope, bodyHash); hit {
+		writeCapturedResponse(w, entry.response)
+		h.logControlAudit(r, entry.response.status)
+		return
+	} else if conflict {
+		writeError(w, apperr.New(apperr.CodeIdempotencyConflict, "idempotency key was reused with different body", http.StatusConflict))
+		h.logControlAudit(r, http.StatusConflict)
+		return
+	}
+
+	recorder := newBufferedResponseCapture()
+	next(recorder, r)
+	response := recorder.response()
+	writeCapturedResponse(w, response)
+	if response.status < http.StatusInternalServerError {
+		h.idem.store(scope, bodyHash, response)
+	}
+	h.logControlAudit(r, response.status)
 }
 
 func (h *Handler) upsertTenant(w http.ResponseWriter, r *http.Request) {
@@ -342,6 +415,20 @@ func (h *Handler) rollbackSnapshot(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, result, err)
 }
 
+func (h *Handler) logControlAudit(r *http.Request, status int) {
+	if h == nil || h.logger == nil || r == nil {
+		return
+	}
+	h.logger.Info("control_plane_audit_event",
+		"request_id", strings.TrimSpace(r.Header.Get("X-Request-ID")),
+		"method", r.Method,
+		"path", r.URL.Path,
+		"status", status,
+		"operator_id", strings.TrimSpace(r.Header.Get("X-Operator-ID")),
+		"idempotency_key_present", strings.TrimSpace(r.Header.Get("Idempotency-Key")) != "",
+	)
+}
+
 func adminToken(r *http.Request) string {
 	if value := strings.TrimSpace(r.Header.Get("X-Admin-Token")); value != "" {
 		return value
@@ -353,12 +440,197 @@ func adminToken(r *http.Request) string {
 	return ""
 }
 
+func constantTimeTokenEqual(got string, want string) bool {
+	gotHash := sha256.Sum256([]byte(strings.TrimSpace(got)))
+	wantHash := sha256.Sum256([]byte(strings.TrimSpace(want)))
+	return subtle.ConstantTimeCompare(gotHash[:], wantHash[:]) == 1
+}
+
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	if err := json.NewDecoder(r.Body).Decode(dst); err != nil {
+		if writeReadBodyError(w, err) {
+			return false
+		}
 		writeError(w, apperr.InvalidArgument("request body must be valid json", apperr.WithCause(err)))
 		return false
 	}
 	return true
+}
+
+func writeReadBodyError(w http.ResponseWriter, err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		writeError(w, requestBodyTooLargeError(err))
+		return true
+	}
+	return false
+}
+
+func requestBodyTooLargeError(err error) *apperr.Error {
+	if err == nil {
+		return apperr.New(apperr.CodeInvalidArgument, "request body is too large", http.StatusRequestEntityTooLarge)
+	}
+	return apperr.New(apperr.CodeInvalidArgument, "request body is too large", http.StatusRequestEntityTooLarge, apperr.WithCause(err))
+}
+
+func statusFromError(err error) int {
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return http.StatusRequestEntityTooLarge
+	}
+	return http.StatusBadRequest
+}
+
+func isControlWrite(r *http.Request) bool {
+	return r != nil && r.Method != http.MethodGet && strings.HasPrefix(r.URL.Path, "/admin/")
+}
+
+func idempotencyScope(r *http.Request, key string) string {
+	return r.Method + " " + r.URL.RequestURI() + " " + key
+}
+
+type capturedResponse struct {
+	status int
+	header http.Header
+	body   []byte
+}
+
+type responseCapture struct {
+	http.ResponseWriter
+	status int
+}
+
+func newResponseCapture(w http.ResponseWriter) *responseCapture {
+	return &responseCapture{ResponseWriter: w}
+}
+
+func (w *responseCapture) WriteHeader(status int) {
+	if w.status != 0 {
+		return
+	}
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseCapture) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(body)
+}
+
+func (w *responseCapture) statusCode() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
+
+type bufferedResponseCapture struct {
+	header http.Header
+	status int
+	body   bytes.Buffer
+}
+
+func newBufferedResponseCapture() *bufferedResponseCapture {
+	return &bufferedResponseCapture{header: make(http.Header)}
+}
+
+func (w *bufferedResponseCapture) Header() http.Header {
+	return w.header
+}
+
+func (w *bufferedResponseCapture) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+}
+
+func (w *bufferedResponseCapture) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.body.Write(body)
+}
+
+func (w *bufferedResponseCapture) response() capturedResponse {
+	status := w.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return capturedResponse{
+		status: status,
+		header: w.header.Clone(),
+		body:   append([]byte(nil), w.body.Bytes()...),
+	}
+}
+
+func writeCapturedResponse(w http.ResponseWriter, response capturedResponse) {
+	for key, values := range response.header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	status := response.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+	_, _ = w.Write(response.body)
+}
+
+type idempotencyStore struct {
+	mu      sync.Mutex
+	ttl     time.Duration
+	entries map[string]idempotencyEntry
+}
+
+type idempotencyEntry struct {
+	bodyHash  [32]byte
+	response  capturedResponse
+	expiresAt time.Time
+}
+
+func newIdempotencyStore(ttl time.Duration) *idempotencyStore {
+	return &idempotencyStore{ttl: ttl, entries: make(map[string]idempotencyEntry)}
+}
+
+func (s *idempotencyStore) lookup(scope string, bodyHash [32]byte) (idempotencyEntry, bool, bool) {
+	if s == nil {
+		return idempotencyEntry{}, false, false
+	}
+	now := time.Now().UTC()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, ok := s.entries[scope]
+	if !ok {
+		return idempotencyEntry{}, false, false
+	}
+	if !entry.expiresAt.IsZero() && now.After(entry.expiresAt) {
+		delete(s.entries, scope)
+		return idempotencyEntry{}, false, false
+	}
+	if entry.bodyHash != bodyHash {
+		return idempotencyEntry{}, false, true
+	}
+	return entry, true, false
+}
+
+func (s *idempotencyStore) store(scope string, bodyHash [32]byte, response capturedResponse) {
+	if s == nil {
+		return
+	}
+	expiresAt := time.Time{}
+	if s.ttl > 0 {
+		expiresAt = time.Now().UTC().Add(s.ttl)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.entries[scope] = idempotencyEntry{
+		bodyHash:  bodyHash,
+		response:  response,
+		expiresAt: expiresAt,
+	}
 }
 
 func parseTimeRange(w http.ResponseWriter, r *http.Request) (time.Time, time.Time, bool) {

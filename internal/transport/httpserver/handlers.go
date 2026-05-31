@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"net"
 	"net/http"
+	"strings"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/prometheus/client_golang/prometheus"
@@ -31,13 +33,23 @@ type RouteRegistrar interface {
 	Register(*http.ServeMux)
 }
 
+// HandlerConfig customizes shared gateway HTTP routing.
+type HandlerConfig struct {
+	TrustedProxyCIDRs []string
+}
+
 // NewHandler builds gateway routes.
 func NewHandler(readiness ReadinessFunc, registry *prometheus.Registry, logger *slog.Logger, gateways ...Gateway) http.Handler {
-	return NewHandlerWithRoutes(readiness, registry, logger, nil, gateways...)
+	return NewHandlerWithRoutesConfig(readiness, registry, logger, HandlerConfig{}, nil, gateways...)
 }
 
 // NewHandlerWithRoutes builds gateway routes plus optional extension routes.
 func NewHandlerWithRoutes(readiness ReadinessFunc, registry *prometheus.Registry, logger *slog.Logger, extensions []RouteRegistrar, gateways ...Gateway) http.Handler {
+	return NewHandlerWithRoutesConfig(readiness, registry, logger, HandlerConfig{}, extensions, gateways...)
+}
+
+// NewHandlerWithRoutesConfig builds gateway routes plus optional extension routes and HTTP config.
+func NewHandlerWithRoutesConfig(readiness ReadinessFunc, registry *prometheus.Registry, logger *slog.Logger, config HandlerConfig, extensions []RouteRegistrar, gateways ...Gateway) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz(readiness))
@@ -67,11 +79,94 @@ func NewHandlerWithRoutes(readiness ReadinessFunc, registry *prometheus.Registry
 		mux.HandleFunc("POST /v1/audio/transcriptions", dataPlane(gateways[0]))
 		mux.HandleFunc("POST /v1/music/generations", dataPlane(gateways[0]))
 	}
-	return RequestIDMiddleware(RecoveryMiddleware(AccessLogMiddleware(mux, logger)))
+	handler := RequestIDMiddleware(RecoveryMiddleware(AccessLogMiddleware(mux, logger)))
+	return trustedProxyMiddleware(config.TrustedProxyCIDRs, handler)
 }
 
 func healthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func trustedProxyMiddleware(cidrs []string, next http.Handler) http.Handler {
+	resolver := newClientIPResolver(cidrs)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if resolver != nil {
+			cloned := r.Clone(r.Context())
+			cloned.RemoteAddr = resolver.clientIP(r)
+			r = cloned
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type clientIPResolver struct {
+	trusted []*net.IPNet
+}
+
+func newClientIPResolver(cidrs []string) *clientIPResolver {
+	resolver := &clientIPResolver{}
+	for _, value := range cidrs {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(value)
+		if err == nil {
+			resolver.trusted = append(resolver.trusted, network)
+		}
+	}
+	return resolver
+}
+
+func (r *clientIPResolver) clientIP(req *http.Request) string {
+	direct := remoteIP(req.RemoteAddr)
+	if direct == nil {
+		return strings.TrimSpace(req.RemoteAddr)
+	}
+	if !r.isTrusted(direct) {
+		return direct.String()
+	}
+	if ip := firstForwardedIP(req.Header.Get("X-Forwarded-For")); ip != nil {
+		return ip.String()
+	}
+	if ip := net.ParseIP(strings.TrimSpace(req.Header.Get("X-Real-IP"))); ip != nil {
+		return ip.String()
+	}
+	return direct.String()
+}
+
+func (r *clientIPResolver) isTrusted(ip net.IP) bool {
+	if r == nil || len(r.trusted) == 0 || ip == nil {
+		return false
+	}
+	for _, network := range r.trusted {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func remoteIP(remoteAddr string) net.IP {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return nil
+	}
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		remoteAddr = host
+	}
+	return net.ParseIP(remoteAddr)
+}
+
+func firstForwardedIP(value string) net.IP {
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		return net.ParseIP(part)
+	}
+	return nil
 }
 
 func readyz(readiness ReadinessFunc) http.HandlerFunc {

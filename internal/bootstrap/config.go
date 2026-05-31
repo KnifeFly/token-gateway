@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -68,6 +69,7 @@ type HTTPConfig struct {
 	IdleTimeout       Duration `yaml:"idle_timeout"`
 	ShutdownTimeout   Duration `yaml:"shutdown_timeout"`
 	MaxHeaderBytes    int      `yaml:"max_header_bytes"`
+	TrustedProxyCIDRs []string `yaml:"trusted_proxy_cidrs"`
 }
 
 // DatabaseConfig controls optional MySQL connectivity and migrations.
@@ -111,12 +113,18 @@ type TracingConfig struct {
 // GatewayConfig groups data-plane behavior toggles.
 type GatewayConfig struct {
 	Body        BodyConfig         `yaml:"body"`
+	Auth        AuthConfig         `yaml:"auth"`
 	Protocol    ProtocolConfig     `yaml:"protocol"`
 	Idempotency IdempotencyConfig  `yaml:"idempotency"`
 	Egress      EgressConfig       `yaml:"egress"`
 	Seed        SeedSnapshotConfig `yaml:"seed_snapshot"`
 	Billing     BillingConfig      `yaml:"billing"`
 	Limits      LimitsConfig       `yaml:"limits"`
+}
+
+// AuthConfig controls customer API key verification.
+type AuthConfig struct {
+	APIKeyHashSecret string `yaml:"api_key_hash_secret"`
 }
 
 // BodyConfig controls request body limits.
@@ -265,6 +273,9 @@ func DefaultConfig() Config {
 			Body: BodyConfig{
 				MaxBytes: 4 << 20,
 			},
+			Auth: AuthConfig{
+				APIKeyHashSecret: "local-api-key-hash-secret",
+			},
 			Protocol: ProtocolConfig{
 				DefaultMode: "auto",
 			},
@@ -367,6 +378,7 @@ func (c *Config) Normalize() {
 	c.Telemetry.LogFormat = strings.ToLower(strings.TrimSpace(c.Telemetry.LogFormat))
 	c.Telemetry.Tracing.Exporter = strings.ToLower(strings.TrimSpace(c.Telemetry.Tracing.Exporter))
 	c.Control.AdminToken = strings.TrimSpace(c.Control.AdminToken)
+	c.Gateway.Auth.APIKeyHashSecret = strings.TrimSpace(c.Gateway.Auth.APIKeyHashSecret)
 
 	if c.Environment == "" {
 		c.Environment = "local"
@@ -449,6 +461,9 @@ func (c *Config) Normalize() {
 	for i, cidr := range c.Gateway.Egress.AllowedCIDRs {
 		c.Gateway.Egress.AllowedCIDRs[i] = strings.TrimSpace(cidr)
 	}
+	for i, cidr := range c.HTTP.TrustedProxyCIDRs {
+		c.HTTP.TrustedProxyCIDRs[i] = strings.TrimSpace(cidr)
+	}
 	if c.Control.Addr == "" {
 		c.Control.Addr = ":9502"
 	}
@@ -518,6 +533,14 @@ func (c Config) Validate() error {
 	if c.HTTP.MaxHeaderBytes <= 0 {
 		errs = append(errs, errors.New("http.max_header_bytes must be positive"))
 	}
+	for _, cidr := range c.HTTP.TrustedProxyCIDRs {
+		if strings.TrimSpace(cidr) == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			errs = append(errs, fmt.Errorf("http.trusted_proxy_cidrs contains invalid CIDR %q", cidr))
+		}
+	}
 	if c.Database.Enabled {
 		if c.Database.Driver != "mysql" {
 			errs = append(errs, fmt.Errorf("unsupported database driver %q", c.Database.Driver))
@@ -559,6 +582,12 @@ func (c Config) Validate() error {
 	if c.Gateway.Limits.Enabled && !c.Redis.Enabled {
 		errs = append(errs, errors.New("redis must be enabled when gateway.limits is enabled"))
 	}
+	if requiresProductionSecrets(c.Environment) {
+		switch c.Gateway.Auth.APIKeyHashSecret {
+		case "", "local-api-key-hash-secret":
+			errs = append(errs, errors.New("gateway.auth.api_key_hash_secret must be set from secure config outside local/test"))
+		}
+	}
 	if c.Worker.Enabled && !c.Database.Enabled {
 		errs = append(errs, errors.New("database must be enabled when worker is enabled"))
 	}
@@ -573,6 +602,21 @@ func applyEnv(cfg *Config) {
 		if value, ok := os.LookupEnv(key); ok {
 			*dst = value
 		}
+	}
+	setStringSlice := func(key string, dst *[]string) {
+		value, ok := os.LookupEnv(key)
+		if !ok {
+			return
+		}
+		parts := strings.Split(value, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+		*dst = out
 	}
 	setBool := func(key string, dst *bool) {
 		if value, ok := os.LookupEnv(key); ok {
@@ -595,6 +639,7 @@ func applyEnv(cfg *Config) {
 	setString("TOKEN_GATEWAY_SERVICE_NAME", &cfg.Service.Name)
 	setString("TOKEN_GATEWAY_SERVICE_VERSION", &cfg.Service.Version)
 	setString("TOKEN_GATEWAY_HTTP_ADDR", &cfg.HTTP.Addr)
+	setStringSlice("TOKEN_GATEWAY_HTTP_TRUSTED_PROXY_CIDRS", &cfg.HTTP.TrustedProxyCIDRs)
 	setBool("TOKEN_GATEWAY_DATABASE_ENABLED", &cfg.Database.Enabled)
 	setString("TOKEN_GATEWAY_DATABASE_DRIVER", &cfg.Database.Driver)
 	setString("TOKEN_GATEWAY_DATABASE_DSN", &cfg.Database.DSN)
@@ -617,6 +662,7 @@ func applyEnv(cfg *Config) {
 	setString("TOKEN_GATEWAY_SEED_PROVIDER_TYPE", &cfg.Gateway.Seed.ProviderType)
 	setString("TOKEN_GATEWAY_SEED_PROVIDER_BASE_URL", &cfg.Gateway.Seed.ProviderBaseURL)
 	setString("TOKEN_GATEWAY_SEED_PROVIDER_API_KEY", &cfg.Gateway.Seed.ProviderAPIKey)
+	setString("TOKEN_GATEWAY_API_KEY_HASH_SECRET", &cfg.Gateway.Auth.APIKeyHashSecret)
 	setBool("TOKEN_GATEWAY_BILLING_ENABLED", &cfg.Gateway.Billing.Enabled)
 	setString("TOKEN_GATEWAY_BILLING_CURRENCY", &cfg.Gateway.Billing.Currency)
 	setBool("TOKEN_GATEWAY_LIMITS_ENABLED", &cfg.Gateway.Limits.Enabled)
@@ -628,4 +674,13 @@ func applyEnv(cfg *Config) {
 	setString("TOKEN_GATEWAY_WORKER_ADDR", &cfg.Worker.Addr)
 	setString("TOKEN_GATEWAY_CALLBACK_SIGNING_SECRET", &cfg.Worker.CallbackSigningSecret)
 	setInt("TOKEN_GATEWAY_CALLBACK_MAX_RETRIES", &cfg.Worker.CallbackMaxRetries)
+}
+
+func requiresProductionSecrets(environment string) bool {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case "", "local", "dev", "development", "test", "testing":
+		return false
+	default:
+		return true
+	}
 }

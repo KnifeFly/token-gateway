@@ -110,7 +110,14 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 		portal.NewService(gatewayRuntime.adminService, reporting.NewService(reportRepo), gatewayRuntime.taskRepo, gatewayRuntime.portalOptions()...),
 		logger,
 	)
-	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler, publicHandler, portalHandler}, gatewayRuntime.engine)
+	handler := httpserver.NewHandlerWithRoutesConfig(
+		readiness,
+		tel.Registry,
+		logger,
+		httpserver.HandlerConfig{TrustedProxyCIDRs: cfg.HTTP.TrustedProxyCIDRs},
+		[]httpserver.RouteRegistrar{realtimeHandler, publicHandler, portalHandler},
+		gatewayRuntime.engine,
+	)
 	server := httpserver.New(httpServerConfig(cfg), handler, logger)
 	return &GatewayApp{
 		server:    server,
@@ -252,7 +259,8 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	pluginManager := plugin.NewManager(builtin.Registry())
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
-	adminService := admin.NewService(adminRepo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocationStore)
+	apiKeyHasher := auth.NewAPIKeyHasher(cfg.Gateway.Auth.APIKeyHashSecret)
+	adminService := admin.NewService(adminRepo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocationStore, admin.WithAPIKeyHasher(apiKeyHasher))
 	if !usingDBAdmin {
 		if err := seedLocalPortalAPIKey(ctx, cfg, adminService); err != nil {
 			return nil, err
@@ -272,7 +280,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
 	circuitBreaker := router.NewCircuitBreaker(router.DefaultCircuitConfig())
 	snapshotProvider := dpsnapshot.NewProvider(snapshotStore, dpsnapshot.WithMetrics(snapshotMetrics))
-	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
+	authenticator := auth.NewSnapshotAuthenticatorWithOptions(revocationStore, auth.WithAPIKeyHasher(apiKeyHasher))
 	routePlanner := router.NewRoutePlanner(nil, emergencyDisableStore).WithSignals(
 		router.NewCompositeSignalProvider(
 			router.NewRedisSignalProvider(redisinfra.NewRouteSignalStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)),

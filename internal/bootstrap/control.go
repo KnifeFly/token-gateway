@@ -10,6 +10,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
+	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
@@ -43,7 +44,12 @@ func NewControlAPIApp(ctx context.Context, cfg Config) (*ControlAPIApp, error) {
 		reportRepo = reporting.NewMySQLRepository(database.DB())
 	}
 	revocations := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
-	adminService := admin.NewService(repo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocations)
+	adminService := admin.NewService(
+		repo,
+		admin.NewCredentialCodec(cfg.Control.CredentialKey),
+		revocations,
+		admin.WithAPIKeyHasher(auth.NewAPIKeyHasher(cfg.Gateway.Auth.APIKeyHashSecret)),
+	)
 	reportingService := reporting.NewService(reportRepo)
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)

@@ -105,7 +105,81 @@ func TestStreamRouteWritesSSE(t *testing.T) {
 	}
 }
 
+func TestTrustedProxyClientIPParsing(t *testing.T) {
+	tests := []struct {
+		name       string
+		trusted    []string
+		remoteAddr string
+		xff        string
+		xRealIP    string
+		want       string
+	}{
+		{
+			name:       "direct ignores spoofed forwarded header",
+			remoteAddr: "203.0.113.7:443",
+			xff:        "198.51.100.9",
+			want:       "203.0.113.7",
+		},
+		{
+			name:       "trusted proxy uses forwarded for",
+			trusted:    []string{"10.0.0.0/8"},
+			remoteAddr: "10.1.2.3:443",
+			xff:        "198.51.100.9, 10.1.2.3",
+			want:       "198.51.100.9",
+		},
+		{
+			name:       "untrusted proxy ignores forwarded for",
+			trusted:    []string{"10.0.0.0/8"},
+			remoteAddr: "203.0.113.7:443",
+			xff:        "198.51.100.9",
+			want:       "203.0.113.7",
+		},
+		{
+			name:       "trusted ipv6 proxy uses real ip",
+			trusted:    []string{"2001:db8::/32"},
+			remoteAddr: "[2001:db8::1]:443",
+			xRealIP:    "2001:db8:abcd::2",
+			want:       "2001:db8:abcd::2",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gateway := &capturingGateway{}
+			handler := NewHandlerWithRoutesConfig(
+				func(context.Context) []DependencyStatus { return nil },
+				prometheus.NewRegistry(),
+				nil,
+				HandlerConfig{TrustedProxyCIDRs: tt.trusted},
+				nil,
+				gateway,
+			)
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(nil))
+			req.RemoteAddr = tt.remoteAddr
+			if tt.xff != "" {
+				req.Header.Set("X-Forwarded-For", tt.xff)
+			}
+			if tt.xRealIP != "" {
+				req.Header.Set("X-Real-IP", tt.xRealIP)
+			}
+			res := httptest.NewRecorder()
+
+			handler.ServeHTTP(res, req)
+
+			if res.Code != http.StatusOK {
+				t.Fatalf("status = %d", res.Code)
+			}
+			if gateway.remoteAddr != tt.want {
+				t.Fatalf("remote addr = %q, want %q", gateway.remoteAddr, tt.want)
+			}
+		})
+	}
+}
+
 type fakeGateway struct{}
+type capturingGateway struct {
+	remoteAddr string
+}
 
 type fakeRoute struct{}
 
@@ -116,6 +190,15 @@ func (fakeRoute) Register(mux *http.ServeMux) {
 }
 
 func (fakeGateway) Handle(context.Context, engine.IncomingRequest) (*engine.GatewayResponse, error) {
+	return &engine.GatewayResponse{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       []byte(`{"id":"ok"}`),
+	}, nil
+}
+
+func (g *capturingGateway) Handle(_ context.Context, request engine.IncomingRequest) (*engine.GatewayResponse, error) {
+	g.remoteAddr = request.RemoteAddr
 	return &engine.GatewayResponse{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},

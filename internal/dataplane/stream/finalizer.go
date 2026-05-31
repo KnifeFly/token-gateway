@@ -16,19 +16,39 @@ import (
 
 // Finalizer wraps provider streams and performs close-time settlement.
 type Finalizer struct {
-	settlement engine.SettlementService
-	observe    engine.ObserveRecorder
+	settlement        engine.SettlementService
+	observe           engine.ObserveRecorder
+	settlementTimeout time.Duration
 }
 
+// FinalizerOption customizes stream close settlement behavior.
+type FinalizerOption func(*Finalizer)
+
 // NewFinalizer returns a stream finalizer.
-func NewFinalizer(settlement engine.SettlementService, observe engine.ObserveRecorder) *Finalizer {
+func NewFinalizer(settlement engine.SettlementService, observe engine.ObserveRecorder, options ...FinalizerOption) *Finalizer {
 	if settlement == nil {
 		settlement = engine.NoopSettlement{}
 	}
 	if observe == nil {
 		observe = engine.NoopObserveRecorder{}
 	}
-	return &Finalizer{settlement: settlement, observe: observe}
+	finalizer := &Finalizer{settlement: settlement, observe: observe, settlementTimeout: 10 * time.Second}
+	for _, option := range options {
+		if option != nil {
+			option(finalizer)
+		}
+	}
+	if finalizer.settlementTimeout <= 0 {
+		finalizer.settlementTimeout = 10 * time.Second
+	}
+	return finalizer
+}
+
+// WithSettlementTimeout limits close-time stream settlement work.
+func WithSettlementTimeout(timeout time.Duration) FinalizerOption {
+	return func(f *Finalizer) {
+		f.settlementTimeout = timeout
+	}
 }
 
 // Wrap replaces the provider stream with an accounting stream.
@@ -40,6 +60,7 @@ func (f *Finalizer) Wrap(_ context.Context, state *engine.RequestState, result *
 		source:     result.Response.Stream,
 		state:      state,
 		settlement: f.settlement,
+		timeout:    f.settlementTimeout,
 		releases:   state.DrainLimitReleases(),
 		startedAt:  time.Now(),
 	}
@@ -51,6 +72,7 @@ type AccountingStream struct {
 	source     relay.ProviderStream
 	state      *engine.RequestState
 	settlement engine.SettlementService
+	timeout    time.Duration
 	releases   []engine.LimitRelease
 	startedAt  time.Time
 	once       sync.Once
@@ -123,8 +145,13 @@ func (s *AccountingStream) Close() error {
 		}
 
 		// Step 4: persist settlement once with the final stream usage.
-		if settleErr := s.settlement.Settle(context.Background(), s.state); settleErr != nil {
-			recordErr := s.settlement.RecordFailed(context.Background(), s.state, settleErr)
+		settleCtx, cancel := context.WithTimeout(context.Background(), s.timeout)
+		settleErr := s.settlement.Settle(settleCtx, s.state)
+		cancel()
+		if settleErr != nil {
+			recordCtx, recordCancel := context.WithTimeout(context.Background(), s.timeout)
+			recordErr := s.settlement.RecordFailed(recordCtx, s.state, settleErr)
+			recordCancel()
 			s.closeErr = errors.Join(sourceErr, settleErr, recordErr)
 			return
 		}

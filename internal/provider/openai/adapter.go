@@ -509,10 +509,11 @@ func parseUsage(body []byte) tokenusage.Actual {
 }
 
 type httpStream struct {
-	body   io.ReadCloser
-	cancel context.CancelFunc
-	buf    []byte
-	actual tokenusage.Actual
+	body     io.ReadCloser
+	cancel   context.CancelFunc
+	buf      []byte
+	eventBuf []byte
+	actual   tokenusage.Actual
 }
 
 func newHTTPStream(body io.ReadCloser, cancel context.CancelFunc) *httpStream {
@@ -553,13 +554,15 @@ func (s *httpStream) Close() error {
 }
 
 func (s *httpStream) observeUsage(chunk []byte) {
-	for _, line := range strings.Split(string(chunk), "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data:") {
-			continue
+	s.eventBuf = append(s.eventBuf, chunk...)
+	for {
+		event, rest, ok := nextSSEEvent(s.eventBuf)
+		if !ok {
+			return
 		}
-		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if data == "" || data == "[DONE]" {
+		s.eventBuf = rest
+		data := sseEventData(event)
+		if len(data) == 0 || strings.TrimSpace(string(data)) == "[DONE]" {
 			continue
 		}
 		usage := parseUsage([]byte(data))
@@ -567,4 +570,44 @@ func (s *httpStream) observeUsage(chunk []byte) {
 			s.actual = tokenusage.Merge(s.actual, usage)
 		}
 	}
+}
+
+func nextSSEEvent(buffer []byte) ([]byte, []byte, bool) {
+	index, separatorLen := nextSSEEventEnd(buffer)
+	if index < 0 {
+		return nil, buffer, false
+	}
+	event := append([]byte(nil), buffer[:index]...)
+	rest := buffer[index+separatorLen:]
+	return event, rest, true
+}
+
+func nextSSEEventEnd(buffer []byte) (int, int) {
+	index := bytes.Index(buffer, []byte("\n\n"))
+	separatorLen := 2
+	if crlfIndex := bytes.Index(buffer, []byte("\r\n\r\n")); crlfIndex >= 0 && (index < 0 || crlfIndex < index) {
+		index = crlfIndex
+		separatorLen = 4
+	}
+	return index, separatorLen
+}
+
+func sseEventData(event []byte) []byte {
+	normalized := strings.ReplaceAll(string(event), "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	var parts []string
+	for _, line := range strings.Split(normalized, "\n") {
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data:")
+		if strings.HasPrefix(data, " ") {
+			data = strings.TrimPrefix(data, " ")
+		}
+		parts = append(parts, data)
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	return []byte(strings.Join(parts, "\n"))
 }
