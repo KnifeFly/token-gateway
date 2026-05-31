@@ -59,17 +59,18 @@ func (r *MySQLRepository) CreateTask(ctx context.Context, task Task, idempotency
 	defer func() { _ = tx.Rollback() }()
 	metadata, _ := json.Marshal(task.Metadata)
 	usage, _ := json.Marshal(task.Usage)
+	priceSnapshot, _ := json.Marshal(task.PriceSnapshot)
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO tasks (
   id, tenant_id, project_id, api_key_id, request_id, idempotency_key, request_hash,
   kind, media_type, model, status, progress, provider_type, channel_id, provider_task_id,
   input_json, result_json, usage_json, error_code, error_message, callback_url, metadata_json,
-  balance_hold_id, created_at, updated_at, completed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  balance_hold_id, price_snapshot_json, created_at, updated_at, completed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		task.ID, task.TenantID, task.ProjectID, task.APIKeyID, task.RequestID, task.IdempotencyKey, task.RequestHash,
 		string(task.Kind), task.MediaType, task.Model, string(task.Status), task.Progress, task.ProviderType, task.ChannelID, task.ProviderTaskID,
 		[]byte(task.Input), nullableBytes(task.Result), usage, task.ErrorCode, task.ErrorMessage, task.CallbackURL, metadata,
-		task.BalanceHoldID, task.CreatedAt, task.UpdatedAt, task.CompletedAt); err != nil {
+		task.BalanceHoldID, priceSnapshot, task.CreatedAt, task.UpdatedAt, task.CompletedAt); err != nil {
 		return nil, err
 	}
 	if idempotency != nil {
@@ -345,11 +346,20 @@ WHERE id = ?`, nextRetryAt, lastError, time.Now().UTC(), id)
 	return err
 }
 
+// MarkCallbackDeadLetter records a terminal callback delivery failure.
+func (r *MySQLRepository) MarkCallbackDeadLetter(ctx context.Context, id string, lastError string) error {
+	_, err := r.db.ExecContext(ctx, `
+UPDATE callback_outbox
+SET status = 'dead_letter', retry_count = retry_count + 1, last_error = ?, updated_at = ?
+WHERE id = ?`, lastError, time.Now().UTC(), id)
+	return err
+}
+
 const taskSelectSQL = `
 SELECT id, tenant_id, project_id, api_key_id, request_id, idempotency_key, request_hash,
        kind, media_type, model, status, progress, provider_type, channel_id, provider_task_id,
        input_json, result_json, usage_json, error_code, error_message, callback_url, metadata_json,
-       balance_hold_id, created_at, updated_at, completed_at
+       balance_hold_id, price_snapshot_json, created_at, updated_at, completed_at
 FROM tasks`
 
 const fileSelectSQL = `
@@ -364,13 +374,13 @@ type scanner interface {
 func scanTask(row scanner) (*Task, error) {
 	var task Task
 	var kind, status string
-	var input, result, usage, metadata sql.NullString
+	var input, result, usage, metadata, priceSnapshot sql.NullString
 	var completedAt sql.NullTime
 	if err := row.Scan(
 		&task.ID, &task.TenantID, &task.ProjectID, &task.APIKeyID, &task.RequestID, &task.IdempotencyKey, &task.RequestHash,
 		&kind, &task.MediaType, &task.Model, &status, &task.Progress, &task.ProviderType, &task.ChannelID, &task.ProviderTaskID,
 		&input, &result, &usage, &task.ErrorCode, &task.ErrorMessage, &task.CallbackURL, &metadata,
-		&task.BalanceHoldID, &task.CreatedAt, &task.UpdatedAt, &completedAt,
+		&task.BalanceHoldID, &priceSnapshot, &task.CreatedAt, &task.UpdatedAt, &completedAt,
 	); err != nil {
 		return nil, err
 	}
@@ -387,6 +397,9 @@ func scanTask(row scanner) (*Task, error) {
 	}
 	if metadata.Valid && metadata.String != "" {
 		_ = json.Unmarshal([]byte(metadata.String), &task.Metadata)
+	}
+	if priceSnapshot.Valid && priceSnapshot.String != "" {
+		_ = json.Unmarshal([]byte(priceSnapshot.String), &task.PriceSnapshot)
 	}
 	if task.Metadata == nil {
 		task.Metadata = map[string]string{}

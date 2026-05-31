@@ -48,6 +48,8 @@ const (
 	CallbackStatusDelivered CallbackStatus = "delivered"
 	// CallbackStatusFailed marks a callback that failed and may retry.
 	CallbackStatusFailed CallbackStatus = "failed"
+	// CallbackStatusDeadLetter marks a callback that reached the retry ceiling.
+	CallbackStatusDeadLetter CallbackStatus = "dead_letter"
 )
 
 // Status is the durable internal async task state.
@@ -64,6 +66,19 @@ type IdempotencyStatus string
 
 // CallbackStatus is the callback outbox delivery state.
 type CallbackStatus string
+
+// PriceSnapshot pins the customer-facing async task price at task creation time.
+type PriceSnapshot struct {
+	PublicModel           string `json:"public_model,omitempty"`
+	Currency              string `json:"currency,omitempty"`
+	InputMicrosPerToken   int64  `json:"input_micros_per_token,omitempty"`
+	OutputMicrosPerToken  int64  `json:"output_micros_per_token,omitempty"`
+	EstimatedOutputTokens int64  `json:"estimated_output_tokens,omitempty"`
+	EstimatedChargeMicros int64  `json:"estimated_charge_micros,omitempty"`
+	RouteSnapshotVersion  string `json:"route_snapshot_version,omitempty"`
+	RoutePolicyID         string `json:"route_policy_id,omitempty"`
+	Source                string `json:"source,omitempty"`
+}
 
 // Task is the durable async task aggregate used by M4 media workflows.
 type Task struct {
@@ -90,6 +105,7 @@ type Task struct {
 	CallbackURL    string
 	Metadata       map[string]string
 	BalanceHoldID  string
+	PriceSnapshot  PriceSnapshot
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 	CompletedAt    *time.Time
@@ -163,7 +179,26 @@ type ProviderTask struct {
 	ExternalID       string
 	Status           Status
 	Progress         int
+	Result           json.RawMessage
+	Assets           []ResultAsset
+	Usage            tokenusage.Actual
+	ErrorCode        string
+	ErrorMessage     string
 	ProviderMetadata map[string]string
+}
+
+// ResultForTask converts a submit-time terminal provider task into a terminal result.
+func (t ProviderTask) ResultForTask() ProviderTaskResult {
+	return NormalizeProviderTaskResult(ProviderTaskResult{
+		Status:           t.Status,
+		Progress:         t.Progress,
+		Result:           t.Result,
+		Assets:           t.Assets,
+		Usage:            t.Usage,
+		ErrorCode:        t.ErrorCode,
+		ErrorMessage:     t.ErrorMessage,
+		ProviderMetadata: t.ProviderMetadata,
+	})
 }
 
 // ProviderTaskResult is the normalized provider polling result.

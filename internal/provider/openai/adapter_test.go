@@ -100,6 +100,38 @@ func TestAdapterHTTPStreamRemainsOpenAfterRelayReturns(t *testing.T) {
 	}
 }
 
+func TestHTTPStreamParsesUsageAcrossSSEEventBoundaries(t *testing.T) {
+	stream := newHTTPStream(io.NopCloser(strings.NewReader("")), nil)
+
+	stream.observeUsage([]byte(`event: response.completed
+data: {"type":"response.completed","response":{"usage":{"input_tokens":2,`))
+	if usage := stream.Usage(); usage.TotalTokens != 0 {
+		t.Fatalf("usage before event boundary = %#v", usage)
+	}
+	stream.observeUsage([]byte(`"output_tokens":3,"total_tokens":5}}}
+
+data: [DONE]
+
+`))
+
+	usage := stream.Usage()
+	if usage.InputTokens != 2 || usage.OutputTokens != 3 || usage.TotalTokens != 5 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
+func TestHTTPStreamParsesMultiDataLineUsage(t *testing.T) {
+	stream := newHTTPStream(io.NopCloser(strings.NewReader("")), nil)
+
+	stream.observeUsage([]byte("data: {\"usage\":\r\n"))
+	stream.observeUsage([]byte("data: {\"prompt_tokens\":7,\"completion_tokens\":11,\"total_tokens\":18}}\r\n\r\n"))
+
+	usage := stream.Usage()
+	if usage.InputTokens != 7 || usage.OutputTokens != 11 || usage.TotalTokens != 18 {
+		t.Fatalf("usage = %#v", usage)
+	}
+}
+
 func TestAdapterMapsProviderError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)

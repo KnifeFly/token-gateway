@@ -12,6 +12,7 @@ http:
   idle_timeout: 60s
   shutdown_timeout: 10s
   max_header_bytes: 1048576
+  trusted_proxy_cidrs: []
 
 database:
   enabled: true
@@ -44,10 +45,14 @@ telemetry:
 gateway:
   body:
     max_bytes: 4194304
+  auth:
+    api_key_hash_secret: "local-api-key-hash-secret"
   protocol:
     default_mode: auto
   idempotency:
     ttl: 24h
+  egress:
+    enabled: true
   seed_snapshot:
     enabled: true
     api_key: "tg-local-dev-key"
@@ -101,6 +106,8 @@ worker:
   hold_reaper_interval: 1m
   reconciliation_interval: 15m
   callback_interval: 5s
+  callback_signing_secret: "local-callback-signing-secret"
+  callback_max_retries: 5
   batch_size: 100
 
 configd:

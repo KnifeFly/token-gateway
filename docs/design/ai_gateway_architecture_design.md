@@ -471,7 +471,7 @@ type GatewayEngine struct {
 }
 ```
 
-`FileService` 只表达 transient input asset 的 metadata、幂等、大小限制和 provider 转发辅助能力，不代表对象存储服务。Gateway 不承诺文件持久化、下载地址、生命周期管理或存储 SLA。Provider 返回的媒体结果以 `results`、`assets`、`usage` 和非敏感 `provider_metadata` 进入 task response、callback 和 settlement，不依赖 gateway 本地文件对象。
+`FileService` 只表达 transient input asset 的 metadata、幂等、大小限制和 provider 转发辅助能力，不代表对象存储服务。P13 选择 URL passthrough 和有限 base64/inline 边界，multipart/stream upload 在没有真实 streaming spool/object reference 前返回 `feature_not_enabled`。Gateway 不承诺文件持久化、下载地址、生命周期管理或存储 SLA。Provider 返回的媒体结果以 `results`、`assets`、`usage` 和非敏感 `provider_metadata` 进入 task response、callback 和 settlement，不依赖 gateway 本地文件对象。
 
 ### 5.1 EngineConfig
 
@@ -545,13 +545,16 @@ func (e *GatewayEngine) Handle(ctx context.Context, req IncomingRequest) (*Gatew
     state.LimitReleases = append(state.LimitReleases, release)
 
     if state.Async {
-        return e.tasks.CreateAndDispatch(ctx, state)
+        response, replayHit, err := e.tasks.CreateAndDispatch(ctx, state)
+        if replayHit { e.admission.Release(ctx, state, ErrIdempotencyReplay) }
+        return response, err
     }
 
     result, err := e.dispatcher.Dispatch(ctx, state)
     if err != nil { return nil, e.compensate(ctx, state, err) }
 
     if result.Stream != nil {
+        // StreamFinalizer drains LimitReleases and releases them after stream close.
         return e.stream.Wrap(ctx, state, result)
     }
 

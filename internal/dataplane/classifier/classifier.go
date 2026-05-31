@@ -71,12 +71,13 @@ func (c *DefaultClassifier) Classify(_ context.Context, state *engine.RequestSta
 }
 
 func inferProtocol(state *engine.RequestState, endpoint engine.EndpointSpec) (engine.ProtocolMode, error) {
-	if inferred := inferProtocolFromContentType(endpoint, state.Incoming.Header.Get("Content-Type")); inferred != "" {
-		return inferred, nil
-	}
-	fields, err := peekJSONFields(state)
-	if err != nil && isAmbiguousEndpoint(endpoint) {
-		return "", err
+	var fields map[string]json.RawMessage
+	if shouldPeekJSON(state.Incoming.Header.Get("Content-Type")) {
+		peeked, err := peekJSONFields(state)
+		if err != nil && isAmbiguousEndpoint(endpoint) {
+			return "", err
+		}
+		fields = peeked
 	}
 	if modelName := modelFromFields(fields); modelName != "" && state.Snapshot != nil {
 		model, ok := state.Snapshot.LookupModel(modelName)
@@ -88,6 +89,9 @@ func inferProtocol(state *engine.RequestState, endpoint engine.EndpointSpec) (en
 		}
 	}
 	if inferred := inferProtocolFromBody(endpoint, fields); inferred != "" {
+		return inferred, nil
+	}
+	if inferred := inferProtocolFromHeaderHints(endpoint, state.Incoming.Header.Get("Content-Type"), state.Incoming.Header.Get("Accept")); inferred != "" {
 		return inferred, nil
 	}
 	if isAmbiguousEndpoint(endpoint) {
@@ -215,7 +219,12 @@ func inferProtocolFromBody(endpoint engine.EndpointSpec, fields map[string]json.
 	}
 }
 
-func inferProtocolFromContentType(endpoint engine.EndpointSpec, contentType string) engine.ProtocolMode {
+func shouldPeekJSON(contentType string) bool {
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	return mediaType == "" || strings.Contains(mediaType, "json")
+}
+
+func inferProtocolFromHeaderHints(endpoint engine.EndpointSpec, contentType string, accept string) engine.ProtocolMode {
 	if !isAmbiguousEndpoint(endpoint) {
 		return ""
 	}
@@ -225,6 +234,10 @@ func inferProtocolFromContentType(endpoint engine.EndpointSpec, contentType stri
 		case engine.CanonicalImageEdit, engine.CanonicalAudioTranscription:
 			return engine.ProtocolNativeOpenAI
 		}
+	}
+	accept = strings.ToLower(strings.TrimSpace(accept))
+	if endpoint.Canonical == engine.CanonicalAudioSpeech && accept != "" && !strings.Contains(accept, "json") && !strings.Contains(accept, "*/*") {
+		return engine.ProtocolNativeOpenAI
 	}
 	return ""
 }

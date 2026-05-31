@@ -261,7 +261,7 @@ func TestParserFileURLRequiresHTTPAndRecordsSourceURL(t *testing.T) {
 	}
 }
 
-func TestParserFileStreamRecordsHashAndSize(t *testing.T) {
+func TestParserFileStreamReturnsFeatureNotEnabled(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormFile("file", "image.png")
@@ -284,11 +284,9 @@ func TestParserFileStreamRecordsHashAndSize(t *testing.T) {
 	}
 
 	err = NewOpenAIChatParser(4096).Parse(context.Background(), state)
-	if err != nil {
-		t.Fatalf("Parse() error = %v", err)
-	}
-	if state.Parsed.File == nil || state.Parsed.File.SizeBytes != int64(len("png-bytes")) || !strings.HasPrefix(state.Parsed.File.ContentHash, "sha256:") {
-		t.Fatalf("file = %#v", state.Parsed.File)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeFeatureNotEnabled {
+		t.Fatalf("error = %v, want feature_not_enabled", err)
 	}
 }
 

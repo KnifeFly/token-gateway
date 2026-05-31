@@ -231,7 +231,7 @@ Accepted
 
 ## Decision
 
-Redis Lua 输入拆为三类操作：QPS、RPM、TPM 和 cost-per-minute 使用 token bucket；daily budget 使用按日 counter；concurrency 使用带 TTL 的 sorted-set lease。请求只缓存短期 deny，不缓存 allow。
+Redis Lua 输入拆为三类操作：QPS、RPM、TPM 和 cost-per-minute admission guard 使用 token bucket；daily budget admission guard 使用按日 estimated-cost counter；concurrency 使用带 TTL 的 sorted-set lease。Redis budget 类 key 只作为请求准入/速率保护，不作为真实 spend budget 的最终账务事实；真实解释回到 usage record、ledger 和 reconciliation。请求只缓存短期 deny，不缓存 allow。
 
 ## Consequences
 

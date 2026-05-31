@@ -186,47 +186,8 @@ func (p *Parser) parseFileURL(state *engine.RequestState, body []byte) error {
 	return nil
 }
 
-func (p *Parser) parseFileStream(state *engine.RequestState, body []byte) error {
-	contentType := state.Incoming.Header.Get("Content-Type")
-	mediaType, params, _ := mime.ParseMediaType(contentType)
-	if !strings.HasPrefix(mediaType, "multipart/") || params["boundary"] == "" {
-		return apperr.InvalidArgument("multipart/form-data body is required")
-	}
-	form, err := multipart.NewReader(bytes.NewReader(body), params["boundary"]).ReadForm(defaultMaxBodyBytes)
-	if err != nil {
-		return apperr.InvalidArgument("multipart body is invalid", apperr.WithCause(err))
-	}
-	defer func() { _ = form.RemoveAll() }()
-	files := form.File["file"]
-	if len(files) == 0 {
-		return apperr.InvalidArgument("file is required")
-	}
-	header := files[0]
-	sizeBytes, mimeType, contentHash, err := inspectMultipartFile(header)
-	if err != nil {
-		return err
-	}
-	fileName := firstFormValue(form, "file_name", "fileName")
-	if fileName == "" {
-		fileName = header.Filename
-	}
-	if mimeType == "" {
-		mimeType = header.Header.Get("Content-Type")
-	}
-	state.IdempotencyKey = strings.TrimSpace(state.Incoming.Header.Get("Idempotency-Key"))
-	state.Parsed = engine.ParsedRequest{
-		RawBody: body,
-		File: &engine.FileRequest{
-			Operation:    engine.FileOperationUploadStream,
-			FileName:     fileName,
-			OriginalName: header.Filename,
-			SizeBytes:    sizeBytes,
-			MIMEType:     mimeType,
-			UploadPath:   firstFormValue(form, "upload_path", "uploadPath"),
-			ContentHash:  contentHash,
-		},
-	}
-	return nil
+func (p *Parser) parseFileStream(_ *engine.RequestState, _ []byte) error {
+	return apperr.FeatureNotEnabled("stream upload is not enabled; use url or base64 transient input assets")
 }
 
 type unifiedMediaRequest struct {

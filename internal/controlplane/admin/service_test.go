@@ -3,7 +3,10 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
+
+	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 )
 
 func TestUpsertModelPreservesExplicitDisabledFromJSON(t *testing.T) {
@@ -77,5 +80,26 @@ func TestUpsertLimitPreservesProgrammaticExplicitDisabled(t *testing.T) {
 	}
 	if limit.Enabled {
 		t.Fatalf("limit enabled = true, want false")
+	}
+}
+
+func TestCreateAPIKeyUsesConfiguredHMACHasher(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	service := NewService(repo, NewCredentialCodec("secret"), nil, WithAPIKeyHasher(auth.NewAPIKeyHasher("server-secret")))
+
+	key, err := service.CreateAPIKey(ctx, APIKey{
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		PlaintextKey: "sk-local",
+	})
+	if err != nil {
+		t.Fatalf("CreateAPIKey() error = %v", err)
+	}
+	if !strings.HasPrefix(key.KeyHash, "hmac-sha256:") {
+		t.Fatalf("key hash = %q", key.KeyHash)
+	}
+	if key.KeyHash != auth.HashAPIKeyHMAC("sk-local", "server-secret") {
+		t.Fatalf("key hash = %q", key.KeyHash)
 	}
 }

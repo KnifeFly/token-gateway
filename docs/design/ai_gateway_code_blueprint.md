@@ -602,7 +602,7 @@ type AccountingStream struct {
     source ProviderStream
     state  *RequestState
     settlement SettlementService
-    release []LimitRelease
+    releases []LimitRelease
     once sync.Once
 
     upstreamBytes int64
@@ -619,8 +619,8 @@ Close 时：
 close provider source
 collect usage
 classify billable
-settle
-release limit leases
+settle or record failed settlement
+release request/provider concurrency leases
 ```
 
 ---

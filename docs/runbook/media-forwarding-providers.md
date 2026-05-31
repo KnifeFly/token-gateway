@@ -2,7 +2,7 @@
 
 ## Scope
 
-P7 keeps media files out of gateway storage. `/v1/files/*` registers transient input asset metadata only: source, MIME, size, content hash when bytes are inspectable, original URL when supplied, and expiry metadata for idempotency/request protection. The gateway does not persist object bytes, host download URLs, scan files, or manage lifecycle.
+P7 keeps media files out of gateway storage. P13 narrows `/v1/files/*` to URL passthrough and limited base64/inline transient metadata: source, MIME, size, content hash when bytes are inspectable, original URL when supplied, and expiry metadata for idempotency/request protection. The gateway does not persist object bytes, host download URLs, scan files, or manage lifecycle.
 
 Provider results follow the opposite direction: the provider owns the result URL or returns a URL for customer-owned storage. Gateway records and returns normalized `results`, `assets`, `usage`, `provider_task_id`, and non-secret `provider_metadata` in task responses and callbacks.
 
@@ -11,10 +11,12 @@ Provider results follow the opposite direction: the provider owns the result URL
 | Input | Gateway behavior | Persisted bytes | Returned URL |
 |---|---|---:|---|
 | Base64/data URL | Decode only for limit, MIME detection, size, and `sha256:` hash | No | Omitted |
-| Multipart | Read request body only for limit, MIME detection, size, and `sha256:` hash | No | Omitted |
+| Multipart/stream | Disabled until a real streaming spool/object reference exists; returns `feature_not_enabled` | No | Omitted |
 | URL | Validate `http`/`https`, record original URL and MIME by filename when possible | No | Original URL as transient reference |
 
 `file_url` and `download_url` are optional compatibility fields. Clients must use the returned `file_id` or their own source URL in model inputs and must not assume gateway-hosted object storage.
+
+All URL sources pass through `egressguard` at registration time. The guard rejects non-HTTP schemes, loopback, private, link-local, multicast, reserved ranges, cloud metadata endpoints, and DNS answers that include disallowed IPs unless deployment config explicitly allowlists the host/CIDR.
 
 ## Provider Adapter Contract
 
@@ -42,8 +44,9 @@ go test ./...
 
 Expected coverage:
 
-- Base64 and multipart inputs produce `sha256:` hashes and no gateway download URL.
-- URL input rejects non-HTTP schemes and preserves the source URL.
+- Base64 inputs produce `sha256:` hashes and no gateway download URL.
+- Multipart/stream upload returns `feature_not_enabled` until streaming spool is implemented.
+- URL input rejects non-HTTP schemes and unsafe egress targets, and preserves the source URL.
 - Generic provider and Replicate fixture tests normalize result URLs/assets/metadata.
 - Task completion writes callback payloads with provider task id, result URL, assets, usage, and provider metadata.
 - Worker poller settles from normalized provider results.

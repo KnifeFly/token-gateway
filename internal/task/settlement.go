@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
@@ -59,7 +60,7 @@ func NewBillingSettlement(repo billing.Repository, price pricing.TokenPrice) *Bi
 
 // Settle debits the task hold once and writes usage/ledger records.
 func (s *BillingSettlement) Settle(ctx context.Context, task Task, usage tokenusage.Actual) error {
-	if s == nil || s.repo == nil || task.BalanceHoldID == "" {
+	if s == nil || s.repo == nil {
 		return nil
 	}
 	_, err := s.repo.Settle(ctx, s.plan(task, usage))
@@ -68,7 +69,7 @@ func (s *BillingSettlement) Settle(ctx context.Context, task Task, usage tokenus
 
 // RecordFailed writes repairable failed settlement state.
 func (s *BillingSettlement) RecordFailed(ctx context.Context, task Task, usage tokenusage.Actual, cause error) error {
-	if s == nil || s.repo == nil || task.BalanceHoldID == "" {
+	if s == nil || s.repo == nil {
 		return cause
 	}
 	plan := s.plan(task, usage)
@@ -97,7 +98,18 @@ func (s *BillingSettlement) plan(task Task, usage tokenusage.Actual) billing.Set
 		TaskStatus:      string(task.Status),
 		ProviderError:   task.ErrorCode,
 	})
-	amount := s.price.QuoteActual(usage)
+	price := s.price
+	if task.PriceSnapshot.Source == "runtime_price_rule" || task.PriceSnapshot.Source == "gateway_default_price" {
+		price = pricing.TokenPrice{
+			Currency:             task.PriceSnapshot.Currency,
+			InputMicrosPerToken:  task.PriceSnapshot.InputMicrosPerToken,
+			OutputMicrosPerToken: task.PriceSnapshot.OutputMicrosPerToken,
+		}
+	}
+	amount := price.QuoteActual(usage)
+	if strings.TrimSpace(amount.Currency) == "" && task.PriceSnapshot.Currency != "" {
+		amount.Currency = task.PriceSnapshot.Currency
+	}
 	if !decision.Billable {
 		amount.Micros = 0
 	}

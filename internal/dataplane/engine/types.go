@@ -470,7 +470,7 @@ type StreamFinalizer interface {
 // TaskBridge handles async task idempotency, creation, query, and cancel operations.
 type TaskBridge interface {
 	CheckIdempotency(ctx context.Context, state *RequestState) (*GatewayResponse, bool, error)
-	CreateAndDispatch(ctx context.Context, state *RequestState) (*GatewayResponse, error)
+	CreateAndDispatch(ctx context.Context, state *RequestState) (*GatewayResponse, bool, error)
 	HandleTaskOperation(ctx context.Context, state *RequestState) (*GatewayResponse, error)
 }
 

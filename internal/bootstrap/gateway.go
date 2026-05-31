@@ -110,7 +110,14 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 		portal.NewService(gatewayRuntime.adminService, reporting.NewService(reportRepo), gatewayRuntime.taskRepo, gatewayRuntime.portalOptions()...),
 		logger,
 	)
-	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{realtimeHandler, publicHandler, portalHandler}, gatewayRuntime.engine)
+	handler := httpserver.NewHandlerWithRoutesConfig(
+		readiness,
+		tel.Registry,
+		logger,
+		httpserver.HandlerConfig{TrustedProxyCIDRs: cfg.HTTP.TrustedProxyCIDRs},
+		[]httpserver.RouteRegistrar{realtimeHandler, publicHandler, portalHandler},
+		gatewayRuntime.engine,
+	)
 	server := httpserver.New(httpServerConfig(cfg), handler, logger)
 	return &GatewayApp{
 		server:    server,
@@ -173,14 +180,18 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		watcher := dpsnapshot.NewWatcher(activeProvider, snapshotStore, snapshotMetrics, cfg.Control.SnapshotPollInterval.Duration, logger, watcherOpts...)
 		go watcher.Start(ctx)
 	}
+	egressGuard, err := newEgressGuard(cfg.Gateway.Egress)
+	if err != nil {
+		return nil, err
+	}
 	registry := provider.NewRegistry()
-	if err := registry.Register("openai_compatible", openai.NewAdapter(nil)); err != nil {
+	if err := registry.Register("openai_compatible", openai.NewAdapter(outboundHTTPClient(0, egressGuard)).WithEgressGuard(egressGuard)); err != nil {
 		return nil, err
 	}
-	if err := registry.Register("claude", claude.NewAdapter(nil)); err != nil {
+	if err := registry.Register("claude", claude.NewAdapter(outboundHTTPClient(0, egressGuard)).WithEgressGuard(egressGuard)); err != nil {
 		return nil, err
 	}
-	if err := registry.Register("gemini", gemini.NewAdapter(nil)); err != nil {
+	if err := registry.Register("gemini", gemini.NewAdapter(outboundHTTPClient(0, egressGuard)).WithEgressGuard(egressGuard)); err != nil {
 		return nil, err
 	}
 
@@ -190,6 +201,11 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	settlementService := engine.SettlementService(engine.NoopSettlement{})
 	taskSettlement := tasksvc.Settlement(tasksvc.NoopSettlement{})
 	taskRepo := tasksvc.Repository(tasksvc.NewMemoryRepository())
+	defaultPrice := pricing.TokenPrice{
+		Currency:             cfg.Gateway.Billing.Currency,
+		InputMicrosPerToken:  cfg.Gateway.Billing.InputMicrosPerToken,
+		OutputMicrosPerToken: cfg.Gateway.Billing.OutputMicrosPerToken,
+	}
 	if cfg.Database.Enabled && database != nil && database.DB() != nil {
 		taskRepo = tasksvc.NewMySQLRepository(database.DB())
 	}
@@ -199,9 +215,9 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	}
 	taskService := tasksvc.NewServiceWithMetrics(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, taskMetrics)
 	credentialResolver := providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)}
-	taskDispatcher := tasksvc.NewHTTPProviderTaskDispatcher(nil, credentialResolver, snapshotChannelResolver{store: snapshotStore})
-	taskDispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(nil, credentialResolver))
-	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration))
+	taskDispatcher := tasksvc.NewHTTPProviderTaskDispatcher(outboundHTTPClient(0, egressGuard), credentialResolver, snapshotChannelResolver{store: snapshotStore}).WithEgressGuard(egressGuard)
+	taskDispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(outboundHTTPClient(0, egressGuard), credentialResolver).WithEgressGuard(egressGuard))
+	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, tasksvc.WithFileEgressGuard(egressGuard)))
 	var attemptRecorder dispatch.AttemptRecorder
 	if cfg.Gateway.Billing.Enabled {
 		repo := billing.NewMySQLRepository(database.DB())
@@ -212,21 +228,16 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		if err != nil {
 			return nil, err
 		}
-		price := pricing.TokenPrice{
-			Currency:             cfg.Gateway.Billing.Currency,
-			InputMicrosPerToken:  cfg.Gateway.Billing.InputMicrosPerToken,
-			OutputMicrosPerToken: cfg.Gateway.Billing.OutputMicrosPerToken,
-		}
 		admissionController = admission.NewController(
 			billing.NewBalanceService(repo),
-			admission.NewPriceEstimator(price, cfg.Gateway.Billing.EstimatedOutputTokens),
+			admission.NewPriceEstimator(defaultPrice, cfg.Gateway.Billing.EstimatedOutputTokens),
 			cfg.Gateway.Billing.HoldTTL.Duration,
 		)
 		attemptRecorder = billing.NewAttemptWriter(repo)
-		settlementService = billing.NewSettlementService(repo, billing.NewSettlementPlanner(price), billingMetrics)
-		taskSettlement = tasksvc.NewBillingSettlement(repo, price)
+		settlementService = billing.NewSettlementService(repo, billing.NewSettlementPlanner(defaultPrice), billingMetrics)
+		taskSettlement = tasksvc.NewBillingSettlement(repo, defaultPrice)
 	}
-	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher, taskSettlement)
+	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher, taskSettlement).WithDefaultPrice(defaultPrice)
 	if cfg.Gateway.Limits.Enabled {
 		redisLimiter := limit.NewRedisEnforcer(redisClient.Raw(), limit.Config{
 			Enabled:             cfg.Gateway.Limits.Enabled,
@@ -248,7 +259,8 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	pluginManager := plugin.NewManager(builtin.Registry())
 
 	revocationStore := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
-	adminService := admin.NewService(adminRepo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocationStore)
+	apiKeyHasher := auth.NewAPIKeyHasher(cfg.Gateway.Auth.APIKeyHashSecret)
+	adminService := admin.NewService(adminRepo, admin.NewCredentialCodec(cfg.Control.CredentialKey), revocationStore, admin.WithAPIKeyHasher(apiKeyHasher))
 	if !usingDBAdmin {
 		if err := seedLocalPortalAPIKey(ctx, cfg, adminService); err != nil {
 			return nil, err
@@ -268,7 +280,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
 	circuitBreaker := router.NewCircuitBreaker(router.DefaultCircuitConfig())
 	snapshotProvider := dpsnapshot.NewProvider(snapshotStore, dpsnapshot.WithMetrics(snapshotMetrics))
-	authenticator := auth.NewSnapshotAuthenticator(revocationStore)
+	authenticator := auth.NewSnapshotAuthenticatorWithOptions(revocationStore, auth.WithAPIKeyHasher(apiKeyHasher))
 	routePlanner := router.NewRoutePlanner(nil, emergencyDisableStore).WithSignals(
 		router.NewCompositeSignalProvider(
 			router.NewRedisSignalProvider(redisinfra.NewRouteSignalStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)),

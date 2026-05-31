@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -29,6 +30,7 @@ type Bridge struct {
 	service    *Service
 	dispatcher ProviderTaskDispatcher
 	settlement Settlement
+	price      pricing.TokenPrice
 }
 
 // NewBridge returns a task bridge.
@@ -38,6 +40,14 @@ func NewBridge(service *Service, dispatcher ProviderTaskDispatcher, settlement .
 		bridge.settlement = settlement[0]
 	}
 	return bridge
+}
+
+// WithDefaultPrice configures the billing default price used for async price snapshots.
+func (b *Bridge) WithDefaultPrice(price pricing.TokenPrice) *Bridge {
+	if b != nil {
+		b.price = price
+	}
+	return b
 }
 
 // CheckIdempotency returns an existing async task before admission creates a new hold.
@@ -60,20 +70,16 @@ func (b *Bridge) CheckIdempotency(ctx context.Context, state *engine.RequestStat
 }
 
 // CreateAndDispatch creates an internal task, submits the provider task, and returns the task object.
-func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestState) (*engine.GatewayResponse, error) {
+func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestState) (*engine.GatewayResponse, bool, error) {
 	if b == nil || b.service == nil || b.dispatcher == nil {
-		return nil, apperr.ConfigUnavailable("task bridge is unavailable")
+		return nil, false, apperr.ConfigUnavailable("task bridge is unavailable")
 	}
 	if state.Parsed.Media == nil {
-		return nil, apperr.InvalidArgument("media request is required")
+		return nil, false, apperr.InvalidArgument("media request is required")
 	}
-	candidate, err := firstCandidate(state)
+	candidates, err := routeCandidates(state)
 	if err != nil {
-		return nil, err
-	}
-	channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
-	if !ok || !channel.Enabled {
-		return nil, apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
+		return nil, false, err
 	}
 	task, hit, err := b.service.CreateMediaTask(ctx, CreateTaskRequest{
 		TenantID:       state.TenantID,
@@ -89,38 +95,124 @@ func (b *Bridge) CreateAndDispatch(ctx context.Context, state *engine.RequestSta
 		CallbackURL:    state.Parsed.Media.CallbackURL,
 		Metadata:       state.Parsed.Media.Metadata,
 		BalanceHoldID:  state.BalanceHoldID,
+		PriceSnapshot:  b.priceSnapshot(state),
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if hit {
-		return TaskResponse(task)
+		response, err := TaskResponse(task)
+		return response, true, err
 	}
-	providerTask, err := b.dispatcher.Submit(ctx, ProviderTaskRequest{
-		Task:      *task,
-		Candidate: candidate,
-		Channel:   channel,
-		RequestID: state.RequestID,
-	})
+	updated, providerTask, err := b.submitCreatedTask(ctx, state, *task, candidates)
 	if err != nil {
 		_, _ = b.service.MarkFailed(ctx, task.ID, "provider_submit_failed", "provider task submit failed")
-		return nil, err
+		return nil, false, err
 	}
-	updated, err := b.service.MarkDispatched(ctx, task.ID, candidate.ProviderType, candidate.ChannelID, providerTask.ExternalID)
-	if err != nil {
-		return nil, err
-	}
-	if providerTask.Status != "" && providerTask.Status != StatusRunning {
-		updated, err = b.service.CompleteTask(ctx, *updated, ProviderTaskResult{
-			Status:           providerTask.Status,
-			Progress:         providerTask.Progress,
-			ProviderMetadata: providerTask.ProviderMetadata,
-		})
+	if providerTask.Status != "" && IsTerminal(providerTask.Status) {
+		result := providerTask.ResultForTask()
+		settlementTask := *updated
+		settlementTask.Status = result.Status
+		settlementTask.Result = result.Result
+		settlementTask.Usage = result.Usage
+		settlementTask.ErrorCode = result.ErrorCode
+		settlementTask.ErrorMessage = result.ErrorMessage
+		if err := SettleTerminalTask(ctx, b.settlement, settlementTask, result.Usage); err != nil {
+			return nil, false, err
+		}
+		updated, err = b.service.CompleteTask(ctx, *updated, result)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
-	return TaskResponse(updated)
+	response, err := TaskResponse(updated)
+	return response, false, err
+}
+
+func (b *Bridge) submitCreatedTask(ctx context.Context, state *engine.RequestState, task Task, candidates []engine.ProviderCandidate) (*Task, *ProviderTask, error) {
+	var lastErr error
+	for idx, candidate := range candidates {
+		channel, ok := state.Snapshot.LookupChannel(candidate.ChannelID)
+		if !ok || !channel.Enabled {
+			lastErr = apperr.ServiceUnavailable("provider channel is unavailable", apperr.WithTemporary())
+			recordAsyncSubmitAttempt(state, idx, candidate, false, lastErr)
+			continue
+		}
+		providerTask, err := b.dispatcher.Submit(ctx, ProviderTaskRequest{
+			Task:      task,
+			Candidate: candidate,
+			Channel:   channel,
+			RequestID: state.RequestID,
+		})
+		if err != nil {
+			lastErr = err
+			recordAsyncSubmitAttempt(state, idx, candidate, false, err)
+			if providerTask != nil && providerTask.ExternalID != "" {
+				updated, markErr := b.service.MarkDispatched(ctx, task.ID, candidate.ProviderType, candidate.ChannelID, providerTask.ExternalID)
+				if markErr != nil {
+					return nil, nil, markErr
+				}
+				return updated, providerTask, nil
+			}
+			if asyncSubmitRetryable(err) {
+				continue
+			}
+			break
+		}
+		if providerTask == nil || providerTask.ExternalID == "" {
+			lastErr = apperr.ProviderError("provider task response is missing external task id")
+			recordAsyncSubmitAttempt(state, idx, candidate, false, lastErr)
+			break
+		}
+		recordAsyncSubmitAttempt(state, idx, candidate, true, nil)
+		updated, err := b.service.MarkDispatched(ctx, task.ID, candidate.ProviderType, candidate.ChannelID, providerTask.ExternalID)
+		return updated, providerTask, err
+	}
+	if lastErr == nil {
+		lastErr = apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
+	}
+	return nil, nil, lastErr
+}
+
+func (b *Bridge) priceSnapshot(state *engine.RequestState) PriceSnapshot {
+	if state == nil {
+		return PriceSnapshot{}
+	}
+	publicModel := state.RequestedModel
+	if state.ResolvedModel.PublicModel != "" {
+		publicModel = state.ResolvedModel.PublicModel
+	}
+	snapshot := PriceSnapshot{
+		PublicModel:           publicModel,
+		EstimatedOutputTokens: state.EstimatedUsage.OutputTokens,
+		EstimatedChargeMicros: state.EstimatedChargeMicros,
+		RouteSnapshotVersion:  state.SnapshotRef.Version,
+	}
+	if state.RoutePlan != nil {
+		snapshot.RoutePolicyID = state.RoutePlan.PolicyID
+	}
+	if state.PriceRule.Enabled {
+		snapshot.Currency = state.PriceRule.Currency
+		snapshot.InputMicrosPerToken = state.PriceRule.InputMicrosPerToken
+		snapshot.OutputMicrosPerToken = state.PriceRule.OutputMicrosPerToken
+		if state.PriceRule.EstimatedOutputTokens > 0 {
+			snapshot.EstimatedOutputTokens = state.PriceRule.EstimatedOutputTokens
+		}
+		snapshot.Source = "runtime_price_rule"
+		return snapshot
+	}
+	if b != nil && b.price.Currency != "" {
+		snapshot.Currency = b.price.Currency
+		snapshot.InputMicrosPerToken = b.price.InputMicrosPerToken
+		snapshot.OutputMicrosPerToken = b.price.OutputMicrosPerToken
+		snapshot.Source = "gateway_default_price"
+		return snapshot
+	}
+	if state.Currency != "" {
+		snapshot.Currency = state.Currency
+		snapshot.Source = "estimated_amount_only"
+	}
+	return snapshot
 }
 
 // HandleTaskOperation handles task get/cancel operations after authentication.
@@ -164,9 +256,43 @@ func (b *Bridge) HandleTaskOperation(ctx context.Context, state *engine.RequestS
 	}
 }
 
-func firstCandidate(state *engine.RequestState) (engine.ProviderCandidate, error) {
+func routeCandidates(state *engine.RequestState) ([]engine.ProviderCandidate, error) {
 	if state.RoutePlan == nil || len(state.RoutePlan.Candidates) == 0 {
-		return engine.ProviderCandidate{}, apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
+		return nil, apperr.ServiceUnavailable("no route is available", apperr.WithTemporary())
 	}
-	return state.RoutePlan.Candidates[0], nil
+	return state.RoutePlan.Candidates, nil
+}
+
+func asyncSubmitRetryable(err error) bool {
+	appErr, ok := apperr.As(err)
+	if !ok {
+		return false
+	}
+	return appErr.Temporary || appErr.Code == apperr.CodeServiceUnavailable || appErr.Code == apperr.CodeRateLimited
+}
+
+func recordAsyncSubmitAttempt(state *engine.RequestState, index int, candidate engine.ProviderCandidate, success bool, err error) {
+	if state == nil {
+		return
+	}
+	attempt := engine.ProviderAttempt{
+		AttemptIndex: index + 1,
+		ChannelID:    candidate.ChannelID,
+		ProviderType: candidate.ProviderType,
+		PublicModel:  candidate.PublicModel,
+		Success:      success,
+	}
+	if index > 0 && state.RoutePlan != nil && index-1 < len(state.RoutePlan.Candidates) {
+		prev := state.RoutePlan.Candidates[index-1]
+		attempt.FallbackFromChannelID = prev.ChannelID
+		attempt.FallbackFromProvider = prev.ProviderType
+	}
+	if err != nil {
+		attempt.ErrorCode = "provider_submit_failed"
+		if appErr, ok := apperr.As(err); ok {
+			attempt.ErrorCode = string(appErr.Code)
+			attempt.Retryable = appErr.Temporary
+		}
+	}
+	state.Attempts = append(state.Attempts, attempt)
 }

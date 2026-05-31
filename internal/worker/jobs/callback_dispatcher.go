@@ -3,11 +3,15 @@ package jobs
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 	"time"
 
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 )
 
 // CallbackDispatcher delivers task callback outbox events with retry state.
@@ -18,7 +22,13 @@ type CallbackDispatcher struct {
 	interval time.Duration
 	timeout  time.Duration
 	limit    int
+	egress   *egressguard.Guard
+	secret   []byte
+	maxRetry int
 }
+
+// CallbackDispatcherOption customizes callback delivery.
+type CallbackDispatcherOption func(*CallbackDispatcher)
 
 // NewCallbackDispatcher returns a callback dispatcher job.
 func NewCallbackDispatcher(repo tasksvc.Repository, client *http.Client, interval time.Duration, limit int) *CallbackDispatcher {
@@ -26,7 +36,7 @@ func NewCallbackDispatcher(repo tasksvc.Repository, client *http.Client, interva
 }
 
 // NewCallbackDispatcherWithMetrics returns a callback dispatcher job with metrics.
-func NewCallbackDispatcherWithMetrics(repo tasksvc.Repository, client *http.Client, metrics *tasksvc.Metrics, interval time.Duration, limit int) *CallbackDispatcher {
+func NewCallbackDispatcherWithMetrics(repo tasksvc.Repository, client *http.Client, metrics *tasksvc.Metrics, interval time.Duration, limit int, options ...CallbackDispatcherOption) *CallbackDispatcher {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}
@@ -36,13 +46,43 @@ func NewCallbackDispatcherWithMetrics(repo tasksvc.Repository, client *http.Clie
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
-	return &CallbackDispatcher{
+	dispatcher := &CallbackDispatcher{
 		repo:     repo,
 		client:   client,
 		metrics:  metrics,
 		interval: interval,
 		timeout:  30 * time.Second,
 		limit:    limit,
+		maxRetry: 5,
+	}
+	for _, option := range options {
+		if option != nil {
+			option(dispatcher)
+		}
+	}
+	return dispatcher
+}
+
+// WithCallbackEgressGuard validates callback URLs before delivery.
+func WithCallbackEgressGuard(guard *egressguard.Guard) CallbackDispatcherOption {
+	return func(j *CallbackDispatcher) {
+		j.egress = guard
+	}
+}
+
+// WithCallbackSigningSecret signs callback payloads with HMAC-SHA256.
+func WithCallbackSigningSecret(secret string) CallbackDispatcherOption {
+	return func(j *CallbackDispatcher) {
+		j.secret = []byte(secret)
+	}
+}
+
+// WithCallbackMaxRetries sets the number of delivery attempts before dead-letter.
+func WithCallbackMaxRetries(maxRetries int) CallbackDispatcherOption {
+	return func(j *CallbackDispatcher) {
+		if maxRetries > 0 {
+			j.maxRetry = maxRetries
+		}
 	}
 }
 
@@ -77,10 +117,17 @@ func (j *CallbackDispatcher) Run(ctx context.Context) error {
 		return err
 	}
 	for _, event := range events {
+		if j.egress != nil {
+			if err := j.egress.ValidateURL(ctx, event.URL); err != nil {
+				if markErr := j.markFailure(ctx, event, now, "egress_denied", err.Error()); markErr != nil {
+					return markErr
+				}
+				continue
+			}
+		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, event.URL, bytes.NewReader(event.Payload))
 		if err != nil {
-			j.metrics.RecordCallbackRetry("invalid_request")
-			if markErr := j.repo.MarkCallbackFailed(ctx, event.ID, nextCallbackRetry(now, event.RetryCount), err.Error()); markErr != nil {
+			if markErr := j.markFailure(ctx, event, now, "invalid_request", err.Error()); markErr != nil {
 				return markErr
 			}
 			continue
@@ -88,18 +135,17 @@ func (j *CallbackDispatcher) Run(ctx context.Context) error {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Gateway-Task-ID", event.TaskID)
 		req.Header.Set("X-Gateway-Callback-ID", event.ID)
+		j.sign(req, event, now)
 		response, err := j.client.Do(req)
 		if err != nil {
-			j.metrics.RecordCallbackRetry("network_error")
-			if markErr := j.repo.MarkCallbackFailed(ctx, event.ID, nextCallbackRetry(now, event.RetryCount), err.Error()); markErr != nil {
+			if markErr := j.markFailure(ctx, event, now, "network_error", err.Error()); markErr != nil {
 				return markErr
 			}
 			continue
 		}
 		_ = response.Body.Close()
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			j.metrics.RecordCallbackRetry("http_" + statusClass(response.StatusCode))
-			if markErr := j.repo.MarkCallbackFailed(ctx, event.ID, nextCallbackRetry(now, event.RetryCount), response.Status); markErr != nil {
+			if markErr := j.markFailure(ctx, event, now, "http_"+statusClass(response.StatusCode), response.Status); markErr != nil {
 				return markErr
 			}
 			continue
@@ -109,6 +155,30 @@ func (j *CallbackDispatcher) Run(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (j *CallbackDispatcher) sign(req *http.Request, event tasksvc.CallbackEvent, now time.Time) {
+	if len(j.secret) == 0 {
+		return
+	}
+	timestamp := strconv.FormatInt(now.Unix(), 10)
+	mac := hmac.New(sha256.New, j.secret)
+	_, _ = mac.Write([]byte(timestamp))
+	_, _ = mac.Write([]byte("."))
+	_, _ = mac.Write(event.Payload)
+	signature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	req.Header.Set("X-Gateway-Callback-Timestamp", timestamp)
+	req.Header.Set("X-Gateway-Callback-Signature", signature)
+}
+
+func (j *CallbackDispatcher) markFailure(ctx context.Context, event tasksvc.CallbackEvent, now time.Time, reason string, lastError string) error {
+	if j.metrics != nil {
+		j.metrics.RecordCallbackRetry(reason)
+	}
+	if j.maxRetry > 0 && event.RetryCount+1 >= j.maxRetry {
+		return j.repo.MarkCallbackDeadLetter(ctx, event.ID, lastError)
+	}
+	return j.repo.MarkCallbackFailed(ctx, event.ID, nextCallbackRetry(now, event.RetryCount), lastError)
 }
 
 func nextCallbackRetry(now time.Time, retryCount int) time.Time {

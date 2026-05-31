@@ -1,6 +1,8 @@
 package configdhttp
 
 import (
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -41,7 +43,7 @@ func (h *Handler) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, apperr.ConfigUnavailable("admin token is required"))
 			return
 		}
-		if adminToken(r) != h.token {
+		if !constantTimeTokenEqual(adminToken(r), h.token) {
 			writeError(w, apperr.Unauthorized("invalid admin token"))
 			return
 		}
@@ -117,4 +119,10 @@ func adminToken(r *http.Request) string {
 		return strings.TrimSpace(auth[len("bearer "):])
 	}
 	return ""
+}
+
+func constantTimeTokenEqual(got string, want string) bool {
+	gotHash := sha256.Sum256([]byte(strings.TrimSpace(got)))
+	wantHash := sha256.Sum256([]byte(strings.TrimSpace(want)))
+	return subtle.ConstantTimeCompare(gotHash[:], wantHash[:]) == 1
 }

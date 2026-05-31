@@ -97,3 +97,18 @@ func TestValidateRequiresControlAdminToken(t *testing.T) {
 		t.Fatal("expected validation error")
 	}
 }
+
+func TestValidateProductionRequiresAPIKeyHashSecret(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Environment = "production"
+	cfg.Normalize()
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	cfg.Gateway.Auth.APIKeyHashSecret = "prod-secret"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}

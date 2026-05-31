@@ -50,6 +50,35 @@ func TestSnapshotAuthenticator(t *testing.T) {
 	}
 }
 
+func TestSnapshotAuthenticatorSupportsHMACAndLegacyHashes(t *testing.T) {
+	key := "sk-local"
+	for name, hash := range map[string]string{
+		"hmac":   HashAPIKeyHMAC(key, "server-secret"),
+		"legacy": HashAPIKey(key),
+	} {
+		t.Run(name, func(t *testing.T) {
+			state := &engine.RequestState{
+				Snapshot: fakeSnapshot{apiKey: engine.APIKeyView{
+					ID:        "key_1",
+					TenantID:  "tenant_1",
+					ProjectID: "project_1",
+					Hash:      hash,
+					Enabled:   true,
+				}},
+				Incoming: engine.IncomingRequest{Header: http.Header{"Authorization": []string{"Bearer " + key}}},
+			}
+
+			err := NewSnapshotAuthenticatorWithOptions(nil, WithAPIKeyHashSecret("server-secret")).Authenticate(context.Background(), state)
+			if err != nil {
+				t.Fatalf("Authenticate() error = %v", err)
+			}
+			if state.APIKeyID != "key_1" {
+				t.Fatalf("api key id = %q", state.APIKeyID)
+			}
+		})
+	}
+}
+
 func TestSnapshotAuthenticatorRejectsInvalidKey(t *testing.T) {
 	state := &engine.RequestState{
 		Snapshot: fakeSnapshot{},

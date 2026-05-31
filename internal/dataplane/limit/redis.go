@@ -15,7 +15,7 @@ import (
 
 // redis.go compiles request limit rules into atomic Redis bucket and lease operations.
 
-// Config controls Redis-backed token bucket, budget, and concurrency limits.
+// Config controls Redis-backed rate, admission budget, and concurrency guards.
 type Config struct {
 	Enabled             bool
 	RPM                 int64
@@ -30,7 +30,7 @@ type Config struct {
 	KeyPrefix           string
 }
 
-// RedisEnforcer uses Redis as the multi-replica source of truth.
+// RedisEnforcer uses Redis as the multi-replica admission guard for limits.
 type RedisEnforcer struct {
 	client *goredis.Client
 	cfg    Config
@@ -115,7 +115,7 @@ func NewRedisEnforcer(client *goredis.Client, cfg Config) *RedisEnforcer {
 	return &RedisEnforcer{client: client, cfg: cfg, deny: NewDenyCache()}
 }
 
-// Acquire reserves request rate, token, budget, and concurrency capacity.
+// Acquire reserves request rate, estimated spend-admission, and concurrency capacity.
 func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState) (engine.LimitRelease, error) {
 	if e == nil || !e.cfg.Enabled || e.client == nil {
 		return noopRelease{}, nil
@@ -250,10 +250,14 @@ func (e *RedisEnforcer) operationsFor(state *engine.RequestState, rules []engine
 			buckets = append(buckets, e.bucketOp(scope, "tpm", tokens, rule.TPM, time.Minute))
 		}
 		if rule.DailyBudgetMicros > 0 {
-			counters = append(counters, e.counterOp(scope, "daily_budget", costMicros, rule.DailyBudgetMicros, untilNextUTC(now)))
+			op := e.counterOp(scope, "daily_budget", costMicros, rule.DailyBudgetMicros, untilNextUTC(now))
+			op.reason = "daily budget admission guard exceeded"
+			counters = append(counters, op)
 		}
 		if rule.CostPerMinuteMicros > 0 {
-			buckets = append(buckets, e.bucketOp(scope, "cost_per_minute", costMicros, rule.CostPerMinuteMicros, time.Minute))
+			op := e.bucketOp(scope, "cost_per_minute", costMicros, rule.CostPerMinuteMicros, time.Minute)
+			op.reason = "cost per minute admission guard exceeded"
+			buckets = append(buckets, op)
 		}
 		if rule.Concurrency > 0 {
 			leases = append(leases, e.counterOp(scope, "concurrency", 1, rule.Concurrency, e.cfg.LeaseTTL))

@@ -18,12 +18,13 @@ func buildSeedSnapshot(cfg Config) (*dpsnapshot.IndexedSnapshot, error) {
 	}
 	if cfg.Gateway.Seed.Enabled {
 		seed := cfg.Gateway.Seed
+		hasher := auth.NewAPIKeyHasher(cfg.Gateway.Auth.APIKeyHashSecret)
 		runtime.APIKeys = []cpsnapshot.APIKeyRuntime{{
 			ID:            seed.APIKeyID,
 			TenantID:      seed.TenantID,
 			ProjectID:     seed.ProjectID,
 			Name:          "local seed key",
-			KeyHash:       auth.HashAPIKey(seed.APIKey),
+			KeyHash:       hasher.Hash(seed.APIKey),
 			Enabled:       true,
 			AllowedModels: []string{"*"},
 		}}

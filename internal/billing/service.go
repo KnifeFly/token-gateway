@@ -27,13 +27,24 @@ func (s *BalanceService) CreateHold(ctx context.Context, request HoldRequest) (*
 	if s == nil || s.repo == nil {
 		return nil, apperr.ConfigUnavailable("billing repository is unavailable")
 	}
-	if request.AmountMicros <= 0 {
-		return &BalanceHold{ID: "", RequestID: request.RequestID, Status: HoldStatusReleased}, nil
+	if request.AmountMicros < 0 {
+		request.AmountMicros = 0
 	}
 	if hold, ok, err := s.repo.GetHoldByRequestID(ctx, request.RequestID); err != nil {
 		return nil, err
 	} else if ok {
 		return hold, nil
+	}
+	hold, err := s.repo.CreateHold(ctx, request)
+	if err == nil || request.AmountMicros > 0 || !isInsufficientBalance(err) {
+		return hold, err
+	}
+	if ensureErr := s.repo.EnsureBalanceAccount(ctx, BalanceAccount{
+		TenantID:  request.TenantID,
+		ProjectID: request.ProjectID,
+		Currency:  request.Currency,
+	}); ensureErr != nil {
+		return nil, ensureErr
 	}
 	return s.repo.CreateHold(ctx, request)
 }
@@ -269,7 +280,9 @@ func (s *FailedSettlementService) ReplayPending(ctx context.Context, limit int) 
 		if err := s.repo.MarkFailedSettlementReplayed(ctx, failed.ID); err != nil {
 			return replayed, err
 		}
-		s.metrics.DecrementFailedBacklog()
+		if s.metrics != nil {
+			s.metrics.DecrementFailedBacklog()
+		}
 		replayed++
 	}
 	if s.metrics != nil {
@@ -286,4 +299,20 @@ func settlementReason(plan SettlementPlan) string {
 		return "usage settlement:not_billable:" + plan.BillableReason
 	}
 	return "usage settlement:" + plan.BillableReason
+}
+
+func settlementCharge(plan SettlementPlan) int64 {
+	charge := plan.AmountMicros
+	if !plan.Billable {
+		charge = 0
+	}
+	if charge < 0 {
+		charge = 0
+	}
+	return charge
+}
+
+func isInsufficientBalance(err error) bool {
+	appErr, ok := apperr.As(err)
+	return ok && appErr.Code == apperr.CodeInsufficientBalance
 }
