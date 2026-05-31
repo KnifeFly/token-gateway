@@ -246,11 +246,13 @@ func (r *MemoryRepository) FileQuota(_ context.Context, tenantID, projectID stri
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	quota := FileQuota{MaxFiles: maxFiles, MaxBytes: maxBytes}
+	now := time.Now().UTC()
 	for _, file := range r.files {
-		if file.TenantID == tenantID && file.ProjectID == projectID {
-			quota.UsedFiles++
-			quota.UsedBytes += file.SizeBytes
+		if file.TenantID != tenantID || file.ProjectID != projectID || fileExpired(file, now) {
+			continue
 		}
+		quota.UsedFiles++
+		quota.UsedBytes += file.SizeBytes
 	}
 	if maxFiles > 0 {
 		quota.RemainingFiles = maxFiles - quota.UsedFiles
@@ -259,6 +261,43 @@ func (r *MemoryRepository) FileQuota(_ context.Context, tenantID, projectID stri
 		}
 	}
 	return quota, nil
+}
+
+// CleanupExpiredFiles removes expired transient input asset metadata.
+func (r *MemoryRepository) CleanupExpiredFiles(_ context.Context, now time.Time, limit int) (FileCleanupResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if limit <= 0 {
+		limit = 100
+	}
+	result := FileCleanupResult{}
+	deleted := make(map[string]struct{})
+	for id, file := range r.files {
+		if result.Deleted >= limit {
+			break
+		}
+		if !fileExpired(file, now) {
+			continue
+		}
+		age := now.Sub(*file.ExpiresAt)
+		if age > result.MaxAge {
+			result.MaxAge = age
+		}
+		delete(r.files, id)
+		deleted[id] = struct{}{}
+		result.Deleted++
+	}
+	if len(deleted) > 0 {
+		for scope, record := range r.idem {
+			if record.ResourceType != ResourceFile {
+				continue
+			}
+			if _, ok := deleted[record.ResourceID]; ok {
+				delete(r.idem, scope)
+			}
+		}
+	}
+	return result, nil
 }
 
 // EnqueueCallback stores a callback event.
@@ -433,4 +472,8 @@ func cloneFile(file FileAsset) *FileAsset {
 		file.ExpiresAt = &expiresAt
 	}
 	return &file
+}
+
+func fileExpired(file FileAsset, now time.Time) bool {
+	return file.ExpiresAt != nil && !file.ExpiresAt.After(now)
 }

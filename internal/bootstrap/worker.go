@@ -99,10 +99,12 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 	if cfg.Gateway.Billing.Enabled {
 		taskSettlement = tasksvc.NewBillingSettlement(billingRepo, price)
 	}
+	fileService := tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, tasksvc.WithFileEgressGuard(egressGuard))
 	jobList := []worker.Job{
 		jobs.NewProviderTaskPoller(taskRepo, dispatcher, taskService, taskSettlement, cfg.Worker.ProviderTaskPollInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewFailedSettlementReplayer(billing.NewFailedSettlementServiceWithMetrics(billingRepo, billingMetrics), cfg.Worker.FailedSettlementInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewBalanceHoldReaper(billing.NewBalanceService(billingRepo), cfg.Worker.HoldReaperInterval.Duration, cfg.Worker.BatchSize),
+		jobs.NewFileAssetCleaner(fileService, taskMetrics, cfg.Worker.FileCleanupInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewReconciliationJob(billing.NewReconciliationService(billingRepo), cfg.Worker.ReconciliationInterval.Duration),
 		jobs.NewCallbackDispatcherWithMetrics(
 			taskRepo,

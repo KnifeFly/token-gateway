@@ -367,7 +367,7 @@ paths:
       tags:
       - Files
       summary: Register transient Base64 input asset
-      description: 接收 Base64 或 data URL 输入用于请求归一化、幂等校验和 provider 转发。Gateway 不做对象存储，不承诺持久化、下载地址或生命周期管理。
+      description: 注册 Base64 或 data URL 的 transient input asset metadata，用于请求归一化、幂等校验和 provider 转发。Gateway 只保存 hash、size、MIME、source 与 expiry metadata，不保存对象内容，不承诺持久化、下载地址或生命周期管理。decoded inline 输入超过上限会返回 invalid_argument。
       operationId: uploadFileBase64
       requestBody:
         required: true
@@ -392,7 +392,7 @@ paths:
       tags:
       - Files
       summary: Register transient URL input asset
-      description: 接收远程 URL 输入用于 provider 转发和 metadata 记录。Gateway 不下载并托管对象，不承诺该 URL 的可用性或生命周期。
+      description: 注册远程 URL 的 transient input asset metadata，用于 provider 转发和审计记录。Gateway 只保存 source_url 与必要 metadata，不下载并托管对象，不生成 gateway download URL，也不承诺源 URL 的可用性或生命周期。
       operationId: uploadFileUrl
       requestBody:
         required: true
@@ -417,7 +417,7 @@ paths:
       tags:
       - Files
       summary: Register transient multipart input asset
-      description: P13 边界：stream upload 暂不启用，直到实现真实 streaming spool/object reference 前稳定返回 `feature_not_enabled`。当前文件能力只支持 URL passthrough 和有限 base64/inline transient input asset；Gateway 不提供对象存储或长期下载服务。
+      description: P18 边界：stream upload 暂不启用，直到独立阶段实现真实 streaming spool/object reference 前稳定返回 `feature_not_enabled`。当前文件能力只支持 URL metadata registration 和有限 base64/inline transient input asset metadata；Gateway 不提供对象存储或长期下载服务。
       operationId: uploadFileStream
       requestBody:
         required: true
@@ -2400,20 +2400,20 @@ components:
             format: int64
     Base64FileUploadRequest:
       type: object
-      description: Transient input asset request. The gateway may inspect metadata and forward the payload, but does not persist object bytes.
+      description: Transient input asset metadata request. The gateway inspects inline bytes only to derive hash, size and MIME metadata, then discards object bytes.
       required:
       - base64_data
       properties:
         base64_data:
           type: string
-          description: Base64 or data URL.
+          description: Base64 or data URL. Decoded content is bounded and is not stored as a downloadable gateway object.
         upload_path:
           type: string
         file_name:
           type: string
     UrlFileUploadRequest:
       type: object
-      description: Transient input asset request by URL. The gateway records metadata for routing/task use and forwards the URL to providers when supported.
+      description: Transient input asset metadata request by URL. The gateway records source_url metadata for routing/task use and forwards the URL to providers when supported.
       required:
       - url
       properties:
@@ -2426,7 +2426,7 @@ components:
           type: string
     FileUploadResponse:
       type: object
-      description: Transient input asset response. Returned URLs are request metadata or provider-facing references, not gateway-hosted durable object storage URLs.
+      description: Transient input asset metadata response. URL fields are source metadata or provider-facing references, not gateway-hosted durable object storage URLs.
       required:
       - success
       - code
@@ -2444,7 +2444,7 @@ components:
           $ref: '#/components/schemas/FileObject'
     FileObject:
       type: object
-      description: Metadata for a transient input asset. The gateway does not guarantee long-term downloadability or object lifecycle management.
+      description: Metadata for a transient input asset. The gateway does not store object bytes, proxy downloads, or guarantee object lifecycle management.
       properties:
         file_id:
           type: string
@@ -2476,11 +2476,11 @@ components:
         file_url:
           type: string
           format: uri
-          description: Optional transient provider-facing reference. For inline and multipart inputs this field is omitted because the gateway does not host bytes.
+          description: Deprecated optional provider-facing reference. Current URL/base64 registration omits this field because the gateway does not host bytes.
         download_url:
           type: string
           format: uri
-          description: Deprecated/optional transient reference. Clients must not rely on gateway download hosting.
+          description: Deprecated optional transient reference. Clients must not rely on gateway download hosting.
         upload_time:
           type: string
           format: date-time

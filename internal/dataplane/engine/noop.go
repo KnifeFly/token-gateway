@@ -106,10 +106,10 @@ func (NoopTaskBridge) HandleTaskOperation(context.Context, *RequestState) (*Gate
 	return nil, apperr.ConfigUnavailable("task bridge is unavailable")
 }
 
-// NoopFileService rejects file operations when no file service is configured.
+// NoopFileService rejects file metadata operations when no file service is configured.
 type NoopFileService struct{}
 
-// HandleFileOperation rejects file operations.
+// HandleFileOperation rejects file metadata operations.
 func (NoopFileService) HandleFileOperation(context.Context, *RequestState) (*GatewayResponse, error) {
 	return nil, apperr.ConfigUnavailable("file service is unavailable")
 }

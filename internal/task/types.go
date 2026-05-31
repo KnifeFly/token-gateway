@@ -129,7 +129,7 @@ type IdempotencyRecord struct {
 	UpdatedAt      time.Time
 }
 
-// FileAsset is the normalized file object used by media inputs and results.
+// FileAsset is transient input asset metadata used by media requests.
 type FileAsset struct {
 	ID           string
 	TenantID     string
@@ -151,13 +151,19 @@ type FileAsset struct {
 	ExpiresAt    *time.Time
 }
 
-// FileQuota summarizes file storage usage for one project.
+// FileQuota summarizes active transient input asset usage for one project.
 type FileQuota struct {
 	MaxFiles       int
 	UsedFiles      int
 	RemainingFiles int
 	MaxBytes       int64
 	UsedBytes      int64
+}
+
+// FileCleanupResult summarizes one expired transient metadata cleanup run.
+type FileCleanupResult struct {
+	Deleted int
+	MaxAge  time.Duration
 }
 
 // CallbackEvent is a retryable callback outbox row.

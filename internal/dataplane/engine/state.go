@@ -64,7 +64,7 @@ func (s *RequestState) IsTaskOperation() bool {
 	return s != nil && s.Parsed.Task != nil
 }
 
-// IsFileOperation reports whether this request is file upload/quota.
+// IsFileOperation reports whether this request is file metadata/quota.
 func (s *RequestState) IsFileOperation() bool {
 	return s != nil && s.Parsed.File != nil
 }

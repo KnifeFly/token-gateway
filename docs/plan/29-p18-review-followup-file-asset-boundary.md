@@ -57,6 +57,17 @@ P18 的目标是把文件/媒体输入资产能力从容易被误解的“文件
 | Base64 大输入导致内存压力 | 严格 body/decoded size limit，必要时直接拒绝而不是半支持 |
 | 路线 B 被零散实现 | 在 plan 中明确对象存储路线需要独立阶段和完整交付物，不在 P18 范围内 |
 
+## 完成记录
+
+2026-05-31 P18 已落地：
+
+- README、OpenAPI 和 `docs/runbook/p18-file-asset-boundary.md` 统一为 transient input asset metadata registry，明确不保存对象内容、不提供 download proxy、不承诺 storage lifecycle SLA。
+- `FileQuota()` 在 memory/MySQL repository 中排除 `expires_at <= now` 的 metadata row，并新增测试覆盖 expired、active、no-expiry 和跨 project。
+- 新增 `FileService.CleanupExpiredFiles`、MySQL 索引 migration 和 `FileAssetCleaner` worker job，按 batch 删除 expired transient metadata 与对应 file idempotency record，并记录 cleanup runs/deleted/max age/next run metrics。
+- URL registration 只保存 `source_url` 与 metadata，不再把 source URL 映射为 `file_url`/`download_url`；contract tests 保证客户响应不暴露 gateway-hosted URL 语义。
+- Base64 registration 增加 decoded size 上限，只持久化 hash、size、MIME、source 和 expires metadata；stream upload 继续稳定返回 `feature_not_enabled`。
+- 新增 `tests/failure/file_asset_boundary_drills.sh`，覆盖 expired quota、cleanup job、URL metadata、base64 size limit、stream disabled 和 contract tests。
+
 ## 设计来源
 
 - [路线图](./00-roadmap.md)
