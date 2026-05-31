@@ -14,6 +14,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
@@ -23,6 +24,7 @@ const defaultTimeout = 30 * time.Second
 type TaskAdapter struct {
 	client      *http.Client
 	credentials tasksvc.ProviderCredentialResolver
+	egress      *egressguard.Guard
 }
 
 // NewTaskAdapter returns a Replicate provider task adapter.
@@ -31,6 +33,14 @@ func NewTaskAdapter(client *http.Client, credentials tasksvc.ProviderCredentialR
 		client = http.DefaultClient
 	}
 	return &TaskAdapter{client: client, credentials: credentials}
+}
+
+// WithEgressGuard validates Replicate URLs before outbound HTTP calls.
+func (a *TaskAdapter) WithEgressGuard(guard *egressguard.Guard) *TaskAdapter {
+	if a != nil {
+		a.egress = guard
+	}
+	return a
 }
 
 // Submit creates a Replicate prediction.
@@ -151,6 +161,11 @@ func (a *TaskAdapter) doJSON(ctx context.Context, method string, endpoint string
 	timeout := channel.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeout
+	}
+	if a.egress != nil {
+		if err := a.egress.ValidateURL(ctx, endpoint); err != nil {
+			return apperr.ProviderError("replicate egress url is not allowed", apperr.WithCause(err))
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

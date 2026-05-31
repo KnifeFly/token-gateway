@@ -48,6 +48,8 @@ gateway:
     default_mode: auto
   idempotency:
     ttl: 24h
+  egress:
+    enabled: true
   seed_snapshot:
     enabled: true
     api_key: "tg-local-dev-key"
@@ -101,6 +103,8 @@ worker:
   hold_reaper_interval: 1m
   reconciliation_interval: 15m
   callback_interval: 5s
+  callback_signing_secret: "local-callback-signing-secret"
+  callback_max_retries: 5
   batch_size: 100
 
 configd:

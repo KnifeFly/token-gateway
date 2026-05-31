@@ -25,6 +25,7 @@ type Repository interface {
 	ListDueCallbacks(ctx context.Context, limit int, now time.Time) ([]CallbackEvent, error)
 	MarkCallbackDelivered(ctx context.Context, id string) error
 	MarkCallbackFailed(ctx context.Context, id string, nextRetryAt time.Time, lastError string) error
+	MarkCallbackDeadLetter(ctx context.Context, id string, lastError string) error
 }
 
 // TaskListFilter scopes customer task list queries.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -64,6 +63,10 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 		adminRepo = admin.NewMySQLRepository(database.DB())
 		billingRepo = billing.NewMySQLRepository(database.DB())
 	}
+	egressGuard, err := newEgressGuard(cfg.Gateway.Egress)
+	if err != nil {
+		return nil, err
+	}
 	taskMetrics, err := tasksvc.NewMetrics(tel.Registry)
 	if err != nil {
 		return nil, err
@@ -77,15 +80,16 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 		return nil, err
 	}
 	taskService := tasksvc.NewServiceWithMetrics(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, taskMetrics)
+	providerHTTPClient := outboundHTTPClient(cfg.Worker.JobTimeout.Duration, egressGuard)
 	dispatcher := tasksvc.NewHTTPProviderTaskDispatcher(
-		&http.Client{Timeout: cfg.Worker.JobTimeout.Duration},
+		providerHTTPClient,
 		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
 		adminChannelResolver{repo: adminRepo},
-	)
+	).WithEgressGuard(egressGuard)
 	dispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(
-		&http.Client{Timeout: cfg.Worker.JobTimeout.Duration},
+		providerHTTPClient,
 		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
-	))
+	).WithEgressGuard(egressGuard))
 	price := pricing.TokenPrice{
 		Currency:             cfg.Gateway.Billing.Currency,
 		InputMicrosPerToken:  cfg.Gateway.Billing.InputMicrosPerToken,
@@ -100,7 +104,16 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 		jobs.NewFailedSettlementReplayer(billing.NewFailedSettlementServiceWithMetrics(billingRepo, billingMetrics), cfg.Worker.FailedSettlementInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewBalanceHoldReaper(billing.NewBalanceService(billingRepo), cfg.Worker.HoldReaperInterval.Duration, cfg.Worker.BatchSize),
 		jobs.NewReconciliationJob(billing.NewReconciliationService(billingRepo), cfg.Worker.ReconciliationInterval.Duration),
-		jobs.NewCallbackDispatcherWithMetrics(taskRepo, &http.Client{Timeout: cfg.Worker.JobTimeout.Duration}, taskMetrics, cfg.Worker.CallbackInterval.Duration, cfg.Worker.BatchSize),
+		jobs.NewCallbackDispatcherWithMetrics(
+			taskRepo,
+			outboundHTTPClient(cfg.Worker.JobTimeout.Duration, egressGuard),
+			taskMetrics,
+			cfg.Worker.CallbackInterval.Duration,
+			cfg.Worker.BatchSize,
+			jobs.WithCallbackEgressGuard(egressGuard),
+			jobs.WithCallbackSigningSecret(cfg.Worker.CallbackSigningSecret),
+			jobs.WithCallbackMaxRetries(cfg.Worker.CallbackMaxRetries),
+		),
 	}
 	leaseStore := worker.LeaseStore(worker.NewRedisLeaseStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix))
 	runner := worker.NewRunner(jobList, leaseStore, logger, workerMetrics, worker.Config{LeaseTTL: cfg.Worker.LeaseTTL.Duration})

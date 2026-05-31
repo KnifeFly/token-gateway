@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/provider/relay"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
@@ -19,6 +20,7 @@ const defaultTimeout = 30 * time.Second
 // Adapter relays Claude Messages requests.
 type Adapter struct {
 	client *http.Client
+	egress *egressguard.Guard
 }
 
 // NewAdapter returns a Claude adapter.
@@ -27,6 +29,14 @@ func NewAdapter(client *http.Client) *Adapter {
 		client = http.DefaultClient
 	}
 	return &Adapter{client: client}
+}
+
+// WithEgressGuard validates provider URLs before outbound HTTP calls.
+func (a *Adapter) WithEgressGuard(guard *egressguard.Guard) *Adapter {
+	if a != nil {
+		a.egress = guard
+	}
+	return a
 }
 
 // Relay sends one Claude Messages request.
@@ -41,6 +51,11 @@ func (a *Adapter) Relay(ctx context.Context, channel relay.ChannelConfig, reques
 	endpoint, err := endpointURL(channel.BaseURL)
 	if err != nil {
 		return nil, err
+	}
+	if a.egress != nil {
+		if err := a.egress.ValidateURL(ctx, endpoint); err != nil {
+			return nil, &relay.ProviderError{StatusCode: http.StatusBadGateway, Code: "provider_config_invalid", Message: "provider egress url is not allowed"}
+		}
 	}
 
 	timeout := channel.Timeout

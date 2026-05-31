@@ -330,6 +330,22 @@ func (r *MemoryRepository) MarkCallbackFailed(_ context.Context, id string, next
 	return nil
 }
 
+// MarkCallbackDeadLetter records a terminal callback delivery failure.
+func (r *MemoryRepository) MarkCallbackDeadLetter(_ context.Context, id string, lastError string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	event, ok := r.callbacks[id]
+	if !ok {
+		return nil
+	}
+	event.Status = CallbackStatusDeadLetter
+	event.RetryCount++
+	event.LastError = lastError
+	event.UpdatedAt = time.Now().UTC()
+	r.callbacks[id] = event
+	return nil
+}
+
 func idempotencyScope(tenantID, apiKeyID, endpoint, key string) string {
 	return tenantID + "\x00" + apiKeyID + "\x00" + endpoint + "\x00" + key
 }

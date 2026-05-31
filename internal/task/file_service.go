@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 )
 
 // FileService owns file asset creation, idempotency, and quota reporting.
@@ -17,20 +18,37 @@ type FileService struct {
 	ttl      time.Duration
 	maxFiles int
 	maxBytes int64
+	egress   *egressguard.Guard
 	now      func() time.Time
 }
 
+// FileServiceOption customizes FileService behavior.
+type FileServiceOption func(*FileService)
+
 // NewFileService returns a file service backed by repo.
-func NewFileService(repo Repository, ttl time.Duration) *FileService {
+func NewFileService(repo Repository, ttl time.Duration, options ...FileServiceOption) *FileService {
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
-	return &FileService{
+	service := &FileService{
 		repo:     repo,
 		ttl:      ttl,
 		maxFiles: 1000,
 		maxBytes: 100 << 30,
 		now:      func() time.Time { return time.Now().UTC() },
+	}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
+}
+
+// WithFileEgressGuard validates file source URLs before registration.
+func WithFileEgressGuard(guard *egressguard.Guard) FileServiceOption {
+	return func(s *FileService) {
+		s.egress = guard
 	}
 }
 
@@ -99,6 +117,11 @@ func (s *FileService) CreateFile(ctx context.Context, request FileCreateRequest)
 		mimeType = "application/octet-stream"
 	}
 	sourceURL := strings.TrimSpace(request.SourceURL)
+	if sourceURL != "" && s.egress != nil {
+		if err := s.egress.ValidateURL(ctx, sourceURL); err != nil {
+			return nil, false, apperr.InvalidArgument("file source url is not allowed", apperr.WithCause(err))
+		}
+	}
 	expiresAt := now.Add(s.ttl)
 	file := FileAsset{
 		ID:           newID("file"),

@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
@@ -97,7 +98,18 @@ func (s *BillingSettlement) plan(task Task, usage tokenusage.Actual) billing.Set
 		TaskStatus:      string(task.Status),
 		ProviderError:   task.ErrorCode,
 	})
-	amount := s.price.QuoteActual(usage)
+	price := s.price
+	if task.PriceSnapshot.Source == "runtime_price_rule" || task.PriceSnapshot.Source == "gateway_default_price" {
+		price = pricing.TokenPrice{
+			Currency:             task.PriceSnapshot.Currency,
+			InputMicrosPerToken:  task.PriceSnapshot.InputMicrosPerToken,
+			OutputMicrosPerToken: task.PriceSnapshot.OutputMicrosPerToken,
+		}
+	}
+	amount := price.QuoteActual(usage)
+	if strings.TrimSpace(amount.Currency) == "" && task.PriceSnapshot.Currency != "" {
+		amount.Currency = task.PriceSnapshot.Currency
+	}
 	if !decision.Billable {
 		amount.Micros = 0
 	}

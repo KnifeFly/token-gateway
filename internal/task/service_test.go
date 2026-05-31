@@ -8,6 +8,7 @@ import (
 
 	metricnames "github.com/KnifeFly/token-gateway/internal/infra/telemetry"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -254,5 +255,29 @@ func TestFileServiceIdempotency(t *testing.T) {
 	}
 	if !hit || second.ID != first.ID {
 		t.Fatalf("duplicate file = (%q, %v), want (%q, true)", second.ID, hit, first.ID)
+	}
+}
+
+func TestFileServiceRejectsUnsafeSourceURL(t *testing.T) {
+	ctx := context.Background()
+	guard, err := egressguard.New(egressguard.Config{})
+	if err != nil {
+		t.Fatalf("egressguard.New() error = %v", err)
+	}
+	service := NewFileService(NewMemoryRepository(), 0, WithFileEgressGuard(guard))
+	_, _, err = service.CreateFile(ctx, FileCreateRequest{
+		TenantID:    "tenant",
+		ProjectID:   "project",
+		APIKeyID:    "key",
+		RequestID:   "req_1",
+		Endpoint:    "/v1/files/upload/url",
+		RequestBody: []byte(`{"url":"http://127.0.0.1/input.png"}`),
+		FileName:    "input.png",
+		Source:      "upload_url",
+		SourceURL:   "http://127.0.0.1/input.png",
+	})
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeInvalidArgument {
+		t.Fatalf("error = %v, want invalid_argument", err)
 	}
 }

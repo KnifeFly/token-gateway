@@ -417,7 +417,7 @@ paths:
       tags:
       - Files
       summary: Register transient multipart input asset
-      description: 接收 multipart 输入用于请求级处理和 provider 转发。Gateway 不提供对象存储或长期下载服务。
+      description: P13 边界：stream upload 暂不启用，直到实现真实 streaming spool/object reference 前稳定返回 `feature_not_enabled`。当前文件能力只支持 URL passthrough 和有限 base64/inline transient input asset；Gateway 不提供对象存储或长期下载服务。
       operationId: uploadFileStream
       requestBody:
         required: true
@@ -442,12 +442,12 @@ paths:
                   type: string
                   description: camelCase alias of file_name
       responses:
-        '200':
-          description: Transient input asset accepted
+        '501':
+          description: Stream upload is not enabled
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FileUploadResponse'
+                $ref: '#/components/schemas/ErrorResponse'
         default:
           $ref: '#/components/responses/ErrorResponse'
       parameters:
@@ -1632,6 +1632,7 @@ components:
           - insufficient_balance
           - quota_exceeded
           - rate_limited
+          - feature_not_enabled
           - content_policy_violation
           - provider_error
           - provider_request_invalid

@@ -46,6 +46,7 @@ type CreateTaskRequest struct {
 	CallbackURL    string
 	Metadata       map[string]string
 	BalanceHoldID  string
+	PriceSnapshot  PriceSnapshot
 }
 
 // IdempotencyCheck contains lookup inputs for an async write request.
@@ -112,6 +113,7 @@ func (s *Service) CreateMediaTask(ctx context.Context, request CreateTaskRequest
 		CallbackURL:    request.CallbackURL,
 		Metadata:       cloneMetadata(request.Metadata),
 		BalanceHoldID:  request.BalanceHoldID,
+		PriceSnapshot:  request.PriceSnapshot,
 		CreatedAt:      now,
 		UpdatedAt:      now,
 	}, idem)

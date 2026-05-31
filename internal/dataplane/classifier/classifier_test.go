@@ -143,12 +143,50 @@ func TestDefaultClassifierUsesModelRegistryHint(t *testing.T) {
 	}
 }
 
+func TestDefaultClassifierModelRegistryPrecedesBodySchema(t *testing.T) {
+	state := &engine.RequestState{
+		Snapshot: classifierSnapshot(t, []cpsnapshot.ModelRuntime{{
+			PublicModel: "internal-image",
+			Protocol:    string(engine.ProtocolUnified),
+			Capability:  "image",
+			Enabled:     true,
+		}}),
+		Incoming: engine.IncomingRequest{
+			Method: http.MethodPost,
+			Path:   "/v1/images/generations",
+			Header: http.Header{},
+			Body:   io.NopCloser(strings.NewReader(`{"model":"internal-image","prompt":"cat","size":"1024x1024"}`)),
+		},
+	}
+	if err := NewDefault().Classify(context.Background(), state); err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if state.ProtocolMode != engine.ProtocolUnified {
+		t.Fatalf("ProtocolMode = %q", state.ProtocolMode)
+	}
+}
+
 func TestDefaultClassifierInfersUnifiedFromBodySchema(t *testing.T) {
 	state := &engine.RequestState{Incoming: engine.IncomingRequest{
 		Method: http.MethodPost,
 		Path:   "/v1/images/generations",
 		Header: http.Header{},
 		Body:   io.NopCloser(strings.NewReader(`{"model":"unknown","prompt":"cat","model_params":{"seed":1}}`)),
+	}}
+	if err := NewDefault().Classify(context.Background(), state); err != nil {
+		t.Fatalf("Classify() error = %v", err)
+	}
+	if state.ProtocolMode != engine.ProtocolUnified {
+		t.Fatalf("ProtocolMode = %q", state.ProtocolMode)
+	}
+}
+
+func TestDefaultClassifierBodySchemaPrecedesAcceptHint(t *testing.T) {
+	state := &engine.RequestState{Incoming: engine.IncomingRequest{
+		Method: http.MethodPost,
+		Path:   "/v1/audio/speech",
+		Header: http.Header{"Accept": []string{"audio/mpeg"}},
+		Body:   io.NopCloser(strings.NewReader(`{"model":"tts-unified","input":"hi","voice":"alloy","model_params":{"seed":1}}`)),
 	}}
 	if err := NewDefault().Classify(context.Background(), state); err != nil {
 		t.Fatalf("Classify() error = %v", err)

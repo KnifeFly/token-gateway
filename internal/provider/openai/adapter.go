@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/provider/relay"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
@@ -22,6 +23,7 @@ const defaultTimeout = 30 * time.Second
 // Adapter relays requests to OpenAI-compatible providers.
 type Adapter struct {
 	client *http.Client
+	egress *egressguard.Guard
 }
 
 // NewAdapter returns an OpenAI-compatible adapter.
@@ -30,6 +32,14 @@ func NewAdapter(client *http.Client) *Adapter {
 		client = http.DefaultClient
 	}
 	return &Adapter{client: client}
+}
+
+// WithEgressGuard validates provider URLs before outbound HTTP calls.
+func (a *Adapter) WithEgressGuard(guard *egressguard.Guard) *Adapter {
+	if a != nil {
+		a.egress = guard
+	}
+	return a
 }
 
 // Relay sends one OpenAI-compatible request to the selected provider channel.
@@ -48,6 +58,11 @@ func (a *Adapter) doJSON(ctx context.Context, channel relay.ChannelConfig, endpo
 	timeout := channel.Timeout
 	if timeout <= 0 {
 		timeout = defaultTimeout
+	}
+	if a.egress != nil {
+		if err := a.egress.ValidateURL(ctx, endpoint); err != nil {
+			return nil, &relay.ProviderError{StatusCode: http.StatusBadGateway, Code: "provider_config_invalid", Message: "provider egress url is not allowed"}
+		}
 	}
 
 	if request.UpstreamModel == "" {

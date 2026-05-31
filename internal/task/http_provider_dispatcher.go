@@ -13,6 +13,7 @@ import (
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
@@ -74,6 +75,7 @@ type HTTPProviderTaskDispatcher struct {
 type GenericHTTPProviderTaskAdapter struct {
 	client      *http.Client
 	credentials ProviderCredentialResolver
+	egress      *egressguard.Guard
 }
 
 // NewHTTPProviderTaskDispatcher returns a provider task dispatcher backed by HTTP.
@@ -88,6 +90,25 @@ func NewGenericHTTPProviderTaskAdapter(client *http.Client, credentials Provider
 		client = http.DefaultClient
 	}
 	return &GenericHTTPProviderTaskAdapter{client: client, credentials: credentials}
+}
+
+// WithEgressGuard validates provider task URLs before outbound HTTP calls.
+func (a *GenericHTTPProviderTaskAdapter) WithEgressGuard(guard *egressguard.Guard) *GenericHTTPProviderTaskAdapter {
+	if a != nil {
+		a.egress = guard
+	}
+	return a
+}
+
+// WithEgressGuard validates fallback provider task URLs before outbound HTTP calls.
+func (d *HTTPProviderTaskDispatcher) WithEgressGuard(guard *egressguard.Guard) *HTTPProviderTaskDispatcher {
+	if d == nil || d.registry == nil {
+		return d
+	}
+	if adapter, ok := d.registry.fallback.(*GenericHTTPProviderTaskAdapter); ok {
+		adapter.WithEgressGuard(guard)
+	}
+	return d
 }
 
 // RegisterAdapter adds a provider-specific adapter to the dispatcher.
@@ -259,6 +280,11 @@ func (a *GenericHTTPProviderTaskAdapter) doJSON(ctx context.Context, method stri
 	timeout := channel.Timeout
 	if timeout <= 0 {
 		timeout = defaultProviderTaskTimeout
+	}
+	if a.egress != nil {
+		if err := a.egress.ValidateURL(ctx, endpoint); err != nil {
+			return apperr.ProviderError("provider task egress url is not allowed", apperr.WithCause(err))
+		}
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

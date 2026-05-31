@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
+	"github.com/KnifeFly/token-gateway/pkg/apperr"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
@@ -132,6 +134,79 @@ func TestBridgeSettlesTerminalSubmitBeforeCompletingTask(t *testing.T) {
 	}
 }
 
+func TestBridgePinsAsyncTaskPriceSnapshot(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	service := NewService(repo, 0)
+	dispatcher := &submitRecordingDispatcher{}
+	bridge := NewBridge(service, dispatcher).WithDefaultPrice(pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 7, OutputMicrosPerToken: 11})
+	state := bridgeMediaState("req_price", "hold_price")
+	state.IdempotencyKey = ""
+	state.SnapshotRef = engine.SnapshotRef{Version: "snap_1"}
+	state.PriceRule = engine.PriceRuleView{
+		PublicModel:           "image-public",
+		Currency:              "CNY",
+		InputMicrosPerToken:   13,
+		OutputMicrosPerToken:  17,
+		EstimatedOutputTokens: 42,
+		Enabled:               true,
+	}
+	state.EstimatedUsage = tokenusage.Estimate{InputTokens: 3, OutputTokens: 42}
+	state.EstimatedChargeMicros = 753
+	state.RoutePlan.PolicyID = "route_1"
+
+	if _, _, err := bridge.CreateAndDispatch(ctx, state); err != nil {
+		t.Fatalf("CreateAndDispatch() error = %v", err)
+	}
+	if len(dispatcher.requests) != 1 {
+		t.Fatalf("requests = %#v", dispatcher.requests)
+	}
+	snapshot := dispatcher.requests[0].Task.PriceSnapshot
+	if snapshot.Currency != "CNY" || snapshot.InputMicrosPerToken != 13 || snapshot.OutputMicrosPerToken != 17 {
+		t.Fatalf("price snapshot = %#v", snapshot)
+	}
+	if snapshot.EstimatedOutputTokens != 42 || snapshot.EstimatedChargeMicros != 753 || snapshot.RouteSnapshotVersion != "snap_1" || snapshot.RoutePolicyID != "route_1" {
+		t.Fatalf("price snapshot audit fields = %#v", snapshot)
+	}
+}
+
+func TestBridgeFallsBackWhenAsyncSubmitFailsBeforeExternalTask(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemoryRepository()
+	service := NewService(repo, 0)
+	dispatcher := &submitRecordingDispatcher{
+		errors: []error{apperr.ServiceUnavailable("temporary submit failure", apperr.WithTemporary())},
+		tasks:  []*ProviderTask{nil, &ProviderTask{ExternalID: "external_2", Status: StatusRunning, Progress: 1}},
+	}
+	bridge := NewBridge(service, dispatcher)
+	state := bridgeMediaState("req_fallback", "hold_fallback")
+	state.IdempotencyKey = ""
+	state.RoutePlan = &engine.RoutePlan{Candidates: []engine.ProviderCandidate{
+		{ProviderType: "mock_media", ChannelID: "channel_1", PublicModel: "image-public"},
+		{ProviderType: "mock_media", ChannelID: "channel_2", PublicModel: "image-public"},
+	}}
+
+	if _, _, err := bridge.CreateAndDispatch(ctx, state); err != nil {
+		t.Fatalf("CreateAndDispatch() error = %v", err)
+	}
+	if dispatcher.submits != 2 {
+		t.Fatalf("submits = %d, want 2", dispatcher.submits)
+	}
+	if dispatcher.requests[1].Candidate.ChannelID != "channel_2" {
+		t.Fatalf("requests = %#v", dispatcher.requests)
+	}
+	if len(state.Attempts) != 2 || !state.Attempts[1].Success || state.Attempts[1].FallbackFromChannelID != "channel_1" {
+		t.Fatalf("attempts = %#v", state.Attempts)
+	}
+	tasks, err := repo.ListTasks(ctx, TaskListFilter{TenantID: "tenant_1", ProjectID: "project_1", Limit: 10})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ChannelID != "channel_2" || tasks[0].ProviderTaskID != "external_2" {
+		t.Fatalf("tasks = %#v", tasks)
+	}
+}
+
 type bridgeRecordingSettlement struct {
 	tasks  []Task
 	usages []tokenusage.Actual
@@ -148,12 +223,23 @@ func (s *bridgeRecordingSettlement) RecordFailed(context.Context, Task, tokenusa
 }
 
 type submitRecordingDispatcher struct {
-	submits int
-	task    *ProviderTask
+	submits  int
+	task     *ProviderTask
+	tasks    []*ProviderTask
+	errors   []error
+	requests []ProviderTaskRequest
 }
 
-func (d *submitRecordingDispatcher) Submit(context.Context, ProviderTaskRequest) (*ProviderTask, error) {
+func (d *submitRecordingDispatcher) Submit(_ context.Context, request ProviderTaskRequest) (*ProviderTask, error) {
+	d.requests = append(d.requests, request)
+	index := d.submits
 	d.submits++
+	if index < len(d.errors) && d.errors[index] != nil {
+		return nil, d.errors[index]
+	}
+	if index < len(d.tasks) && d.tasks[index] != nil {
+		return d.tasks[index], nil
+	}
 	if d.task != nil {
 		return d.task, nil
 	}
@@ -205,10 +291,10 @@ func (bridgeSnapshot) LookupRoute(string) (engine.RoutePolicyView, bool) {
 	return engine.RoutePolicyView{}, false
 }
 func (bridgeSnapshot) LookupChannel(channelID string) (engine.ChannelView, bool) {
-	if channelID != "channel_1" {
+	if channelID != "channel_1" && channelID != "channel_2" {
 		return engine.ChannelView{}, false
 	}
-	return engine.ChannelView{ID: "channel_1", ProviderType: "mock_media", Enabled: true}, true
+	return engine.ChannelView{ID: channelID, ProviderType: "mock_media", Enabled: true}, true
 }
 func (bridgeSnapshot) LookupPrice(string) (engine.PriceRuleView, bool) {
 	return engine.PriceRuleView{}, false

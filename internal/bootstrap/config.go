@@ -113,6 +113,7 @@ type GatewayConfig struct {
 	Body        BodyConfig         `yaml:"body"`
 	Protocol    ProtocolConfig     `yaml:"protocol"`
 	Idempotency IdempotencyConfig  `yaml:"idempotency"`
+	Egress      EgressConfig       `yaml:"egress"`
 	Seed        SeedSnapshotConfig `yaml:"seed_snapshot"`
 	Billing     BillingConfig      `yaml:"billing"`
 	Limits      LimitsConfig       `yaml:"limits"`
@@ -131,6 +132,13 @@ type ProtocolConfig struct {
 // IdempotencyConfig controls async task and file idempotency retention.
 type IdempotencyConfig struct {
 	TTL Duration `yaml:"ttl"`
+}
+
+// EgressConfig controls outbound URL safety checks.
+type EgressConfig struct {
+	Enabled      bool     `yaml:"enabled"`
+	AllowedHosts []string `yaml:"allowed_hosts"`
+	AllowedCIDRs []string `yaml:"allowed_cidrs"`
 }
 
 // SeedSnapshotConfig describes the local bootstrap snapshot.
@@ -199,6 +207,8 @@ type WorkerConfig struct {
 	HoldReaperInterval       Duration `yaml:"hold_reaper_interval"`
 	ReconciliationInterval   Duration `yaml:"reconciliation_interval"`
 	CallbackInterval         Duration `yaml:"callback_interval"`
+	CallbackSigningSecret    string   `yaml:"callback_signing_secret"`
+	CallbackMaxRetries       int      `yaml:"callback_max_retries"`
 	BatchSize                int      `yaml:"batch_size"`
 }
 
@@ -261,6 +271,9 @@ func DefaultConfig() Config {
 			Idempotency: IdempotencyConfig{
 				TTL: Duration{24 * time.Hour},
 			},
+			Egress: EgressConfig{
+				Enabled: true,
+			},
 			Seed: SeedSnapshotConfig{
 				Enabled:        false,
 				APIKeyID:       "key_local",
@@ -312,6 +325,8 @@ func DefaultConfig() Config {
 			HoldReaperInterval:       Duration{time.Minute},
 			ReconciliationInterval:   Duration{15 * time.Minute},
 			CallbackInterval:         Duration{5 * time.Second},
+			CallbackSigningSecret:    "local-callback-signing-secret",
+			CallbackMaxRetries:       5,
 			BatchSize:                100,
 		},
 		Configd: ConfigdConfig{
@@ -428,6 +443,12 @@ func (c *Config) Normalize() {
 	if c.Gateway.Limits.KeyPrefix == "" {
 		c.Gateway.Limits.KeyPrefix = "token-gateway"
 	}
+	for i, host := range c.Gateway.Egress.AllowedHosts {
+		c.Gateway.Egress.AllowedHosts[i] = strings.TrimSpace(host)
+	}
+	for i, cidr := range c.Gateway.Egress.AllowedCIDRs {
+		c.Gateway.Egress.AllowedCIDRs[i] = strings.TrimSpace(cidr)
+	}
 	if c.Control.Addr == "" {
 		c.Control.Addr = ":9502"
 	}
@@ -466,6 +487,13 @@ func (c *Config) Normalize() {
 	}
 	if c.Worker.CallbackInterval.Duration <= 0 {
 		c.Worker.CallbackInterval = Duration{5 * time.Second}
+	}
+	c.Worker.CallbackSigningSecret = strings.TrimSpace(c.Worker.CallbackSigningSecret)
+	if c.Worker.CallbackSigningSecret == "" {
+		c.Worker.CallbackSigningSecret = "local-callback-signing-secret"
+	}
+	if c.Worker.CallbackMaxRetries <= 0 {
+		c.Worker.CallbackMaxRetries = 5
 	}
 	if c.Worker.BatchSize <= 0 {
 		c.Worker.BatchSize = 100
@@ -592,9 +620,12 @@ func applyEnv(cfg *Config) {
 	setBool("TOKEN_GATEWAY_BILLING_ENABLED", &cfg.Gateway.Billing.Enabled)
 	setString("TOKEN_GATEWAY_BILLING_CURRENCY", &cfg.Gateway.Billing.Currency)
 	setBool("TOKEN_GATEWAY_LIMITS_ENABLED", &cfg.Gateway.Limits.Enabled)
+	setBool("TOKEN_GATEWAY_EGRESS_ENABLED", &cfg.Gateway.Egress.Enabled)
 	setString("TOKEN_GATEWAY_CONTROL_ADDR", &cfg.Control.Addr)
 	setString("TOKEN_GATEWAY_CONTROL_ADMIN_TOKEN", &cfg.Control.AdminToken)
 	setString("TOKEN_GATEWAY_CONTROL_CREDENTIAL_KEY", &cfg.Control.CredentialKey)
 	setBool("TOKEN_GATEWAY_WORKER_ENABLED", &cfg.Worker.Enabled)
 	setString("TOKEN_GATEWAY_WORKER_ADDR", &cfg.Worker.Addr)
+	setString("TOKEN_GATEWAY_CALLBACK_SIGNING_SECRET", &cfg.Worker.CallbackSigningSecret)
+	setInt("TOKEN_GATEWAY_CALLBACK_MAX_RETRIES", &cfg.Worker.CallbackMaxRetries)
 }

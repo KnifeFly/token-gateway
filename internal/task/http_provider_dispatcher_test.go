@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 )
 
 func TestHTTPProviderTaskDispatcherUsesRegisteredAdapter(t *testing.T) {
@@ -91,6 +92,23 @@ func TestGenericHTTPProviderTaskAdapterPollNormalizesMediaResults(t *testing.T) 
 	}
 	if payload["results"] == nil || payload["assets"] == nil || payload["provider_metadata"] == nil {
 		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestGenericHTTPProviderTaskAdapterRejectsUnsafeProviderURL(t *testing.T) {
+	guard, err := egressguard.New(egressguard.Config{})
+	if err != nil {
+		t.Fatalf("egressguard.New() error = %v", err)
+	}
+	adapter := NewGenericHTTPProviderTaskAdapter(nil, nil).WithEgressGuard(guard)
+	_, err = adapter.Submit(context.Background(), ProviderTaskRequest{
+		Task:      Task{ID: "task_1", Kind: KindImageGeneration, Input: []byte(`{"prompt":"hi"}`)},
+		Candidate: engine.ProviderCandidate{ProviderType: "generic_media", ChannelID: "channel_1", PublicModel: "image-public"},
+		Channel:   engine.ChannelView{ID: "channel_1", ProviderType: "generic_media", BaseURL: "http://127.0.0.1:8080", Enabled: true},
+		RequestID: "req_1",
+	})
+	if err == nil {
+		t.Fatal("Submit() error = nil, want egress rejection")
 	}
 }
 

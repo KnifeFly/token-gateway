@@ -73,6 +73,9 @@ func TestOperationsIncludeAllP1LimitTypes(t *testing.T) {
 	if counters[0].cost != 42 || buckets[3].cost != 42 {
 		t.Fatalf("budget costs = %d/%d", counters[0].cost, buckets[3].cost)
 	}
+	if counters[0].reason != "daily budget admission guard exceeded" || buckets[3].reason != "cost per minute admission guard exceeded" {
+		t.Fatalf("budget reasons = %q/%q", counters[0].reason, buckets[3].reason)
+	}
 }
 
 func TestRequestScopeSeparatesProviderCandidateScope(t *testing.T) {

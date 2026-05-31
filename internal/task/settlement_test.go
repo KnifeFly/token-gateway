@@ -43,3 +43,23 @@ func TestBillingSettlementAllowsNoHoldZeroAmountAudit(t *testing.T) {
 		t.Fatalf("Settle() error = %v", err)
 	}
 }
+
+func TestBillingSettlementUsesPinnedTaskPriceSnapshot(t *testing.T) {
+	settlement := NewBillingSettlement(nil, pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 1000, OutputMicrosPerToken: 2000})
+	task := Task{
+		RequestID: "req_pinned_price",
+		Status:    StatusSucceeded,
+		Result:    []byte(`{"results":["https://provider.example/result.png"]}`),
+		PriceSnapshot: PriceSnapshot{
+			Currency:             "CNY",
+			InputMicrosPerToken:  3,
+			OutputMicrosPerToken: 5,
+			Source:               "runtime_price_rule",
+		},
+	}
+
+	plan := settlement.plan(task, tokenusage.Actual{InputTokens: 2, OutputTokens: 4, TotalTokens: 6})
+	if plan.Currency != "CNY" || plan.AmountMicros != 26 {
+		t.Fatalf("plan = %#v", plan)
+	}
+}
