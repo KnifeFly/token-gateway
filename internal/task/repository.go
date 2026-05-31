@@ -20,6 +20,7 @@ type Repository interface {
 	GetFileByIdempotency(ctx context.Context, tenantID, apiKeyID, endpoint, key string, now time.Time) (*FileAsset, *IdempotencyRecord, bool, error)
 	CreateFile(ctx context.Context, file FileAsset, idempotency *IdempotencyRecord) (*FileAsset, error)
 	FileQuota(ctx context.Context, tenantID, projectID string, maxFiles int, maxBytes int64) (FileQuota, error)
+	CleanupExpiredFiles(ctx context.Context, now time.Time, limit int) (FileCleanupResult, error)
 
 	EnqueueCallback(ctx context.Context, event CallbackEvent) error
 	ListDueCallbacks(ctx context.Context, limit int, now time.Time) ([]CallbackEvent, error)

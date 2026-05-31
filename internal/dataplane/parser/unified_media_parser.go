@@ -19,6 +19,8 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
+const maxBase64FileBytes = 4 << 20
+
 func (p *Parser) parseUnifiedMedia(state *engine.RequestState, body []byte) error {
 	var req unifiedMediaRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -130,6 +132,9 @@ func (p *Parser) parseFileBase64(state *engine.RequestState, body []byte) error 
 	content, mimeType, err := decodeBase64Data(req.Base64Data)
 	if err != nil {
 		return err
+	}
+	if len(content) > maxBase64FileBytes {
+		return apperr.InvalidArgument("base64 input asset exceeds decoded size limit")
 	}
 	fileName := req.FileName
 	if fileName == "" {

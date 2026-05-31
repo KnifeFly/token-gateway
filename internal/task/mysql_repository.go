@@ -282,7 +282,8 @@ func (r *MySQLRepository) FileQuota(ctx context.Context, tenantID, projectID str
 	if err := r.db.QueryRowContext(ctx, `
 SELECT COUNT(*), COALESCE(SUM(size_bytes), 0)
 FROM file_assets
-WHERE tenant_id = ? AND project_id = ?`, tenantID, projectID).Scan(&quota.UsedFiles, &quota.UsedBytes); err != nil {
+WHERE tenant_id = ? AND project_id = ?
+  AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)`, tenantID, projectID).Scan(&quota.UsedFiles, &quota.UsedBytes); err != nil {
 		return FileQuota{}, err
 	}
 	if maxFiles > 0 {
@@ -292,6 +293,77 @@ WHERE tenant_id = ? AND project_id = ?`, tenantID, projectID).Scan(&quota.UsedFi
 		}
 	}
 	return quota, nil
+}
+
+// CleanupExpiredFiles removes expired transient input asset metadata.
+func (r *MySQLRepository) CleanupExpiredFiles(ctx context.Context, now time.Time, limit int) (FileCleanupResult, error) {
+	if r == nil || r.db == nil {
+		return FileCleanupResult{}, nil
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return FileCleanupResult{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `
+SELECT id, expires_at
+FROM file_assets
+WHERE expires_at IS NOT NULL AND expires_at <= ?
+ORDER BY expires_at ASC
+LIMIT ?`, now, limit)
+	if err != nil {
+		return FileCleanupResult{}, err
+	}
+	var ids []string
+	result := FileCleanupResult{}
+	for rows.Next() {
+		var id string
+		var expiresAt time.Time
+		if err := rows.Scan(&id, &expiresAt); err != nil {
+			_ = rows.Close()
+			return FileCleanupResult{}, err
+		}
+		ids = append(ids, id)
+		age := now.Sub(expiresAt)
+		if age > result.MaxAge {
+			result.MaxAge = age
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return FileCleanupResult{}, err
+	}
+	if err := rows.Err(); err != nil {
+		return FileCleanupResult{}, err
+	}
+	if len(ids) == 0 {
+		if err := tx.Commit(); err != nil {
+			return FileCleanupResult{}, err
+		}
+		return result, nil
+	}
+	placeholders, args := stringInClause(ids)
+	idempotencyArgs := append([]any{string(ResourceFile)}, args...)
+	if _, err := tx.ExecContext(ctx, `
+DELETE FROM task_idempotency_records
+WHERE resource_type = ? AND resource_id IN (`+placeholders+`)`, idempotencyArgs...); err != nil {
+		return FileCleanupResult{}, err
+	}
+	deleteResult, err := tx.ExecContext(ctx, `DELETE FROM file_assets WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return FileCleanupResult{}, err
+	}
+	deleted, err := deleteResult.RowsAffected()
+	if err != nil {
+		return FileCleanupResult{}, err
+	}
+	result.Deleted = int(deleted)
+	if err := tx.Commit(); err != nil {
+		return FileCleanupResult{}, err
+	}
+	return result, nil
 }
 
 // EnqueueCallback stores a callback event.
@@ -547,4 +619,14 @@ func nullableTime(value time.Time) any {
 		return nil
 	}
 	return value
+}
+
+func stringInClause(values []string) (string, []any) {
+	parts := make([]string, len(values))
+	args := make([]any, len(values))
+	for i, value := range values {
+		parts[i] = "?"
+		args[i] = value
+	}
+	return strings.Join(parts, ","), args
 }

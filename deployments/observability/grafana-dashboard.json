@@ -50,6 +50,15 @@
     },
     {
       "type": "timeseries",
+      "title": "Transient File Cleanup",
+      "targets": [
+        { "expr": "sum(rate(token_gateway_file_cleanup_deleted_total[5m]))", "legendFormat": "deleted" },
+        { "expr": "token_gateway_file_cleanup_max_age_seconds", "legendFormat": "max age seconds" },
+        { "expr": "token_gateway_file_cleanup_next_run_timestamp_seconds", "legendFormat": "next run timestamp" }
+      ]
+    },
+    {
+      "type": "timeseries",
       "title": "Worker Job Outcomes",
       "targets": [
         { "expr": "sum(rate(token_gateway_worker_job_runs_total[5m])) by (job, outcome)", "legendFormat": "{{job}} {{outcome}}" },

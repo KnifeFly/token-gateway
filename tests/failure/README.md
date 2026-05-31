@@ -33,3 +33,10 @@ and response drain/close tests:
 ```bash
 tests/failure/worker_callback_drills.sh
 ```
+
+P18 file asset boundary drills replay transient metadata quota, cleanup, URL
+metadata, base64 size limit, stream disabled, and contract tests:
+
+```bash
+tests/failure/file_asset_boundary_drills.sh
+```

@@ -18,7 +18,7 @@ func TaskResponse(task *Task) (*engine.GatewayResponse, error) {
 	return jsonResponse(http.StatusOK, body), nil
 }
 
-// FileResponse serializes a file upload response.
+// FileResponse serializes a transient input asset metadata response.
 func FileResponse(file *FileAsset) (*engine.GatewayResponse, error) {
 	body, err := json.Marshal(map[string]any{
 		"success": true,
@@ -111,7 +111,7 @@ func TaskObject(task *Task) map[string]any {
 	return payload
 }
 
-// FileObject returns the OpenAPI-compatible file object.
+// FileObject returns the OpenAPI-compatible transient input asset object.
 func FileObject(file *FileAsset) map[string]any {
 	if file == nil {
 		return map[string]any{}

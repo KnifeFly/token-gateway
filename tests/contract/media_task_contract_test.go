@@ -34,6 +34,30 @@ func TestMediaFileObjectIsTransientInputAsset(t *testing.T) {
 	}
 }
 
+func TestMediaURLFileObjectDoesNotExposeGatewayHostedURL(t *testing.T) {
+	file := &tasksvc.FileAsset{
+		ID:        "file_url",
+		FileName:  "input.png",
+		SizeBytes: 20,
+		MIMEType:  "image/png",
+		Source:    "upload_url",
+		SourceURL: "https://assets.example/input.png",
+		Transient: true,
+		CreatedAt: time.Unix(100, 0).UTC(),
+	}
+
+	object := tasksvc.FileObject(file)
+	if object["source_url"] != "https://assets.example/input.png" {
+		t.Fatalf("source_url = %#v", object)
+	}
+	if _, ok := object["file_url"]; ok {
+		t.Fatalf("file_url should be omitted for url metadata registration: %#v", object)
+	}
+	if _, ok := object["download_url"]; ok {
+		t.Fatalf("download_url should be omitted for url metadata registration: %#v", object)
+	}
+}
+
 func TestMediaTaskObjectExposesProviderResultContract(t *testing.T) {
 	result, _ := json.Marshal(map[string]any{
 		"results": []string{"https://cdn.example/result.png"},

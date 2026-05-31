@@ -215,6 +215,7 @@ type WorkerConfig struct {
 	ProviderTaskPollInterval Duration `yaml:"provider_task_poll_interval"`
 	FailedSettlementInterval Duration `yaml:"failed_settlement_interval"`
 	HoldReaperInterval       Duration `yaml:"hold_reaper_interval"`
+	FileCleanupInterval      Duration `yaml:"file_cleanup_interval"`
 	ReconciliationInterval   Duration `yaml:"reconciliation_interval"`
 	CallbackInterval         Duration `yaml:"callback_interval"`
 	CallbackClaimTimeout     Duration `yaml:"callback_claim_timeout"`
@@ -339,6 +340,7 @@ func DefaultConfig() Config {
 			ProviderTaskPollInterval: Duration{5 * time.Second},
 			FailedSettlementInterval: Duration{time.Minute},
 			HoldReaperInterval:       Duration{time.Minute},
+			FileCleanupInterval:      Duration{time.Hour},
 			ReconciliationInterval:   Duration{15 * time.Minute},
 			CallbackInterval:         Duration{5 * time.Second},
 			CallbackClaimTimeout:     Duration{2 * time.Minute},
@@ -512,6 +514,9 @@ func (c *Config) Normalize() {
 	}
 	if c.Worker.HoldReaperInterval.Duration <= 0 {
 		c.Worker.HoldReaperInterval = Duration{time.Minute}
+	}
+	if c.Worker.FileCleanupInterval.Duration <= 0 {
+		c.Worker.FileCleanupInterval = Duration{time.Hour}
 	}
 	if c.Worker.ReconciliationInterval.Duration <= 0 {
 		c.Worker.ReconciliationInterval = Duration{15 * time.Minute}

@@ -12,14 +12,15 @@ import (
 	"github.com/KnifeFly/token-gateway/pkg/egressguard"
 )
 
-// FileService owns file asset creation, idempotency, and quota reporting.
+// FileService owns transient input asset metadata, idempotency, and quota reporting.
 type FileService struct {
-	repo     Repository
-	ttl      time.Duration
-	maxFiles int
-	maxBytes int64
-	egress   *egressguard.Guard
-	now      func() time.Time
+	repo           Repository
+	ttl            time.Duration
+	maxFiles       int
+	maxBytes       int64
+	maxInlineBytes int64
+	egress         *egressguard.Guard
+	now            func() time.Time
 }
 
 // FileServiceOption customizes FileService behavior.
@@ -31,11 +32,12 @@ func NewFileService(repo Repository, ttl time.Duration, options ...FileServiceOp
 		ttl = 24 * time.Hour
 	}
 	service := &FileService{
-		repo:     repo,
-		ttl:      ttl,
-		maxFiles: 1000,
-		maxBytes: 100 << 30,
-		now:      func() time.Time { return time.Now().UTC() },
+		repo:           repo,
+		ttl:            ttl,
+		maxFiles:       1000,
+		maxBytes:       100 << 30,
+		maxInlineBytes: 4 << 20,
+		now:            func() time.Time { return time.Now().UTC() },
 	}
 	for _, option := range options {
 		if option != nil {
@@ -52,7 +54,16 @@ func WithFileEgressGuard(guard *egressguard.Guard) FileServiceOption {
 	}
 }
 
-// FileCreateRequest contains normalized upload inputs.
+// WithFileInlineMaxBytes configures the decoded inline metadata limit.
+func WithFileInlineMaxBytes(maxBytes int64) FileServiceOption {
+	return func(s *FileService) {
+		if maxBytes > 0 {
+			s.maxInlineBytes = maxBytes
+		}
+	}
+}
+
+// FileCreateRequest contains normalized transient input asset metadata.
 type FileCreateRequest struct {
 	TenantID       string
 	ProjectID      string
@@ -86,13 +97,16 @@ func (s *FileService) FindIdempotentFile(ctx context.Context, request FileCreate
 	return file, true, nil
 }
 
-// CreateFile creates a normalized file asset.
+// CreateFile creates normalized transient input asset metadata.
 func (s *FileService) CreateFile(ctx context.Context, request FileCreateRequest) (*FileAsset, bool, error) {
 	if s == nil || s.repo == nil {
 		return nil, false, apperr.ConfigUnavailable("file repository is unavailable")
 	}
 	if request.SizeBytes < 0 {
 		return nil, false, apperr.InvalidArgument("file size is invalid")
+	}
+	if request.Source == "upload_base64" && s.maxInlineBytes > 0 && request.SizeBytes > s.maxInlineBytes {
+		return nil, false, apperr.InvalidArgument("base64 input asset exceeds decoded size limit")
 	}
 	if request.IdempotencyKey != "" {
 		existing, hit, err := s.FindIdempotentFile(ctx, request)
@@ -134,7 +148,8 @@ func (s *FileService) CreateFile(ctx context.Context, request FileCreateRequest)
 		SizeBytes:    request.SizeBytes,
 		MIMEType:     mimeType,
 		UploadPath:   strings.TrimSpace(request.UploadPath),
-		FileURL:      sourceURL,
+		FileURL:      "",
+		DownloadURL:  "",
 		Source:       request.Source,
 		ContentHash:  strings.TrimSpace(request.ContentHash),
 		SourceURL:    sourceURL,
@@ -153,6 +168,17 @@ func (s *FileService) Quota(ctx context.Context, tenantID, projectID string) (Fi
 		return FileQuota{}, apperr.ConfigUnavailable("file repository is unavailable")
 	}
 	return s.repo.FileQuota(ctx, tenantID, projectID, s.maxFiles, s.maxBytes)
+}
+
+// CleanupExpiredFiles removes expired transient input asset metadata.
+func (s *FileService) CleanupExpiredFiles(ctx context.Context, now time.Time, limit int) (FileCleanupResult, error) {
+	if s == nil || s.repo == nil {
+		return FileCleanupResult{}, apperr.ConfigUnavailable("file repository is unavailable")
+	}
+	if now.IsZero() {
+		now = s.now()
+	}
+	return s.repo.CleanupExpiredFiles(ctx, now.UTC(), limit)
 }
 
 func sanitizeFileName(name string) string {

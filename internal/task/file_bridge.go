@@ -17,7 +17,7 @@ func NewFileBridge(service *FileService) *FileBridge {
 	return &FileBridge{service: service}
 }
 
-// HandleFileOperation handles upload and quota operations after authentication.
+// HandleFileOperation handles transient metadata and quota operations after authentication.
 func (b *FileBridge) HandleFileOperation(ctx context.Context, state *engine.RequestState) (*engine.GatewayResponse, error) {
 	if b == nil || b.service == nil {
 		return nil, apperr.ConfigUnavailable("file bridge is unavailable")

@@ -3,6 +3,7 @@ package parser
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -227,6 +228,24 @@ func TestParserFileBase64(t *testing.T) {
 	}
 	if !strings.HasPrefix(state.Parsed.File.ContentHash, "sha256:") {
 		t.Fatalf("content hash = %q", state.Parsed.File.ContentHash)
+	}
+}
+
+func TestParserFileBase64RejectsOversizedDecodedInput(t *testing.T) {
+	raw := bytes.Repeat([]byte("a"), maxBase64FileBytes+1)
+	body := `{"base64_data":"` + base64.StdEncoding.EncodeToString(raw) + `","file_name":"large.bin"}`
+	state := &engine.RequestState{
+		CanonicalAPI: engine.CanonicalFileUploadBase64,
+		Incoming: engine.IncomingRequest{
+			Path: "/v1/files/upload/base64",
+			Body: io.NopCloser(strings.NewReader(body)),
+		},
+	}
+
+	err := NewOpenAIChatParser(int64(len(body)+1024)).Parse(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeInvalidArgument {
+		t.Fatalf("error = %v, want invalid_argument", err)
 	}
 }
 

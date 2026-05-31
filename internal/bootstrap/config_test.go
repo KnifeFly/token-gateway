@@ -21,8 +21,10 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Configd.Addr != ":9504" {
 		t.Fatalf("Configd.Addr = %q", cfg.Configd.Addr)
 	}
-	if cfg.Worker.HeartbeatInterval.Duration != 10*time.Second || cfg.Worker.CallbackMaxConcurrency != 4 {
-		t.Fatalf("worker defaults heartbeat = %s callback concurrency = %d", cfg.Worker.HeartbeatInterval.Duration, cfg.Worker.CallbackMaxConcurrency)
+	if cfg.Worker.HeartbeatInterval.Duration != 10*time.Second ||
+		cfg.Worker.CallbackMaxConcurrency != 4 ||
+		cfg.Worker.FileCleanupInterval.Duration != time.Hour {
+		t.Fatalf("worker defaults heartbeat = %s callback concurrency = %d file cleanup = %s", cfg.Worker.HeartbeatInterval.Duration, cfg.Worker.CallbackMaxConcurrency, cfg.Worker.FileCleanupInterval.Duration)
 	}
 }
 

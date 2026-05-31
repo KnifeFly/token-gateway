@@ -95,7 +95,7 @@ func WithTaskBridge(tasks TaskBridge) Option {
 	return func(e *GatewayEngine) { e.tasks = tasks }
 }
 
-// WithFileService configures file upload and quota handling.
+// WithFileService configures transient input asset metadata and quota handling.
 func WithFileService(files FileService) Option {
 	return func(e *GatewayEngine) { e.files = files }
 }

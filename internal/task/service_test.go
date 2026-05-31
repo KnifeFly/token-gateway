@@ -325,7 +325,7 @@ func TestFileServiceIdempotency(t *testing.T) {
 		t.Fatal("first create returned idempotency hit")
 	}
 	if first.FileURL != "" || first.DownloadURL != "" || !first.Transient || first.ExpiresAt == nil {
-		t.Fatalf("file storage fields = %#v", first)
+		t.Fatalf("file transient fields = %#v", first)
 	}
 	if !strings.HasPrefix(first.ContentHash, "sha256:") {
 		t.Fatalf("content hash = %q", first.ContentHash)
@@ -369,5 +369,90 @@ func TestFileServiceRejectsUnsafeSourceURL(t *testing.T) {
 	appErr, ok := apperr.As(err)
 	if !ok || appErr.Code != apperr.CodeInvalidArgument {
 		t.Fatalf("error = %v, want invalid_argument", err)
+	}
+}
+
+func TestFileServiceURLRegistrationDoesNotCreateGatewayFileURL(t *testing.T) {
+	ctx := context.Background()
+	service := NewFileService(NewMemoryRepository(), 0)
+	file, _, err := service.CreateFile(ctx, FileCreateRequest{
+		TenantID:    "tenant",
+		ProjectID:   "project",
+		APIKeyID:    "key",
+		RequestID:   "req_url",
+		Endpoint:    "/v1/files/upload/url",
+		RequestBody: []byte(`{"url":"https://assets.example/input.png"}`),
+		FileName:    "input.png",
+		Source:      "upload_url",
+		SourceURL:   "https://assets.example/input.png",
+	})
+	if err != nil {
+		t.Fatalf("CreateFile(url) error = %v", err)
+	}
+	if file.SourceURL != "https://assets.example/input.png" || file.FileURL != "" || file.DownloadURL != "" {
+		t.Fatalf("file = %#v", file)
+	}
+	object := FileObject(file)
+	if object["source_url"] != "https://assets.example/input.png" {
+		t.Fatalf("object source_url = %#v", object)
+	}
+	if _, ok := object["file_url"]; ok {
+		t.Fatalf("file_url should be omitted for url registration: %#v", object)
+	}
+}
+
+func TestFileQuotaExcludesExpiredAssets(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	repo := NewMemoryRepository()
+	expiredAt := now.Add(-time.Minute)
+	activeExpiresAt := now.Add(time.Hour)
+	files := []FileAsset{
+		{ID: "file_expired", TenantID: "tenant", ProjectID: "project", SizeBytes: 10, ExpiresAt: &expiredAt},
+		{ID: "file_active", TenantID: "tenant", ProjectID: "project", SizeBytes: 20, ExpiresAt: &activeExpiresAt},
+		{ID: "file_no_expiry", TenantID: "tenant", ProjectID: "project", SizeBytes: 30},
+		{ID: "file_other_project", TenantID: "tenant", ProjectID: "other", SizeBytes: 40, ExpiresAt: &activeExpiresAt},
+	}
+	for _, file := range files {
+		if _, err := repo.CreateFile(ctx, file, nil); err != nil {
+			t.Fatalf("CreateFile(%s) error = %v", file.ID, err)
+		}
+	}
+
+	quota, err := repo.FileQuota(ctx, "tenant", "project", 100, 1000)
+	if err != nil {
+		t.Fatalf("FileQuota() error = %v", err)
+	}
+	if quota.UsedFiles != 2 || quota.UsedBytes != 50 || quota.RemainingFiles != 98 {
+		t.Fatalf("quota = %#v", quota)
+	}
+}
+
+func TestFileServiceCleanupExpiredFiles(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now().UTC()
+	repo := NewMemoryRepository()
+	service := NewFileService(repo, 0)
+	expiredAt := now.Add(-2 * time.Hour)
+	activeExpiresAt := now.Add(time.Hour)
+	if _, err := repo.CreateFile(ctx, FileAsset{ID: "file_expired", TenantID: "tenant", ProjectID: "project", SizeBytes: 10, ExpiresAt: &expiredAt}, nil); err != nil {
+		t.Fatalf("CreateFile(expired) error = %v", err)
+	}
+	if _, err := repo.CreateFile(ctx, FileAsset{ID: "file_active", TenantID: "tenant", ProjectID: "project", SizeBytes: 20, ExpiresAt: &activeExpiresAt}, nil); err != nil {
+		t.Fatalf("CreateFile(active) error = %v", err)
+	}
+
+	result, err := service.CleanupExpiredFiles(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("CleanupExpiredFiles() error = %v", err)
+	}
+	if result.Deleted != 1 || result.MaxAge < 2*time.Hour-time.Second {
+		t.Fatalf("cleanup result = %#v", result)
+	}
+	if _, ok := repo.files["file_expired"]; ok {
+		t.Fatal("expired file was not removed")
+	}
+	if _, ok := repo.files["file_active"]; !ok {
+		t.Fatal("active file was removed")
 	}
 }

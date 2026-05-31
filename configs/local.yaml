@@ -105,6 +105,7 @@ worker:
   provider_task_poll_interval: 5s
   failed_settlement_interval: 1m
   hold_reaper_interval: 1m
+  file_cleanup_interval: 1h
   reconciliation_interval: 15m
   callback_interval: 5s
   callback_claim_timeout: 2m

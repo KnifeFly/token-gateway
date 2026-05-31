@@ -56,6 +56,10 @@ Current implemented public surfaces include:
 
 See `docs/design/ai_gateway_openapi.yaml` and `docs/runbook/provider-protocol-compatibility.md` for protocol details.
 
+## File Input Boundary
+
+`/v1/files/*` is a transient input asset metadata registry. It records URL/base64 metadata for request normalization, idempotency, quota protection, provider forwarding, and audit. It does not store object bytes, proxy downloads, produce gateway-hosted file URLs, or provide media lifecycle/storage SLA. `/v1/files/upload/stream` remains disabled until a separate object-reference/spool stage is designed.
+
 ## Configuration
 
 Important local and production settings:

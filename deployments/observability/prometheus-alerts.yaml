@@ -65,3 +65,11 @@ groups:
         annotations:
           summary: Callback delivery is retrying.
           description: Task callback outbox delivery failures are causing retries.
+      - alert: TokenGatewayFileCleanupErrors
+        expr: sum(rate(token_gateway_file_cleanup_runs_total{outcome="error"}[15m])) > 0
+        for: 15m
+        labels:
+          severity: warn
+        annotations:
+          summary: Transient file metadata cleanup is failing.
+          description: Expired transient input asset metadata cleanup has returned errors.

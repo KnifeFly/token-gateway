@@ -61,11 +61,11 @@ const (
 	CanonicalTaskGet CanonicalAPI = "task.get"
 	// CanonicalTaskCancel identifies task cancellation operations.
 	CanonicalTaskCancel CanonicalAPI = "task.cancel"
-	// CanonicalFileUploadBase64 identifies base64 file uploads.
+	// CanonicalFileUploadBase64 identifies base64 transient asset metadata registration.
 	CanonicalFileUploadBase64 CanonicalAPI = "file.upload_base64"
-	// CanonicalFileUploadURL identifies URL file uploads.
+	// CanonicalFileUploadURL identifies URL transient asset metadata registration.
 	CanonicalFileUploadURL CanonicalAPI = "file.upload_url"
-	// CanonicalFileUploadStream identifies streamed file uploads.
+	// CanonicalFileUploadStream identifies disabled streamed asset registration.
 	CanonicalFileUploadStream CanonicalAPI = "file.upload_stream"
 	// CanonicalFileQuota identifies file quota checks.
 	CanonicalFileQuota CanonicalAPI = "file.quota"
@@ -85,11 +85,11 @@ const (
 type FileOperation string
 
 const (
-	// FileOperationUploadBase64 uploads a file using an inline base64 body.
+	// FileOperationUploadBase64 registers inline base64 metadata.
 	FileOperationUploadBase64 FileOperation = "upload_base64"
-	// FileOperationUploadURL imports a file from a remote URL.
+	// FileOperationUploadURL registers remote URL metadata.
 	FileOperationUploadURL FileOperation = "upload_url"
-	// FileOperationUploadStream uploads a file from a request stream.
+	// FileOperationUploadStream represents the disabled stream upload contract.
 	FileOperationUploadStream FileOperation = "upload_stream"
 	// FileOperationQuota reads current file quota state.
 	FileOperationQuota FileOperation = "quota"
@@ -326,7 +326,7 @@ type TaskRequest struct {
 	TaskID    string
 }
 
-// FileRequest contains M4 file upload/quota fields.
+// FileRequest contains transient input asset registration and quota fields.
 type FileRequest struct {
 	Operation    FileOperation
 	FileName     string
@@ -482,7 +482,7 @@ type TaskBridge interface {
 	HandleTaskOperation(ctx context.Context, state *RequestState) (*GatewayResponse, error)
 }
 
-// FileService handles file uploads and quota operations.
+// FileService handles transient input asset registration and quota operations.
 type FileService interface {
 	HandleFileOperation(ctx context.Context, state *RequestState) (*GatewayResponse, error)
 }
