@@ -2,7 +2,7 @@
 
 ## 阶段目标
 
-把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 根据 2026-05-31 review 结果作为可靠性收敛插入阶段；当它们处于待执行状态时，优先级高于继续新增功能。
+把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 已根据 2026-05-31 review 结果作为第一轮可靠性收敛阶段；P15-P18 根据后续 review 暴露的生产生命周期、身份边界、worker/callback 和文件资产边界问题作为第二轮收敛阶段。当 P15-P18 处于待执行状态时，优先级高于继续 P11 这类功能扩展。
 
 ## 版本节奏
 
@@ -32,6 +32,10 @@
 | v1.13 review p0 correctness | P12 | 按 review P0 修复 stream lease、async idempotency、terminal task settlement 和 zero-price/no-hold 账务正确性 |
 | v1.14 review p1 commercial hardening | P13 | 按 review P1 补齐 async price pin、预算语义、egress 安全、classifier 顺序和 async fallback |
 | v1.15 review p2 engineering readiness | P14 | 按 review P2 补齐 API key HMAC、管理面安全基线、stream close 稳定性、SSE 解析、trusted proxy 和 README |
+| v1.16 review follow-up p0 production blockers | P15 | 收敛 internal/client request ID、stream lease renewal、task-aware hold reaper、gateway callback contract 和 egress fail-closed |
+| v1.17 review follow-up accounting audit | P16 | 收敛 async idempotency race、async attempt audit、final failed attempt、failed settlement claim 和 budget 语义 |
+| v1.18 review follow-up worker callback stability | P17 | 收敛 worker lease heartbeat、per-job concurrency、poller 错误隔离、callback durable claim 和 delivery 稳定性 |
+| v1.19 review follow-up file asset boundary | P18 | 收敛 transient input asset metadata registry、expired quota、cleanup job、stream disabled contract 和文件能力文档边界 |
 
 ## 交付物
 
@@ -41,7 +45,8 @@
 - `docs/plan/15-p4-release-candidate-readiness.md` 作为发布候选与商用上线验收规划。
 - `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/21-p10-release-handoff.md` 作为剩余产品能力、客户验收和发布交接收口规划。
 - `docs/plan/22-p11-model-pricing-catalog.md` 作为模型分类、复杂价格体系、渠道成本和模型目录增强规划。
-- `docs/plan/23-p12-review-p0-correctness.md` 到 `docs/plan/25-p14-review-p2-engineering-readiness.md` 作为 2026-05-31 review 后的可靠性收敛规划。
+- `docs/plan/23-p12-review-p0-correctness.md` 到 `docs/plan/25-p14-review-p2-engineering-readiness.md` 作为 2026-05-31 第一轮 review 后的可靠性收敛规划。
+- `docs/plan/26-p15-review-followup-p0-production-blockers.md` 到 `docs/plan/29-p18-review-followup-file-asset-boundary.md` 作为后续 review 暴露的生产生命周期、账务审计、worker/callback 和文件资产边界收敛规划。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -72,6 +77,10 @@
 23. P12 收敛 review P0 正确性：stream concurrency lease、async idempotency hold、terminal task settlement、zero-price/no-hold settlement 和真实依赖回归测试。
 24. P13 收敛 review P1 商业账务与安全边界：async price pin、rate/spend budget 拆分、文件/媒体输入资产语义、egressguard、classifier 顺序和 async fallback。
 25. P14 收敛 review P2 工程交付与安全基线：API key HMAC、管理面静态 token 安全基线、stream settlement timeout、SSE parser、nil metrics、trusted proxy 和 README。
+26. P15 收敛 follow-up review 生产阻塞：internal/client request ID 分离、stream Redis lease renewal、task-aware hold reaper、provider webhook 不直达 customer callback 和 egress fail-closed。
+27. P16 收敛 follow-up review 账务审计一致性：async idempotency 并发 replay、async submit attempt durable audit、final failed attempt durable 标记、failed settlement row claim 和 budget 语义。
+28. P17 收敛 follow-up review worker/callback 稳定性：worker lease heartbeat、job concurrency、poller 单任务错误隔离、callback durable claim、response body drain 和 failure drills。
+29. P18 收敛 follow-up review 文件资产边界：坚持 transient metadata registry，修正 expired quota、cleanup job、stream disabled contract 和文件能力文档边界。
 
 ## 关键设计约束
 
@@ -90,21 +99,25 @@
 - P3 优先处理已实现能力的生产语义缺口，不新增大范围产品面。
 - P4 不再扩大协议面，优先把已有能力放到干净依赖环境和真实上游中验收，并形成可重复 release gate。
 - P5-P11 只覆盖当前明确要做的剩余能力、验收、发布交接和模型价格目录增强；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线。
-- P12-P14 是 review-driven remediation 阶段，用于可靠性收敛；它们不重新定义旧 P0-P2 历史范围，也不引入新的 public API 或大型产品面。
-- 当 review P0 正确性问题未通过验收时，暂停继续 P11 这类功能扩展，先保证账务、限流、stream 和异步任务不变量成立。
+- P12-P18 是 review-driven remediation 阶段，用于可靠性收敛；它们不重新定义旧 P0-P2 历史范围，也不引入新的 public API 或大型产品面。
+- P12-P14 表示第一轮 review remediation；P15-P18 表示后续 review 暴露的生产 lifecycle、身份边界、worker/callback 和文件资产边界收敛。
+- 当 P15 生产阻塞问题未通过验收时，暂停继续 P11 这类功能扩展，先保证账务、限流、stream、异步任务、callback 和 outbound 安全不变量成立。
 - 价格展示币种和存储精度分离：展示使用 USD、CNY 等真实币种和人可读单位，存储使用 currency + micros 整数。
 - 模型 category 驱动可配置价格单位、默认展示方式和模型目录筛选；category 不等于 provider type、route strategy 或 New API group。
 - 客户售价和 provider 成本可以同构，但必须分表、分用途、分权限；settlement 只能使用客户售价。
 - Semantic routing/cache 和多地域 active-active 先不做；如重新进入范围，需要另立路线和任务板。
 - 文件能力按非存储输入资产处理，gateway 不承诺媒体对象持久化、下载、生命周期或存储 SLA。
 - Portal 第一版复用 API key 鉴权，只做客户自助查询和受限 key 管理，不暴露 admin/control 配置能力。
+- 客户传入的 `X-Request-ID` 只能作为 client request id；内部账务、limit、attempt、usage、ledger 和 failed settlement 必须使用服务端生成的 internal request id。
+- Provider webhook 不能直接暴露 customer callback URL；客户 callback 只能通过 gateway outbox 按 gateway contract 投递。
+- Worker lease、stream lease 和 task hold 都必须绑定真实生命周期，不能只依赖短 TTL 或本地内存语义。
 
 ## 验收标准
 
 - 每个阶段都有明确目标、交付物、实现顺序、设计约束、验收标准和风险处理。
-- `docs/tasks.md` 能直接指导 P5-P14 后续开发、验收、发布交接、模型价格目录增强和 review remediation。
+- `docs/tasks.md` 能直接指导 P5-P18 后续开发、验收、发布交接、模型价格目录增强和 review remediation。
 - M0-M9 的先后关系与最终设计包一致。
-- P0-P14 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强和 review remediation，且每个阶段都有可验证的完成标准。
+- P0-P18 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强和 review remediation，且每个阶段都有可验证的完成标准。
 - 所有 public API 变更都回到 OpenAPI 合同维护。
 
 ## 风险与处理
@@ -129,8 +142,13 @@
 | 客户验收只停留在人工 curl | P9 固化 Portal smoke CLI、OpenAPI import preflight 和 RC smoke 集成 |
 | 发布交接依赖口头同步 | P10 固化 release handoff 工具、PR 模板、验证命令和回滚证据字段 |
 | 模型价格体系继续停留在 input/output token | P11 引入 category 驱动的组件化价格模板、客户售价和 provider 成本分离 |
-| Review 发现的正确性问题被功能开发淹没 | P12-P14 作为可靠性收敛插入阶段，P12 未验收前暂停继续新增功能 |
-| Review P0/P1/P2 与既有 P0/P1/P2 阶段混淆 | 使用 P12-P14 编号承载 review remediation，并在标题中保留 review priority 语义 |
+| 第一轮 Review 发现的正确性问题被功能开发淹没 | P12-P14 作为第一轮可靠性收敛阶段，优先级高于当时的功能扩展 |
+| Review P0/P1/P2 与既有 P0/P1/P2 阶段混淆 | 使用 P12-P14、P15-P18 等后续编号承载 review remediation，并在标题中保留 review priority 或 follow-up 语义 |
+| 后续 review 暴露生命周期与身份边界问题 | 使用 P15-P18 作为第二轮 review follow-up，P15 未验收前暂停继续 P11 功能扩展 |
+| 客户 request id 污染账务幂等和限流 | internal/client request id 分离，所有账务和 Redis lease 使用 internal request id |
+| 长 stream、长 task、worker job 超过 TTL 后状态失真 | 为 stream lease 和 worker lease 增加 renewal，为 task hold 增加 task-aware reaper |
+| Provider webhook 绕过 gateway callback contract | 禁止 provider 直接调用 customer callback URL，统一通过 gateway internal webhook/polling 和 callback outbox |
+| 文件 metadata registry 被误解为对象存储 | P18 固化 transient/non-storage 语义，expired quota 与 cleanup job 对齐该边界 |
 
 ## 设计来源
 
