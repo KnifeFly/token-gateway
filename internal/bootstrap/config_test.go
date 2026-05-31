@@ -112,3 +112,20 @@ func TestValidateProductionRequiresAPIKeyHashSecret(t *testing.T) {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
+
+func TestValidateProductionRequiresEgressGuard(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Environment = "production"
+	cfg.Gateway.Auth.APIKeyHashSecret = "prod-secret"
+	cfg.Gateway.Egress.Enabled = false
+	cfg.Normalize()
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	cfg.Gateway.Egress.Enabled = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}

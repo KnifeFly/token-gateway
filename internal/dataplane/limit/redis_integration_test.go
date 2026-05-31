@@ -82,7 +82,7 @@ func TestRedisStreamLeaseReleasedOnAccountingStreamClose(t *testing.T) {
 			_ = client.Del(ctx, keys...).Err()
 		}
 	})
-	enforcer := NewRedisEnforcer(client, Config{Enabled: true, KeyPrefix: prefix, DenyCacheTTL: time.Millisecond, LeaseTTL: time.Minute})
+	enforcer := NewRedisEnforcer(client, Config{Enabled: true, KeyPrefix: prefix, DenyCacheTTL: time.Millisecond, LeaseTTL: time.Second})
 	state := &engine.RequestState{
 		RequestID:      "req_stream",
 		TenantID:       "tenant_1",
@@ -119,11 +119,27 @@ func TestRedisStreamLeaseReleasedOnAccountingStreamClose(t *testing.T) {
 	if err := client.ZScore(ctx, leases[0].key, state.RequestID).Err(); err != nil {
 		t.Fatalf("stream lease missing before close: %v", err)
 	}
+	time.Sleep(1500 * time.Millisecond)
+	second := *state
+	second.RequestID = "req_stream_2"
+	if _, err := enforcer.Acquire(ctx, &second); err == nil {
+		t.Fatal("Acquire(second stream) succeeded while renewed stream lease is active")
+	}
 	if err := response.Stream.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
 	}
 	if err := client.ZScore(ctx, leases[0].key, state.RequestID).Err(); err != goredis.Nil {
 		t.Fatalf("stream lease after close error = %v, want redis.Nil", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	third := *state
+	third.RequestID = "req_stream_3"
+	releaseAfterClose, err := enforcer.Acquire(ctx, &third)
+	if err != nil {
+		t.Fatalf("Acquire(after close) error = %v", err)
+	}
+	if err := releaseAfterClose.Release(ctx); err != nil {
+		t.Fatalf("Release(after close) error = %v", err)
 	}
 }
 

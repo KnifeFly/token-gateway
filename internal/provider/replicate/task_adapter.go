@@ -69,10 +69,8 @@ func (a *TaskAdapter) Submit(ctx context.Context, request tasksvc.ProviderTaskRe
 		return nil, err
 	}
 	body, err := json.Marshal(predictionCreateRequest{
-		Version:             request.Candidate.UpstreamModel,
-		Input:               input,
-		Webhook:             emptyAsOmitted(request.Task.CallbackURL),
-		WebhookEventsFilter: webhookEvents(request.Task.CallbackURL),
+		Version: request.Candidate.UpstreamModel,
+		Input:   input,
 	})
 	if err != nil {
 		return nil, apperr.Internal("replicate prediction request could not be encoded", apperr.WithCause(err))
@@ -375,17 +373,6 @@ func estimatedUsage(input json.RawMessage, result json.RawMessage) tokenusage.Ac
 	}
 	usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	return usage
-}
-
-func emptyAsOmitted(value string) string {
-	return strings.TrimSpace(value)
-}
-
-func webhookEvents(webhook string) []string {
-	if strings.TrimSpace(webhook) == "" {
-		return nil
-	}
-	return []string{"completed"}
 }
 
 func errorCode(status tasksvc.Status, err any) string {

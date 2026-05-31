@@ -97,6 +97,42 @@ func TestAccountingStreamReleasesLimitLeasesAfterClose(t *testing.T) {
 	}
 }
 
+func TestAccountingStreamRenewsLimitLeasesUntilClose(t *testing.T) {
+	settlement := &fakeSettlement{}
+	release := &countingRenewal{interval: 10 * time.Millisecond}
+	state := &engine.RequestState{RequestID: "req_stream"}
+	state.AddLimitRelease(release)
+	result := &engine.ProviderResult{
+		Response: &engine.GatewayResponse{
+			Stream: &relay.StaticStream{
+				Chunks: [][]byte{[]byte("data: hello\n\n")},
+				Actual: tokenusage.Actual{InputTokens: 1, OutputTokens: 1, TotalTokens: 2},
+			},
+		},
+	}
+
+	response, err := NewFinalizer(settlement, nil).Wrap(context.Background(), state, result)
+	if err != nil {
+		t.Fatalf("Wrap() error = %v", err)
+	}
+	eventually(t, func() bool {
+		return release.renewCalls.Load() > 0
+	})
+
+	if err := response.Stream.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	renewedAtClose := release.renewCalls.Load()
+	time.Sleep(50 * time.Millisecond)
+	if got := release.renewCalls.Load(); got != renewedAtClose {
+		t.Fatalf("renewals after close = %d, want %d", got, renewedAtClose)
+	}
+	if release.releaseCalls.Load() != 1 {
+		t.Fatalf("release calls = %d", release.releaseCalls.Load())
+	}
+}
+
 func TestAccountingStreamSettlementUsesBoundedBackgroundContext(t *testing.T) {
 	settlement := &blockingSettlement{}
 	state := &engine.RequestState{RequestID: "req_stream"}
@@ -160,4 +196,36 @@ type countingRelease struct {
 func (r *countingRelease) Release(context.Context) error {
 	r.calls.Add(1)
 	return nil
+}
+
+type countingRenewal struct {
+	interval     time.Duration
+	renewCalls   atomic.Int64
+	releaseCalls atomic.Int64
+}
+
+func (r *countingRenewal) Release(context.Context) error {
+	r.releaseCalls.Add(1)
+	return nil
+}
+
+func (r *countingRenewal) Renew(context.Context) error {
+	r.renewCalls.Add(1)
+	return nil
+}
+
+func (r *countingRenewal) RenewalInterval() time.Duration {
+	return r.interval
+}
+
+func eventually(t *testing.T, fn func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if fn() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("condition did not become true")
 }

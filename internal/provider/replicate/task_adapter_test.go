@@ -32,7 +32,7 @@ func TestTaskAdapterSubmitPollAndCancel(t *testing.T) {
 			if body.Input["prompt"] != "draw a release candidate" || body.Input["aspect_ratio"] != "16:9" {
 				t.Fatalf("input = %#v", body.Input)
 			}
-			if body.Webhook != "https://hooks.example/task" || len(body.WebhookEventsFilter) != 1 {
+			if body.Webhook != "" || len(body.WebhookEventsFilter) != 0 {
 				t.Fatalf("webhook = %q events = %#v", body.Webhook, body.WebhookEventsFilter)
 			}
 			createSeen = true

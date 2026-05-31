@@ -267,6 +267,89 @@ func TestMySQLZeroAmountHoldSettlementIntegration(t *testing.T) {
 	}
 }
 
+func TestMySQLReleaseExpiredHoldsSkipsRunningTaskHold(t *testing.T) {
+	dsn := os.Getenv("TOKEN_GATEWAY_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("set TOKEN_GATEWAY_MYSQL_DSN to run MySQL billing integration")
+	}
+	ctx := context.Background()
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := db.PingContext(ctx); err != nil {
+		t.Fatalf("PingContext() error = %v", err)
+	}
+	applyMySQLMigrations(t, db,
+		"../../migrations/mysql/000002_m2_billing.up.sql",
+		"../../migrations/mysql/000003_m4_tasks.up.sql",
+	)
+	tenantID := "tenant_p15_" + time.Now().Format("150405000000000")
+	projectID := "project_p15"
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, "DELETE FROM tasks WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM balance_holds WHERE tenant_id = ?", tenantID)
+		_, _ = db.ExecContext(ctx, "DELETE FROM balance_accounts WHERE tenant_id = ?", tenantID)
+	})
+
+	repo := NewMySQLRepository(db)
+	hold, err := NewBalanceService(repo).CreateHold(ctx, HoldRequest{
+		RequestID:    "req_p15_hold",
+		TenantID:     tenantID,
+		ProjectID:    projectID,
+		APIKeyID:     "key_1",
+		Currency:     "USD",
+		AmountMicros: 100,
+		ExpiresAt:    time.Now().Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateHold() error = %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO tasks (
+  id, tenant_id, project_id, api_key_id, request_id, request_hash, kind,
+  media_type, model, status, input_json, balance_hold_id
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task_p15", tenantID, projectID, "key_1", "req_p15_task", "hash",
+		"video.generation", "video", "video-public", "running", `{}`, hold.ID); err != nil {
+		t.Fatalf("insert task error = %v", err)
+	}
+
+	released, err := repo.ReleaseExpiredHolds(ctx, time.Now(), 10)
+	if err != nil {
+		t.Fatalf("ReleaseExpiredHolds(protected) error = %v", err)
+	}
+	if released != 0 {
+		t.Fatalf("released protected holds = %d, want 0", released)
+	}
+	active, _, err := repo.GetHoldByRequestID(ctx, "req_p15_hold")
+	if err != nil {
+		t.Fatalf("GetHoldByRequestID() error = %v", err)
+	}
+	if active.Status != HoldStatusActive {
+		t.Fatalf("protected hold status = %q", active.Status)
+	}
+
+	if _, err := db.ExecContext(ctx, "UPDATE tasks SET status = 'succeeded' WHERE id = ?", "task_p15"); err != nil {
+		t.Fatalf("update task error = %v", err)
+	}
+	released, err = repo.ReleaseExpiredHolds(ctx, time.Now(), 10)
+	if err != nil {
+		t.Fatalf("ReleaseExpiredHolds(unprotected) error = %v", err)
+	}
+	if released != 1 {
+		t.Fatalf("released holds = %d, want 1", released)
+	}
+	releasedHold, _, err := repo.GetHoldByRequestID(ctx, "req_p15_hold")
+	if err != nil {
+		t.Fatalf("GetHoldByRequestID(released) error = %v", err)
+	}
+	if releasedHold.Status != HoldStatusReleased {
+		t.Fatalf("released hold status = %q", releasedHold.Status)
+	}
+}
+
 func TestSettlementPlannerMarksNoOutputNotBillable(t *testing.T) {
 	planner := NewSettlementPlanner(pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 10, OutputMicrosPerToken: 20})
 	state := settlementState("hold_1")
@@ -365,7 +448,19 @@ func (e assertErr) Error() string { return string(e) }
 
 func applyMySQLBillingMigration(t *testing.T, db *sql.DB) {
 	t.Helper()
-	raw, err := os.ReadFile("../../migrations/mysql/000002_m2_billing.up.sql")
+	applyMySQLMigrations(t, db, "../../migrations/mysql/000002_m2_billing.up.sql")
+}
+
+func applyMySQLMigrations(t *testing.T, db *sql.DB, paths ...string) {
+	t.Helper()
+	for _, path := range paths {
+		applyMySQLMigrationFile(t, db, path)
+	}
+}
+
+func applyMySQLMigrationFile(t *testing.T, db *sql.DB, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile(migration) error = %v", err)
 	}

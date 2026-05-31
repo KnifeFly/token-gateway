@@ -587,6 +587,9 @@ func (c Config) Validate() error {
 		case "", "local-api-key-hash-secret":
 			errs = append(errs, errors.New("gateway.auth.api_key_hash_secret must be set from secure config outside local/test"))
 		}
+		if !c.Gateway.Egress.Enabled {
+			errs = append(errs, errors.New("gateway.egress.enabled must remain true outside local/test"))
+		}
 	}
 	if c.Worker.Enabled && !c.Database.Enabled {
 		errs = append(errs, errors.New("database must be enabled when worker is enabled"))

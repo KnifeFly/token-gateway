@@ -95,6 +95,43 @@ func TestGenericHTTPProviderTaskAdapterPollNormalizesMediaResults(t *testing.T) 
 	}
 }
 
+func TestGenericHTTPProviderTaskAdapterDoesNotForwardCustomerCallbackURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/tasks" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode submit body: %v", err)
+		}
+		if _, ok := body["callback_url"]; ok {
+			t.Fatalf("provider submit leaked callback_url: %#v", body)
+		}
+		_, _ = w.Write([]byte(`{"id":"external_1","status":"running","progress":1}`))
+	}))
+	defer server.Close()
+
+	adapter := NewGenericHTTPProviderTaskAdapter(server.Client(), nil)
+	submitted, err := adapter.Submit(context.Background(), ProviderTaskRequest{
+		Task: Task{
+			ID:          "task_1",
+			Kind:        KindImageGeneration,
+			MediaType:   "image",
+			Input:       []byte(`{"prompt":"hi"}`),
+			CallbackURL: "https://customer.example/callback",
+		},
+		Candidate: engine.ProviderCandidate{ProviderType: "generic_media", PublicModel: "image-public", UpstreamModel: "image-upstream"},
+		Channel:   engine.ChannelView{BaseURL: server.URL, Enabled: true},
+		RequestID: "req_1",
+	})
+	if err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if submitted.ExternalID != "external_1" {
+		t.Fatalf("submitted = %#v", submitted)
+	}
+}
+
 func TestGenericHTTPProviderTaskAdapterRejectsUnsafeProviderURL(t *testing.T) {
 	guard, err := egressguard.New(egressguard.Config{})
 	if err != nil {

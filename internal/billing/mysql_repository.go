@@ -176,6 +176,12 @@ SELECT id, request_id, tenant_id, project_id, api_key_id, account_id, currency, 
        status, COALESCE(release_reason, ''), expires_at, created_at, updated_at
 FROM balance_holds
 WHERE status = ? AND expires_at <= ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM tasks
+    WHERE tasks.balance_hold_id = balance_holds.id
+      AND tasks.status IN ('queued', 'running')
+  )
 ORDER BY expires_at ASC, created_at ASC
 LIMIT ? FOR UPDATE`, HoldStatusActive, now.UTC(), limit)
 	if err != nil {

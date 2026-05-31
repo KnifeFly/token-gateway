@@ -37,8 +37,14 @@ func TestCreateSessionDisabledReturnsFeatureNotEnabled(t *testing.T) {
 	handler.ServeHTTP(res, req)
 
 	assertError(t, res, http.StatusNotImplemented, "feature_not_enabled")
-	if !strings.Contains(res.Body.String(), `"request_id":"req_realtime_1"`) {
-		t.Fatalf("missing request_id in body: %s", res.Body.String())
+	if strings.Contains(res.Body.String(), `"request_id":"req_realtime_1"`) {
+		t.Fatalf("client request id leaked into internal request_id: %s", res.Body.String())
+	}
+	if got := res.Header().Get("X-Request-ID"); got == "" || got == "req_realtime_1" {
+		t.Fatalf("internal request id header = %q", got)
+	}
+	if got := res.Header().Get("X-Client-Request-ID"); got != "req_realtime_1" {
+		t.Fatalf("client request id header = %q", got)
 	}
 }
 

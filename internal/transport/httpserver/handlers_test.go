@@ -87,6 +87,36 @@ func TestChatCompletionsRouteDelegatesGateway(t *testing.T) {
 	}
 }
 
+func TestRequestIDMiddlewareSeparatesClientRequestID(t *testing.T) {
+	gateway := &capturingGateway{}
+	handler := NewHandler(func(context.Context) []DependencyStatus { return nil }, prometheus.NewRegistry(), nil, gateway)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(nil))
+	req.Header.Set("X-Request-ID", "client_req_1")
+	res := httptest.NewRecorder()
+
+	handler.ServeHTTP(res, req)
+
+	internalRequestID := res.Header().Get("X-Request-ID")
+	if internalRequestID == "" {
+		t.Fatal("missing internal request id")
+	}
+	if internalRequestID == "client_req_1" {
+		t.Fatalf("response reused client request id")
+	}
+	if got := res.Header().Get("X-Client-Request-ID"); got != "client_req_1" {
+		t.Fatalf("client response header = %q", got)
+	}
+	if got := gateway.header.Get("X-Gateway-Request-ID"); got != internalRequestID {
+		t.Fatalf("gateway request id header = %q, want %q", got, internalRequestID)
+	}
+	if got := gateway.header.Get("X-Request-ID"); got != internalRequestID {
+		t.Fatalf("internal request header = %q, want %q", got, internalRequestID)
+	}
+	if got := gateway.header.Get("X-Client-Request-ID"); got != "client_req_1" {
+		t.Fatalf("client request header = %q", got)
+	}
+}
+
 func TestStreamRouteWritesSSE(t *testing.T) {
 	handler := NewHandler(func(context.Context) []DependencyStatus { return nil }, prometheus.NewRegistry(), nil, fakeStreamGateway{})
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", io.NopCloser(nil))
@@ -179,6 +209,7 @@ func TestTrustedProxyClientIPParsing(t *testing.T) {
 type fakeGateway struct{}
 type capturingGateway struct {
 	remoteAddr string
+	header     http.Header
 }
 
 type fakeRoute struct{}
@@ -199,6 +230,7 @@ func (fakeGateway) Handle(context.Context, engine.IncomingRequest) (*engine.Gate
 
 func (g *capturingGateway) Handle(_ context.Context, request engine.IncomingRequest) (*engine.GatewayResponse, error) {
 	g.remoteAddr = request.RemoteAddr
+	g.header = request.Header
 	return &engine.GatewayResponse{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}},

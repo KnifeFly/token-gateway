@@ -462,6 +462,12 @@ type LimitRelease interface {
 	Release(ctx context.Context) error
 }
 
+// LimitRenewal keeps a long-running limit lease alive until release.
+type LimitRenewal interface {
+	Renew(ctx context.Context) error
+	RenewalInterval() time.Duration
+}
+
 // StreamFinalizer wraps provider streams and performs close-time accounting.
 type StreamFinalizer interface {
 	Wrap(ctx context.Context, state *RequestState, result *ProviderResult) (*GatewayResponse, error)

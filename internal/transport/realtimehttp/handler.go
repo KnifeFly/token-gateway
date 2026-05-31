@@ -232,6 +232,7 @@ func (h *Handler) authorizeModel(state *engine.RequestState, model string) error
 func (h *Handler) finish(ctx context.Context, w http.ResponseWriter, state *engine.RequestState, operation string, status int, err error, sessions ...*realtime.Session) {
 	h.metrics.recordSession(operation, err)
 	h.logAudit(state, operation, status, err)
+	writeRequestHeaders(w, state)
 	if err != nil {
 		h.observe.FinishRequest(ctx, state, &engine.GatewayResponse{StatusCode: status}, err)
 		writeError(w, state, err)
@@ -248,6 +249,7 @@ func (h *Handler) finish(ctx context.Context, w http.ResponseWriter, state *engi
 func (h *Handler) finishConnection(ctx context.Context, w http.ResponseWriter, state *engine.RequestState, status int, err error) {
 	h.metrics.recordConnection(operationWebSocket, err)
 	h.logAudit(state, operationWebSocket, status, err)
+	writeRequestHeaders(w, state)
 	if err != nil {
 		h.observe.FinishRequest(ctx, state, &engine.GatewayResponse{StatusCode: status}, err)
 		writeError(w, state, err)
@@ -278,7 +280,11 @@ func (h *Handler) logAudit(state *engine.RequestState, operation string, status 
 }
 
 func (h *Handler) newState(r *http.Request, operation string) *engine.RequestState {
-	requestID := headerValue(r.Header, "X-Request-ID")
+	clientRequestID := headerValue(r.Header, "X-Client-Request-ID")
+	if clientRequestID == "" {
+		clientRequestID = headerValue(r.Header, "X-Request-ID")
+	}
+	requestID := headerValue(r.Header, "X-Gateway-Request-ID")
 	if requestID == "" {
 		requestID = newID()
 	}
@@ -289,7 +295,7 @@ func (h *Handler) newState(r *http.Request, operation string) *engine.RequestSta
 	return &engine.RequestState{
 		RequestID:       requestID,
 		TraceID:         traceID,
-		ClientRequestID: requestID,
+		ClientRequestID: clientRequestID,
 		StartedAt:       h.now(),
 		Incoming: engine.IncomingRequest{
 			Method:        r.Method,
@@ -305,6 +311,16 @@ func (h *Handler) newState(r *http.Request, operation string) *engine.RequestSta
 		ClientIP:     r.RemoteAddr,
 		Metadata:     make(map[string]string),
 		Internal:     make(map[string]any),
+	}
+}
+
+func writeRequestHeaders(w http.ResponseWriter, state *engine.RequestState) {
+	if state == nil {
+		return
+	}
+	w.Header().Set("X-Request-ID", state.RequestID)
+	if state.ClientRequestID != "" {
+		w.Header().Set("X-Client-Request-ID", state.ClientRequestID)
 	}
 }
 

@@ -154,7 +154,6 @@ func (a *GenericHTTPProviderTaskAdapter) Submit(ctx context.Context, request Pro
 		UpstreamModel: request.Candidate.UpstreamModel,
 		Input:         request.Task.Input,
 		Metadata:      request.Task.Metadata,
-		CallbackURL:   request.Task.CallbackURL,
 	})
 	if err != nil {
 		return nil, apperr.Internal("provider task request could not be encoded", apperr.WithCause(err))
@@ -438,7 +437,6 @@ type providerSubmitRequest struct {
 	UpstreamModel string            `json:"upstream_model"`
 	Input         json.RawMessage   `json:"input"`
 	Metadata      map[string]string `json:"metadata,omitempty"`
-	CallbackURL   string            `json:"callback_url,omitempty"`
 }
 
 type providerTaskResponse struct {

@@ -8,13 +8,22 @@ import (
 	"time"
 )
 
-// RequestIDMiddleware ensures every response carries X-Request-ID.
+const gatewayRequestIDHeader = "X-Gateway-Request-ID"
+
+// RequestIDMiddleware ensures every response carries a server-owned X-Request-ID.
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Header.Get("X-Request-ID")
-		if requestID == "" {
-			requestID = newRequestID()
+		clientRequestID := r.Header.Get("X-Request-ID")
+		if clientRequestID == "" {
+			clientRequestID = r.Header.Get("X-Request-Id")
 		}
+
+		requestID := newRequestID()
+		if clientRequestID != "" {
+			r.Header.Set("X-Client-Request-ID", clientRequestID)
+			w.Header().Set("X-Client-Request-ID", clientRequestID)
+		}
+		r.Header.Set(gatewayRequestIDHeader, requestID)
 		r.Header.Set("X-Request-ID", requestID)
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
@@ -48,6 +57,7 @@ func AccessLogMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 			"status", recorder.status,
 			"duration_ms", time.Since(started).Milliseconds(),
 			"request_id", recorder.Header().Get("X-Request-ID"),
+			"client_request_id", recorder.Header().Get("X-Client-Request-ID"),
 		)
 	})
 }

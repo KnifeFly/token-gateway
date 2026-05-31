@@ -56,31 +56,34 @@ func (f *Finalizer) Wrap(_ context.Context, state *engine.RequestState, result *
 	if result == nil || result.Response == nil || result.Response.Stream == nil {
 		return nil, errors.New("stream response is required")
 	}
+	releases := state.DrainLimitReleases()
 	result.Response.Stream = &AccountingStream{
-		source:     result.Response.Stream,
-		state:      state,
-		settlement: f.settlement,
-		timeout:    f.settlementTimeout,
-		releases:   state.DrainLimitReleases(),
-		startedAt:  time.Now(),
+		source:         result.Response.Stream,
+		state:          state,
+		settlement:     f.settlement,
+		timeout:        f.settlementTimeout,
+		releases:       releases,
+		cancelRenewals: startLimitRenewal(releases),
+		startedAt:      time.Now(),
 	}
 	return result.Response, nil
 }
 
 // AccountingStream tracks usage and settles exactly once at close.
 type AccountingStream struct {
-	source     relay.ProviderStream
-	state      *engine.RequestState
-	settlement engine.SettlementService
-	timeout    time.Duration
-	releases   []engine.LimitRelease
-	startedAt  time.Time
-	once       sync.Once
-	closeErr   error
-	chunks     int64
-	bytes      int64
-	firstToken time.Duration
-	downstream error
+	source         relay.ProviderStream
+	state          *engine.RequestState
+	settlement     engine.SettlementService
+	timeout        time.Duration
+	releases       []engine.LimitRelease
+	cancelRenewals context.CancelFunc
+	startedAt      time.Time
+	once           sync.Once
+	closeErr       error
+	chunks         int64
+	bytes          int64
+	firstToken     time.Duration
+	downstream     error
 }
 
 // Recv returns the next upstream chunk.
@@ -161,6 +164,10 @@ func (s *AccountingStream) Close() error {
 }
 
 func (s *AccountingStream) releaseLimits() {
+	if s.cancelRenewals != nil {
+		s.cancelRenewals()
+		s.cancelRenewals = nil
+	}
 	for i := len(s.releases) - 1; i >= 0; i-- {
 		if s.releases[i] == nil {
 			continue
@@ -168,6 +175,42 @@ func (s *AccountingStream) releaseLimits() {
 		_ = s.releases[i].Release(context.Background())
 	}
 	s.releases = nil
+}
+
+func startLimitRenewal(releases []engine.LimitRelease) context.CancelFunc {
+	var renewals []engine.LimitRenewal
+	for _, release := range releases {
+		if renewal, ok := release.(engine.LimitRenewal); ok {
+			renewals = append(renewals, renewal)
+		}
+	}
+	if len(renewals) == 0 {
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	for _, renewal := range renewals {
+		renewal := renewal
+		interval := renewal.RenewalInterval()
+		if interval <= 0 {
+			interval = 10 * time.Second
+		}
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					renewCtx, renewCancel := context.WithTimeout(context.Background(), interval)
+					_ = renewal.Renew(renewCtx)
+					renewCancel()
+				}
+			}
+		}()
+	}
+	return cancel
 }
 
 // ClassifyDownstreamError converts local stream write errors into safe classes.

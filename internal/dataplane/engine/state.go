@@ -3,6 +3,8 @@ package engine
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
@@ -68,10 +70,12 @@ func (s *RequestState) IsFileOperation() bool {
 }
 
 func newState(req IncomingRequest) *RequestState {
-	requestID := req.Header.Get("X-Request-ID")
-	if requestID == "" {
-		requestID = req.Header.Get("X-Request-Id")
+	clientRequestID := headerValue(req.Header, "X-Client-Request-ID")
+	if clientRequestID == "" {
+		clientRequestID = headerValue(req.Header, "X-Request-ID")
 	}
+
+	requestID := headerValue(req.Header, "X-Gateway-Request-ID")
 	if requestID == "" {
 		requestID = newID()
 	}
@@ -82,13 +86,28 @@ func newState(req IncomingRequest) *RequestState {
 	return &RequestState{
 		RequestID:       requestID,
 		TraceID:         traceID,
-		ClientRequestID: requestID,
+		ClientRequestID: clientRequestID,
 		StartedAt:       time.Now().UTC(),
 		Incoming:        req,
 		ClientIP:        req.RemoteAddr,
 		Metadata:        make(map[string]string),
 		Internal:        make(map[string]any),
 	}
+}
+
+func headerValue(header http.Header, key string) string {
+	values := header.Values(key)
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	for headerKey, values := range header {
+		if strings.EqualFold(headerKey, key) && len(values) > 0 {
+			return values[0]
+		}
+	}
+	return ""
 }
 
 // SetProtocol pins the protocol mode once.

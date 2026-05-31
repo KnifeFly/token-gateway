@@ -153,7 +153,7 @@ func (e *RedisEnforcer) Acquire(ctx context.Context, state *engine.RequestState)
 	for _, lease := range leases {
 		keys = append(keys, lease.key)
 	}
-	return &redisRelease{client: e.client, keys: keys, member: state.RequestID}, nil
+	return &redisRelease{client: e.client, keys: keys, member: state.RequestID, ttl: e.cfg.LeaseTTL}, nil
 }
 
 // AcquireForCandidate reserves provider/channel-scoped capacity for one dispatch attempt.
@@ -196,7 +196,7 @@ func (e *RedisEnforcer) AcquireForCandidate(ctx context.Context, state *engine.R
 	for _, lease := range leases {
 		keys = append(keys, lease.key)
 	}
-	return &redisRelease{client: e.client, keys: keys, member: member}, nil
+	return &redisRelease{client: e.client, keys: keys, member: member, ttl: e.cfg.LeaseTTL}, nil
 }
 
 func (e *RedisEnforcer) rulesFor(state *engine.RequestState) []engine.LimitRuleView {
@@ -352,21 +352,61 @@ func (e *RedisEnforcer) cacheDeny(result limitResult, now time.Time) {
 }
 
 type redisRelease struct {
-	client *goredis.Client
-	keys   []string
-	member string
+	client   *goredis.Client
+	keys     []string
+	member   string
+	ttl      time.Duration
+	mu       sync.Mutex
+	released bool
 }
 
 func (r *redisRelease) Release(ctx context.Context) error {
 	if r == nil || r.client == nil {
 		return nil
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.released {
+		return nil
+	}
+	r.released = true
 	for _, key := range r.keys {
 		if err := r.client.ZRem(ctx, key, r.member).Err(); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (r *redisRelease) Renew(ctx context.Context) error {
+	if r == nil || r.client == nil || r.ttl <= 0 {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.released {
+		return nil
+	}
+
+	now := time.Now().UTC().UnixMilli()
+	pipe := r.client.Pipeline()
+	for _, key := range r.keys {
+		pipe.ZAdd(ctx, key, goredis.Z{Score: float64(now), Member: r.member})
+		pipe.PExpire(ctx, key, r.ttl)
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (r *redisRelease) RenewalInterval() time.Duration {
+	if r == nil || r.ttl <= 0 {
+		return 10 * time.Second
+	}
+	interval := r.ttl / 3
+	if interval < 100*time.Millisecond {
+		return 100 * time.Millisecond
+	}
+	return interval
 }
 
 type noopRelease struct{}
