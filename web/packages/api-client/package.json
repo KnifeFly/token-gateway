@@ -1,0 +1,21 @@
+{
+  "name": "@token-gateway/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "generate": "mkdir -p src/generated && openapi-typescript ../../../api/openapi/portal-bff.yaml -o src/generated/portal-bff.ts && openapi-typescript ../../../api/openapi/admin-bff.yaml -o src/generated/admin-bff.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

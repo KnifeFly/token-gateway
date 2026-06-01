@@ -11,7 +11,7 @@ P19 解除此前“Portal 只做后端 API、不做 UI”的阶段性限制，�
 - `/v1/*` 数据面由 `cmd/gateway` 承载。
 - `/v1/portal/*` programmatic Portal API 已在 P8 落地，仍使用 customer Bearer API key。
 - `/admin/*` machine Control API 已由 `cmd/control-api` 承载。
-- 尚未有 browser-facing Portal/Admin BFF、`cmd/console`、frontend monorepo、OpenAPI 多文件拆分或 TS client generation。
+- P19 已建立 browser-facing Portal/Admin BFF skeleton、`cmd/console`、frontend monorepo、OpenAPI 多文件拆分和 TS client generation 基线；P20/P21 继续补真实 session 与业务 handler。
 
 ## 交付物
 

@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 CONFIG ?= configs/local.yaml
 
-.PHONY: help test lint fmt fmt-check vet race build run-gateway run-worker loadtest portal-smoke release-handoff release-handoff-check failure-drills migrate-up migrate-down compose-up compose-down
+.PHONY: help test lint fmt fmt-check vet race build run-gateway run-console run-worker loadtest portal-smoke release-handoff release-handoff-check failure-drills api-generate api-check web-install web-lint web-typecheck web-test web-build migrate-up migrate-down compose-up compose-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -35,8 +35,33 @@ build: ## Build all commands
 run-gateway: ## Run local gateway
 	go run ./cmd/gateway -config $(CONFIG)
 
+run-console: ## Run local console
+	go run ./cmd/console -config $(CONFIG)
+
 run-worker: ## Run local worker
 	go run ./cmd/worker -config $(CONFIG)
+
+api-generate: ## Generate frontend API types from split OpenAPI
+	pnpm generate:api
+
+api-check: ## Check split OpenAPI generated client drift
+	pnpm api:check
+	go test ./tests/contract
+
+web-install: ## Install frontend workspace dependencies
+	pnpm install --frozen-lockfile
+
+web-lint: ## Run frontend lint
+	pnpm lint
+
+web-typecheck: ## Run frontend typecheck
+	pnpm typecheck
+
+web-test: ## Run frontend tests
+	pnpm test
+
+web-build: ## Build frontend apps and packages
+	pnpm build
 
 loadtest: ## Run local M7 load test
 	go run ./tools/loadtest

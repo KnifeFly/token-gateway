@@ -52,6 +52,7 @@ type Config struct {
 	Control     ControlConfig   `yaml:"control"`
 	Worker      WorkerConfig    `yaml:"worker"`
 	Configd     ConfigdConfig   `yaml:"configd"`
+	Console     ConsoleConfig   `yaml:"console"`
 }
 
 // ServiceConfig identifies the running service in logs and telemetry.
@@ -232,6 +233,14 @@ type ConfigdConfig struct {
 	PublishOnStart  bool     `yaml:"publish_on_start"`
 }
 
+// ConsoleConfig controls the browser-facing console process.
+type ConsoleConfig struct {
+	Addr            string   `yaml:"addr"`
+	ShutdownTimeout Duration `yaml:"shutdown_timeout"`
+	PortalStaticDir string   `yaml:"portal_static_dir"`
+	AdminStaticDir  string   `yaml:"admin_static_dir"`
+}
+
 // DefaultConfig returns local-safe defaults. External dependencies are disabled
 // so unit tests never need Docker services.
 func DefaultConfig() Config {
@@ -353,6 +362,12 @@ func DefaultConfig() Config {
 			Addr:            ":9504",
 			ShutdownTimeout: Duration{10 * time.Second},
 			PublishOnStart:  false,
+		},
+		Console: ConsoleConfig{
+			Addr:            ":9505",
+			ShutdownTimeout: Duration{10 * time.Second},
+			PortalStaticDir: "web/apps/portal/dist",
+			AdminStaticDir:  "web/apps/admin/dist",
 		},
 	}
 }
@@ -546,6 +561,21 @@ func (c *Config) Normalize() {
 	if c.Configd.ShutdownTimeout.Duration <= 0 {
 		c.Configd.ShutdownTimeout = Duration{10 * time.Second}
 	}
+	c.Console.Addr = strings.TrimSpace(c.Console.Addr)
+	c.Console.PortalStaticDir = strings.TrimSpace(c.Console.PortalStaticDir)
+	c.Console.AdminStaticDir = strings.TrimSpace(c.Console.AdminStaticDir)
+	if c.Console.Addr == "" {
+		c.Console.Addr = ":9505"
+	}
+	if c.Console.ShutdownTimeout.Duration <= 0 {
+		c.Console.ShutdownTimeout = Duration{10 * time.Second}
+	}
+	if c.Console.PortalStaticDir == "" {
+		c.Console.PortalStaticDir = "web/apps/portal/dist"
+	}
+	if c.Console.AdminStaticDir == "" {
+		c.Console.AdminStaticDir = "web/apps/admin/dist"
+	}
 }
 
 // Validate checks the minimum viable M0 configuration.
@@ -556,6 +586,9 @@ func (c Config) Validate() error {
 	}
 	if c.HTTP.Addr == "" {
 		errs = append(errs, errors.New("http.addr is required"))
+	}
+	if c.Console.Addr == "" {
+		errs = append(errs, errors.New("console.addr is required"))
 	}
 	if c.HTTP.MaxHeaderBytes <= 0 {
 		errs = append(errs, errors.New("http.max_header_bytes must be positive"))
@@ -723,6 +756,9 @@ func applyEnv(cfg *Config) {
 	setString("TOKEN_GATEWAY_CALLBACK_SIGNING_SECRET", &cfg.Worker.CallbackSigningSecret)
 	setInt("TOKEN_GATEWAY_CALLBACK_MAX_CONCURRENCY", &cfg.Worker.CallbackMaxConcurrency)
 	setInt("TOKEN_GATEWAY_CALLBACK_MAX_RETRIES", &cfg.Worker.CallbackMaxRetries)
+	setString("TOKEN_GATEWAY_CONSOLE_ADDR", &cfg.Console.Addr)
+	setString("TOKEN_GATEWAY_CONSOLE_PORTAL_STATIC_DIR", &cfg.Console.PortalStaticDir)
+	setString("TOKEN_GATEWAY_CONSOLE_ADMIN_STATIC_DIR", &cfg.Console.AdminStaticDir)
 }
 
 func requiresProductionSecrets(environment string) bool {

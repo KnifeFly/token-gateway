@@ -1,0 +1,117 @@
+openapi: 3.0.3
+info:
+  title: token-gateway Admin Web BFF
+  version: 0.1.0
+  description: Browser-facing Admin BFF contract owned by cmd/console. P19 keeps this as a route and type-generation skeleton; P21 fills RBAC, audit, and workflows.
+servers:
+  - url: http://localhost:9505
+    description: Local console process
+tags:
+  - name: Admin Web Auth
+  - name: Admin Web Dashboard
+paths:
+  /api/admin/v1/auth/me:
+    get:
+      tags:
+        - Admin Web Auth
+      summary: Get the current Admin operator session
+      operationId: getAdminSession
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          description: Admin operator session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSessionResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "501":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/dashboard:
+    get:
+      tags:
+        - Admin Web Dashboard
+      summary: Get Admin dashboard shell data
+      operationId: getAdminDashboard
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          description: Admin dashboard shell data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "501":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: tg_admin_session
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  responses:
+    ErrorResponse:
+      description: Stable console error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+    ErrorBody:
+      type: object
+      required:
+        - code
+        - message
+        - type
+      properties:
+        code:
+          type: string
+          example: not_implemented
+        message:
+          type: string
+        type:
+          type: string
+        request_id:
+          type: string
+    AdminSessionResponse:
+      type: object
+      required:
+        - authenticated
+      properties:
+        authenticated:
+          type: boolean
+        operator_id:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+    AdminDashboardResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - reserved
+            - ready

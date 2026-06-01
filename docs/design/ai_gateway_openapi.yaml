@@ -35,6 +35,16 @@ info:
     - 所有接口默认使用 Authorization: Bearer <API_KEY>。
 
     '
+x-token-gateway-contract-split:
+  status: p19-foundation
+  source_directory: api/openapi
+  compatibility_entry: docs/design/ai_gateway_openapi.yaml
+  contracts:
+  - gateway-public.yaml
+  - portal-public.yaml
+  - portal-bff.yaml
+  - admin-bff.yaml
+  - control.yaml
 servers:
 - url: https://api.example.com
   description: Production

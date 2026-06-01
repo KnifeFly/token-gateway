@@ -1,0 +1,115 @@
+openapi: 3.0.3
+info:
+  title: token-gateway Portal Web BFF
+  version: 0.1.0
+  description: Browser-facing Portal BFF contract owned by cmd/console. P19 keeps this as a route and type-generation skeleton; P20 fills the workflows.
+servers:
+  - url: http://localhost:9505
+    description: Local console process
+tags:
+  - name: Portal Web Auth
+  - name: Portal Web Dashboard
+paths:
+  /api/portal/v1/auth/me:
+    get:
+      tags:
+        - Portal Web Auth
+      summary: Get the current Portal browser session
+      operationId: getPortalSession
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Portal browser session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalSessionResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "501":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/dashboard:
+    get:
+      tags:
+        - Portal Web Dashboard
+      summary: Get Portal dashboard shell data
+      operationId: getPortalDashboard
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Portal dashboard shell data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalDashboardResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "501":
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  securitySchemes:
+    portalSession:
+      type: apiKey
+      in: cookie
+      name: tg_portal_session
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+  responses:
+    ErrorResponse:
+      description: Stable console error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+    ErrorBody:
+      type: object
+      required:
+        - code
+        - message
+        - type
+      properties:
+        code:
+          type: string
+          example: not_implemented
+        message:
+          type: string
+        type:
+          type: string
+        request_id:
+          type: string
+    PortalSessionResponse:
+      type: object
+      required:
+        - authenticated
+      properties:
+        authenticated:
+          type: boolean
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+    PortalDashboardResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - reserved
+            - ready
