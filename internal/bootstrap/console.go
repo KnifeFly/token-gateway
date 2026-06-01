@@ -7,6 +7,9 @@ import (
 	"os"
 	"time"
 
+	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
+	adminrepo "github.com/KnifeFly/token-gateway/internal/app/admin/repository"
+	adminservice "github.com/KnifeFly/token-gateway/internal/app/admin/service"
 	portalapp "github.com/KnifeFly/token-gateway/internal/app/portal"
 	portalrepo "github.com/KnifeFly/token-gateway/internal/app/portal/repository"
 	portalservice "github.com/KnifeFly/token-gateway/internal/app/portal/service"
@@ -16,6 +19,7 @@ import (
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
 	legacyportal "github.com/KnifeFly/token-gateway/internal/portal"
+	"github.com/KnifeFly/token-gateway/internal/transport/adminhttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/consolehttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 	"github.com/KnifeFly/token-gateway/internal/transport/portalwebhttp"
@@ -59,6 +63,7 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 	if cfg.Database.Enabled && database.DB() != nil {
 		reportRepo = reporting.NewMySQLRepository(database.DB())
 	}
+	commercial := reporting.NewService(reportRepo)
 	var sessionStore portalapp.SessionStore = portalrepo.NewMemorySessionStore()
 	if cfg.Redis.Enabled && redisClient.Raw() != nil {
 		sessionStore = portalrepo.NewRedisSessionStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
@@ -66,9 +71,26 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 	portalWeb := portalservice.New(
 		runtime.snapshotProvider,
 		runtime.authenticator,
-		legacyportal.NewService(runtime.adminService, reporting.NewService(reportRepo), runtime.taskRepo, runtime.portalOptions()...),
+		legacyportal.NewService(runtime.adminService, commercial, runtime.taskRepo, runtime.portalOptions()...),
 		sessionStore,
 	)
+	adminRepo := adminapp.Repository(adminrepo.NewMemoryRepository())
+	if cfg.Database.Enabled && database.DB() != nil {
+		adminRepo = adminrepo.NewMySQLRepository(database.DB())
+	}
+	adminWeb := adminservice.New(
+		adminRepo,
+		runtime.adminService,
+		adminservice.WithCommercialReporting(commercial),
+		adminservice.WithTaskRepository(runtime.taskRepo),
+		adminservice.WithFailedSettlementService(runtime.failedSettlements),
+		adminservice.WithSnapshotManager(runtime.snapshotManager),
+	)
+	if !cfg.Database.Enabled {
+		if _, err := adminWeb.EnsureBootstrapOperator(ctx, "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
+			return nil, err
+		}
+	}
 
 	readiness := func(ctx context.Context) []httpserver.DependencyStatus {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -83,6 +105,7 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 		PortalStaticDir: cfg.Console.PortalStaticDir,
 		AdminStaticDir:  cfg.Console.AdminStaticDir,
 		PortalRoutes:    portalwebhttp.NewHandler(portalWeb, logger),
+		AdminRoutes:     adminhttp.NewHandlerWithService(adminWeb, logger),
 	}, logger)
 	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{routes})
 	server := httpserver.New(consoleServerConfig(cfg), handler, logger)

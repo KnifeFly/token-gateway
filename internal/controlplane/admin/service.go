@@ -66,6 +66,14 @@ func (s *Service) UpsertTenant(ctx context.Context, tenant Tenant) (*Tenant, err
 	return s.repo.UpsertTenant(ctx, tenant)
 }
 
+// ListTenants returns tenant configuration rows for owner-mediated Admin reads.
+func (s *Service) ListTenants(ctx context.Context) ([]Tenant, error) {
+	if s == nil || s.repo == nil {
+		return nil, apperr.ConfigUnavailable("admin repository is unavailable")
+	}
+	return s.repo.ListTenants(ctx)
+}
+
 // UpsertProject creates or updates a project.
 func (s *Service) UpsertProject(ctx context.Context, project Project) (*Project, error) {
 	if project.TenantID == "" || project.Name == "" {
@@ -73,6 +81,14 @@ func (s *Service) UpsertProject(ctx context.Context, project Project) (*Project,
 	}
 	project.Enabled = defaultEnabled(project.Enabled, project.EnabledSet)
 	return s.repo.UpsertProject(ctx, project)
+}
+
+// ListProjects returns project configuration rows for one tenant or all tenants.
+func (s *Service) ListProjects(ctx context.Context, tenantID string) ([]Project, error) {
+	if s == nil || s.repo == nil {
+		return nil, apperr.ConfigUnavailable("admin repository is unavailable")
+	}
+	return s.repo.ListProjects(ctx, strings.TrimSpace(tenantID))
 }
 
 // CreateAPIKey creates an API key and returns the plaintext only once.
@@ -400,6 +416,14 @@ func (s *Service) UpsertModelMarketplace(ctx context.Context, config ModelMarket
 // ListVisibleModels returns enabled model marketplace rows for a tenant/project.
 func (s *Service) ListVisibleModels(ctx context.Context, tenantID, projectID string) ([]VisibleModel, error) {
 	return s.repo.ListVisibleModels(ctx, strings.TrimSpace(tenantID), strings.TrimSpace(projectID))
+}
+
+// LoadSnapshotConfig returns the normalized config graph for safe Admin read models.
+func (s *Service) LoadSnapshotConfig(ctx context.Context) (*SnapshotConfig, error) {
+	if s == nil || s.repo == nil {
+		return nil, apperr.ConfigUnavailable("admin repository is unavailable")
+	}
+	return s.repo.LoadSnapshotConfig(ctx)
 }
 
 func newPlaintextKey() string {

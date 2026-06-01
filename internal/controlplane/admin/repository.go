@@ -17,7 +17,9 @@ const (
 // Repository persists control-plane configuration.
 type Repository interface {
 	UpsertTenant(ctx context.Context, tenant Tenant) (*Tenant, error)
+	ListTenants(ctx context.Context) ([]Tenant, error)
 	UpsertProject(ctx context.Context, project Project) (*Project, error)
+	ListProjects(ctx context.Context, tenantID string) ([]Project, error)
 	CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error)
 	ListAPIKeys(ctx context.Context, tenantID, projectID string) ([]APIKey, error)
 	DisableAPIKey(ctx context.Context, keyID string, revokedAt *time.Time) (*APIKey, error)

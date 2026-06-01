@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/admin/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange operator credentials for an HttpOnly Admin session */
+        post: operations["loginAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the current Admin session */
+        post: operations["logoutAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/auth/me": {
         parameters: {
             query?: never;
@@ -28,10 +62,426 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Admin dashboard shell data */
+        /** Get Admin dashboard counters */
         get: operations["getAdminDashboard"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/tenants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminTenants"];
+        put?: never;
+        post: operations["upsertAdminTenant"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/tenants/{tenant_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminTenant"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminProjects"];
+        put?: never;
+        post: operations["upsertAdminProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminAPIKeys"];
+        put?: never;
+        post: operations["createAdminAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/api-keys/{key_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableAdminAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminModels"];
+        put?: never;
+        post: operations["upsertAdminModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminChannels"];
+        put?: never;
+        post: operations["upsertAdminChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["testAdminChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableAdminChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enableAdminChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/routes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminRoutes"];
+        put?: never;
+        post: operations["upsertAdminRoute"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminPricing"];
+        put?: never;
+        post: operations["upsertAdminPricing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminLimits"];
+        put?: never;
+        post: operations["upsertAdminLimit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/snapshots": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminSnapshots"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/snapshots/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["validateAdminSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/snapshots/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["publishAdminSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/snapshots/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rollbackAdminSnapshot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operations/settlements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminSettlements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operations/settlements/{id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["replayAdminSettlement"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operations/callbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminCallbacks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operations/callbacks/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["retryAdminCallback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operations/workers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminWorkers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operations/holds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminHolds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminOperators"];
+        put?: never;
+        post: operations["createAdminOperator"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/operators/{operator_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableAdminOperator"];
         delete?: never;
         options?: never;
         head?: never;
@@ -42,29 +492,77 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ErrorEnvelope: {
-            error: components["schemas"]["ErrorBody"];
+        AdminLoginRequest: {
+            /** Format: email */
+            email: string;
+            /** Format: password */
+            password: string;
         };
-        ErrorBody: {
-            /** @example not_implemented */
-            code: string;
-            message: string;
-            type: string;
-            request_id?: string;
+        AdminLoginResponse: {
+            authenticated: boolean;
+            session: components["schemas"]["AdminSessionResponse"];
+            csrf_token: string;
         };
         AdminSessionResponse: {
             authenticated: boolean;
             operator_id?: string;
+            email?: string;
+            display_name?: string;
             roles?: string[];
+            permissions?: {
+                action?: string;
+                resource?: string;
+            }[];
             /** Format: date-time */
             expires_at?: string;
+            /** Format: date-time */
+            last_seen_at?: string;
+            csrf_token?: string;
         };
         AdminDashboardResponse: {
-            /** @enum {string} */
-            status: "reserved" | "ready";
+            /** Format: date-time */
+            generated_at?: string;
+            counts?: {
+                [key: string]: number;
+            };
+        };
+        ListResponse: {
+            data: {
+                [key: string]: unknown;
+            }[];
+        };
+        ErrorEnvelope: {
+            error: components["schemas"]["ErrorBody"];
+        };
+        ErrorBody: {
+            code: string;
+            message: string;
+            type: string;
+            retryable?: boolean;
+            request_id?: string;
         };
     };
     responses: {
+        /** @description JSON object response */
+        ObjectResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        /** @description List response */
+        ListResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ListResponse"];
+            };
+        };
         /** @description Stable console error envelope */
         ErrorResponse: {
             headers: {
@@ -75,13 +573,78 @@ export interface components {
             };
         };
     };
-    parameters: never;
-    requestBodies: never;
+    parameters: {
+        TenantID: string;
+        TenantIDQuery: string;
+        ProjectIDQuery: string;
+        KeyID: string;
+        ChannelID: string;
+        OperatorID: string;
+        ID: string;
+        Limit: number;
+    };
+    requestBodies: {
+        JSONBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+    };
     headers: never;
     pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    loginAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Admin session and CSRF token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminLoginResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    logoutAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session revoked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        authenticated?: boolean;
+                    };
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
     getAdminSession: {
         parameters: {
             query?: never;
@@ -100,8 +663,7 @@ export interface operations {
                     "application/json": components["schemas"]["AdminSessionResponse"];
                 };
             };
-            401: components["responses"]["ErrorResponse"];
-            501: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
         };
     };
     getAdminDashboard: {
@@ -113,7 +675,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Admin dashboard shell data */
+            /** @description Admin dashboard counters */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -122,8 +684,491 @@ export interface operations {
                     "application/json": components["schemas"]["AdminDashboardResponse"];
                 };
             };
-            401: components["responses"]["ErrorResponse"];
-            501: components["responses"]["ErrorResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminTenants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminTenant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tenant_id: components["parameters"]["TenantID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminProjects: {
+        parameters: {
+            query?: {
+                tenant_id?: components["parameters"]["TenantIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminAPIKeys: {
+        parameters: {
+            query?: {
+                tenant_id?: components["parameters"]["TenantIDQuery"];
+                project_id?: components["parameters"]["ProjectIDQuery"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createAdminAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    disableAdminAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: components["parameters"]["KeyID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    testAdminChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    disableAdminChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    enableAdminChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminRoutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminRoute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminPricing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminLimits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    upsertAdminLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminSnapshots: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    validateAdminSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    publishAdminSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    rollbackAdminSnapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminSettlements: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    replayAdminSettlement: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminCallbacks: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    retryAdminCallback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["ID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminWorkers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminHolds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminAudit: {
+        parameters: {
+            query?: {
+                operator_id?: string;
+                action?: string;
+                resource?: string;
+                from?: string;
+                to?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminOperators: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ListResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createAdminOperator: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: components["requestBodies"]["JSONBody"];
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    disableAdminOperator: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                operator_id: components["parameters"]["OperatorID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
         };
     };
 }

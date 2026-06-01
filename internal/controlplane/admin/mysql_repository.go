@@ -33,6 +33,25 @@ ON DUPLICATE KEY UPDATE name = VALUES(name), enabled = VALUES(enabled), updated_
 	return r.getTenant(ctx, tenant.ID)
 }
 
+// ListTenants returns all tenant rows ordered by creation time.
+func (r *MySQLRepository) ListTenants(ctx context.Context) ([]Tenant, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name, enabled, created_at, updated_at FROM cp_tenants ORDER BY created_at DESC, id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tenants []Tenant
+	for rows.Next() {
+		var tenant Tenant
+		if err := rows.Scan(&tenant.ID, &tenant.Name, &tenant.Enabled, &tenant.CreatedAt, &tenant.UpdatedAt); err != nil {
+			return nil, err
+		}
+		tenants = append(tenants, tenant)
+	}
+	return tenants, rows.Err()
+}
+
 // UpsertProject creates or updates a project row.
 func (r *MySQLRepository) UpsertProject(ctx context.Context, project Project) (*Project, error) {
 	if project.ID == "" {
@@ -46,6 +65,32 @@ ON DUPLICATE KEY UPDATE tenant_id = VALUES(tenant_id), name = VALUES(name), enab
 		return nil, err
 	}
 	return r.getProject(ctx, project.ID)
+}
+
+// ListProjects returns project rows ordered by creation time and optionally filtered by tenant.
+func (r *MySQLRepository) ListProjects(ctx context.Context, tenantID string) ([]Project, error) {
+	query := `SELECT id, tenant_id, name, enabled, created_at, updated_at FROM cp_projects WHERE 1=1`
+	var args []any
+	if tenantID != "" {
+		query += ` AND tenant_id = ?`
+		args = append(args, tenantID)
+	}
+	query += ` ORDER BY created_at DESC, id`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var project Project
+		if err := rows.Scan(&project.ID, &project.TenantID, &project.Name, &project.Enabled, &project.CreatedAt, &project.UpdatedAt); err != nil {
+			return nil, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, rows.Err()
 }
 
 // CreateAPIKey stores a hashed API key row.

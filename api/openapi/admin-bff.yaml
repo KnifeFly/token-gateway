@@ -1,19 +1,62 @@
 openapi: 3.0.3
 info:
   title: token-gateway Admin Web BFF
-  version: 0.1.0
-  description: Browser-facing Admin BFF contract owned by cmd/console. P19 keeps this as a route and type-generation skeleton; P21 fills RBAC, audit, and workflows.
+  version: 0.2.0
+  description: Browser-facing Admin BFF contract owned by cmd/console. Admin Web uses operator sessions, RBAC, CSRF, idempotency metadata, and durable audit instead of exposing /admin/* machine APIs to browsers.
 servers:
   - url: http://localhost:9505
     description: Local console process
 tags:
   - name: Admin Web Auth
   - name: Admin Web Dashboard
+  - name: Admin Web Config
+  - name: Admin Web Snapshots
+  - name: Admin Web Operations
+  - name: Admin Web Audit
 paths:
+  /api/admin/v1/auth/login:
+    post:
+      tags: [Admin Web Auth]
+      summary: Exchange operator credentials for an HttpOnly Admin session
+      operationId: loginAdmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: Admin session and CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/auth/logout:
+    post:
+      tags: [Admin Web Auth]
+      summary: Revoke the current Admin session
+      operationId: logoutAdmin
+      security:
+        - adminSession: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/auth/me:
     get:
-      tags:
-        - Admin Web Auth
+      tags: [Admin Web Auth]
       summary: Get the current Admin operator session
       operationId: getAdminSession
       security:
@@ -25,28 +68,512 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminSessionResponse"
-        "401":
-          $ref: "#/components/responses/ErrorResponse"
-        "501":
+        default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/dashboard:
     get:
-      tags:
-        - Admin Web Dashboard
-      summary: Get Admin dashboard shell data
+      tags: [Admin Web Dashboard]
+      summary: Get Admin dashboard counters
       operationId: getAdminDashboard
       security:
         - adminSession: []
       responses:
         "200":
-          description: Admin dashboard shell data
+          description: Admin dashboard counters
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AdminDashboardResponse"
-        "401":
+        default:
           $ref: "#/components/responses/ErrorResponse"
-        "501":
+  /api/admin/v1/tenants:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminTenants
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminTenant
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/tenants/{tenant_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminTenant
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/projects:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminProjects
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminProject
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminAPIKeys
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: createAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminModels
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminChannels
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/test:
+    post:
+      tags: [Admin Web Config]
+      operationId: testAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/enable:
+    post:
+      tags: [Admin Web Config]
+      operationId: enableAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/routes:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminRoutes
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminRoute
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/pricing:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminPricing
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminPricing
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/limits:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminLimits
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminLimit
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots:
+    get:
+      tags: [Admin Web Snapshots]
+      operationId: getAdminSnapshots
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots/validate:
+    post:
+      tags: [Admin Web Snapshots]
+      operationId: validateAdminSnapshot
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots/publish:
+    post:
+      tags: [Admin Web Snapshots]
+      operationId: publishAdminSnapshot
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots/rollback:
+    post:
+      tags: [Admin Web Snapshots]
+      operationId: rollbackAdminSnapshot
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/settlements:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminSettlements
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/settlements/{id}/replay:
+    post:
+      tags: [Admin Web Operations]
+      operationId: replayAdminSettlement
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/callbacks:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminCallbacks
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/callbacks/{id}/retry:
+    post:
+      tags: [Admin Web Operations]
+      operationId: retryAdminCallback
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/workers:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminWorkers
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/holds:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminHolds
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/audit:
+    get:
+      tags: [Admin Web Audit]
+      operationId: listAdminAudit
+      security:
+        - adminSession: []
+      parameters:
+        - name: operator_id
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: resource
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operators:
+    get:
+      tags: [Admin Web Audit]
+      operationId: listAdminOperators
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Audit]
+      operationId: createAdminOperator
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operators/{operator_id}/disable:
+    post:
+      tags: [Admin Web Audit]
+      operationId: disableAdminOperator
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/OperatorID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
           $ref: "#/components/responses/ErrorResponse"
 components:
   securitySchemes:
@@ -58,7 +585,77 @@ components:
       type: apiKey
       in: header
       name: X-CSRF-Token
+    idempotencyKey:
+      type: apiKey
+      in: header
+      name: Idempotency-Key
+    reasonHeader:
+      type: apiKey
+      in: header
+      name: X-Reason
+  parameters:
+    TenantID:
+      name: tenant_id
+      in: path
+      required: true
+      schema: { type: string }
+    TenantIDQuery:
+      name: tenant_id
+      in: query
+      schema: { type: string }
+    ProjectIDQuery:
+      name: project_id
+      in: query
+      schema: { type: string }
+    KeyID:
+      name: key_id
+      in: path
+      required: true
+      schema: { type: string }
+    ChannelID:
+      name: channel_id
+      in: path
+      required: true
+      schema: { type: string }
+    OperatorID:
+      name: operator_id
+      in: path
+      required: true
+      schema: { type: string }
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+  requestBodies:
+    JSONBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
   responses:
+    ObjectResponse:
+      description: JSON object response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    ListResponse:
+      description: List response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ListResponse"
     ErrorResponse:
       description: Stable console error envelope
       content:
@@ -66,52 +663,95 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
-    ErrorEnvelope:
+    AdminLoginRequest:
       type: object
-      required:
-        - error
+      required: [email, password]
       properties:
-        error:
-          $ref: "#/components/schemas/ErrorBody"
-    ErrorBody:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AdminLoginResponse:
       type: object
-      required:
-        - code
-        - message
-        - type
+      required: [authenticated, session, csrf_token]
       properties:
-        code:
-          type: string
-          example: not_implemented
-        message:
-          type: string
-        type:
-          type: string
-        request_id:
+        authenticated:
+          type: boolean
+        session:
+          $ref: "#/components/schemas/AdminSessionResponse"
+        csrf_token:
           type: string
     AdminSessionResponse:
       type: object
-      required:
-        - authenticated
+      required: [authenticated]
       properties:
         authenticated:
           type: boolean
         operator_id:
           type: string
+        email:
+          type: string
+        display_name:
+          type: string
         roles:
           type: array
           items:
             type: string
+        permissions:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+              resource:
+                type: string
         expires_at:
           type: string
           format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
     AdminDashboardResponse:
       type: object
-      required:
-        - status
       properties:
-        status:
+        generated_at:
           type: string
-          enum:
-            - reserved
-            - ready
+          format: date-time
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+    ListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+    ErrorBody:
+      type: object
+      required: [code, message, type]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+        retryable:
+          type: boolean
+        request_id:
+          type: string

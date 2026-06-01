@@ -142,6 +142,14 @@ POST   /api/admin/v1/operators/{operator_id}/disable
 - 可复用 P20 的 session/CSRF/error writer 基础，但 Admin 必须独立 operator principal。
 - P21 完成后解锁 P22 Admin UI、E2E smoke、deployment hardening 和 release handoff。
 
+## 实施记录
+
+- 已新增 `internal/app/admin` bounded context，Admin operator/session/audit 与 `internal/controlplane/admin` machine control/config domain 分离。
+- 已实现 `/api/admin/v1/*` browser BFF：login/logout/me、dashboard、config read/write、snapshot validate/publish/rollback、operations read models、audit 和 operator management。
+- Admin mutation 统一校验 session、CSRF、RBAC、`Idempotency-Key` 和 `X-Reason`，写入 redacted durable audit；配置写入委托 `controlplane/admin.Service`，snapshot 委托 snapshot publisher，不让 browser 直接调用 `/admin/*`。
+- 已新增 MySQL migration `000017_p21_admin_web_bff`，覆盖 `admin_operators`、`admin_sessions`、`admin_audit_events`。
+- 已同步 `api/openapi/admin-bff.yaml` 和 generated TypeScript client，并补 focused tests 覆盖 login/session/CSRF、RBAC deny、audit redaction 和 `/admin/*` control API 回归。
+
 ## 设计来源
 
 - [P19 Console Monorepo Foundation](./30-p19-console-monorepo-foundation.md)

@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -63,6 +64,19 @@ func (r *MemoryRepository) UpsertTenant(_ context.Context, tenant Tenant) (*Tena
 	return clone(tenant), nil
 }
 
+// ListTenants returns all tenants ordered by ID.
+func (r *MemoryRepository) ListTenants(_ context.Context) ([]Tenant, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tenants := make([]Tenant, 0, len(r.tenants))
+	for _, tenant := range r.tenants {
+		tenants = append(tenants, tenant)
+	}
+	sort.Slice(tenants, func(i, j int) bool { return tenants[i].ID < tenants[j].ID })
+	return tenants, nil
+}
+
 // UpsertProject creates or updates a project in memory.
 func (r *MemoryRepository) UpsertProject(_ context.Context, project Project) (*Project, error) {
 	r.mu.Lock()
@@ -79,6 +93,22 @@ func (r *MemoryRepository) UpsertProject(_ context.Context, project Project) (*P
 	project.UpdatedAt = now
 	r.projects[project.ID] = project
 	return clone(project), nil
+}
+
+// ListProjects returns projects ordered by ID and optionally filtered by tenant.
+func (r *MemoryRepository) ListProjects(_ context.Context, tenantID string) ([]Project, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	projects := make([]Project, 0, len(r.projects))
+	for _, project := range r.projects {
+		if tenantID != "" && project.TenantID != tenantID {
+			continue
+		}
+		projects = append(projects, project)
+	}
+	sort.Slice(projects, func(i, j int) bool { return projects[i].ID < projects[j].ID })
+	return projects, nil
 }
 
 // CreateAPIKey stores a hashed API key record.

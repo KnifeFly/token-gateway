@@ -43,6 +43,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/transport/portalhttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/publichttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/realtimehttp"
+	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
 // GatewayApp wires M0 dependencies for the data-plane process.
@@ -129,13 +130,15 @@ func NewGatewayApp(ctx context.Context, cfg Config) (*GatewayApp, error) {
 }
 
 type gatewayRuntime struct {
-	engine           *engine.GatewayEngine
-	snapshotProvider engine.SnapshotProvider
-	authenticator    engine.Authenticator
-	observeRecorder  engine.ObserveRecorder
-	adminService     *admin.Service
-	taskRepo         tasksvc.Repository
-	portalSnapshots  portal.SnapshotRefresher
+	engine            *engine.GatewayEngine
+	snapshotProvider  engine.SnapshotProvider
+	authenticator     engine.Authenticator
+	observeRecorder   engine.ObserveRecorder
+	adminService      *admin.Service
+	taskRepo          tasksvc.Repository
+	failedSettlements *billing.FailedSettlementService
+	portalSnapshots   portal.SnapshotRefresher
+	snapshotManager   *runtimeSnapshotRefresher
 }
 
 func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*gatewayRuntime, error) {
@@ -219,6 +222,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	taskDispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(outboundHTTPClient(0, egressGuard), credentialResolver).WithEgressGuard(egressGuard))
 	fileBridge := tasksvc.NewFileBridge(tasksvc.NewFileService(taskRepo, cfg.Gateway.Idempotency.TTL.Duration, tasksvc.WithFileEgressGuard(egressGuard)))
 	var attemptRecorder dispatch.AttemptRecorder
+	var failedSettlementService *billing.FailedSettlementService
 	if cfg.Gateway.Billing.Enabled {
 		repo := billing.NewMySQLRepository(database.DB())
 		if err := ensureLocalSeedBalance(ctx, cfg, repo); err != nil {
@@ -236,6 +240,7 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		attemptRecorder = billing.NewAttemptWriter(repo)
 		settlementService = billing.NewSettlementService(repo, billing.NewSettlementPlanner(defaultPrice), billingMetrics)
 		taskSettlement = tasksvc.NewBillingSettlement(repo, defaultPrice)
+		failedSettlementService = billing.NewFailedSettlementService(repo)
 	}
 	taskBridge := tasksvc.NewBridge(taskService, taskDispatcher, taskSettlement).
 		WithDefaultPrice(defaultPrice).
@@ -269,15 +274,17 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		}
 	}
 	var portalSnapshots portal.SnapshotRefresher
+	var snapshotManager *runtimeSnapshotRefresher
 	if usingDBAdmin {
 		var publisherOpts []cpsnapshot.PublisherOption
 		if snapshotDistributor != nil {
 			publisherOpts = append(publisherOpts, cpsnapshot.WithDistributor(snapshotDistributor))
 		}
-		portalSnapshots = runtimeSnapshotRefresher{
+		snapshotManager = &runtimeSnapshotRefresher{
 			publisher: cpsnapshot.NewPublisher(adminRepo, cpsnapshot.NewBuilder(adminRepo), publisherOpts...),
 			store:     snapshotStore,
 		}
+		portalSnapshots = snapshotManager
 	}
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
 	circuitBreaker := router.NewCircuitBreaker(router.DefaultCircuitConfig())
@@ -314,13 +321,15 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 		return nil, err
 	}
 	return &gatewayRuntime{
-		engine:           gatewayEngine,
-		snapshotProvider: snapshotProvider,
-		authenticator:    authenticator,
-		observeRecorder:  observeRecorder,
-		adminService:     adminService,
-		taskRepo:         taskRepo,
-		portalSnapshots:  portalSnapshots,
+		engine:            gatewayEngine,
+		snapshotProvider:  snapshotProvider,
+		authenticator:     authenticator,
+		observeRecorder:   observeRecorder,
+		adminService:      adminService,
+		taskRepo:          taskRepo,
+		failedSettlements: failedSettlementService,
+		portalSnapshots:   portalSnapshots,
+		snapshotManager:   snapshotManager,
 	}, nil
 }
 
@@ -337,18 +346,51 @@ type runtimeSnapshotRefresher struct {
 }
 
 func (r runtimeSnapshotRefresher) RefreshSnapshot(ctx context.Context) error {
+	_, err := r.Publish(ctx)
+	return err
+}
+
+func (r runtimeSnapshotRefresher) Publish(ctx context.Context) (*cpsnapshot.RuntimeSnapshot, error) {
 	if r.publisher == nil || r.store == nil {
-		return nil
+		return nil, apperr.ConfigUnavailable("snapshot publisher is unavailable")
 	}
 	runtime, err := r.publisher.Publish(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	indexed, err := dpsnapshot.Build(*runtime)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return r.store.Replace(indexed)
+	if err := r.store.Replace(indexed); err != nil {
+		return nil, err
+	}
+	return runtime, nil
+}
+
+func (r runtimeSnapshotRefresher) Rollback(ctx context.Context) (*cpsnapshot.RuntimeSnapshot, error) {
+	if r.publisher == nil || r.store == nil {
+		return nil, apperr.ConfigUnavailable("snapshot publisher is unavailable")
+	}
+	runtime, err := r.publisher.Rollback(ctx)
+	if err != nil {
+		return nil, err
+	}
+	indexed, err := dpsnapshot.Build(*runtime)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.store.Replace(indexed); err != nil {
+		return nil, err
+	}
+	return runtime, nil
+}
+
+func (r runtimeSnapshotRefresher) Diagnostics(ctx context.Context) (*cpsnapshot.Diagnostics, error) {
+	if r.publisher == nil {
+		return nil, apperr.ConfigUnavailable("snapshot publisher is unavailable")
+	}
+	return r.publisher.Diagnostics(ctx)
 }
 
 func newGatewayEngine(ctx context.Context, cfg Config, tel *telemetry.Provider, logger *slog.Logger, database *dbinfra.Client, redisClient *redisinfra.Client) (*engine.GatewayEngine, error) {
