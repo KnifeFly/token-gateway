@@ -105,17 +105,38 @@ func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revok
 // UpsertModel creates or updates public model configuration.
 func (r *MySQLRepository) UpsertModel(ctx context.Context, model ModelConfig) (*ModelConfig, error) {
 	aliases, _ := json.Marshal(model.Aliases)
+	tags, _ := json.Marshal(model.Tags)
+	modalities, _ := json.Marshal(model.Modalities)
+	capabilities, _ := json.Marshal(model.Capabilities)
+	aliases = jsonOrDefault(aliases, `[]`)
+	tags = jsonOrDefault(tags, `[]`)
+	modalities = jsonOrDefault(modalities, `[]`)
+	capabilities = jsonOrDefault(capabilities, `[]`)
 	schema := []byte(model.Schema)
 	if len(schema) == 0 {
 		schema = []byte(`{}`)
 	}
+	metadata := []byte(model.Metadata)
+	if len(metadata) == 0 {
+		metadata = []byte(`{}`)
+	}
 	_, err := r.db.ExecContext(ctx, `
-INSERT INTO cp_models (public_model, aliases_json, display_name, description, protocol, capability, schema_json, enabled)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO cp_models (
+  public_model, aliases_json, display_name, description, protocol, capability,
+  category, tags_json, provider_family, modalities_json, capabilities_json,
+  context_window, max_output_tokens, status, deprecated, sort_order,
+  metadata_json, schema_json, enabled
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE aliases_json = VALUES(aliases_json), display_name = VALUES(display_name), description = VALUES(description),
-  protocol = VALUES(protocol), capability = VALUES(capability), schema_json = VALUES(schema_json), enabled = VALUES(enabled),
+  protocol = VALUES(protocol), capability = VALUES(capability), category = VALUES(category), tags_json = VALUES(tags_json),
+  provider_family = VALUES(provider_family), modalities_json = VALUES(modalities_json), capabilities_json = VALUES(capabilities_json),
+  context_window = VALUES(context_window), max_output_tokens = VALUES(max_output_tokens), status = VALUES(status),
+  deprecated = VALUES(deprecated), sort_order = VALUES(sort_order), metadata_json = VALUES(metadata_json),
+  schema_json = VALUES(schema_json), enabled = VALUES(enabled),
   updated_at = CURRENT_TIMESTAMP`,
-		model.PublicModel, aliases, model.DisplayName, model.Description, model.Protocol, model.Capability, schema, model.Enabled)
+		model.PublicModel, aliases, model.DisplayName, model.Description, model.Protocol, model.Capability,
+		model.Category, tags, model.ProviderFamily, modalities, capabilities, model.ContextWindow,
+		model.MaxOutputTokens, model.Status, model.Deprecated, model.SortOrder, metadata, schema, model.Enabled)
 	if err != nil {
 		return nil, err
 	}
@@ -147,9 +168,21 @@ ON DUPLICATE KEY UPDATE provider_type = VALUES(provider_type), base_url = VALUES
 		return nil, err
 	}
 	for _, model := range channel.Models {
+		capabilities, _ := json.Marshal(model.Capabilities)
+		parameters, _ := json.Marshal(model.SupportedParameters)
+		capabilities = jsonOrDefault(capabilities, `[]`)
+		parameters = jsonOrDefault(parameters, `[]`)
+		metadata := []byte(model.Metadata)
+		if len(metadata) == 0 {
+			metadata = []byte(`{}`)
+		}
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO cp_channel_models (channel_id, public_model, upstream_model) VALUES (?, ?, ?)`,
-			channel.ID, model.PublicModel, model.UpstreamModel); err != nil {
+INSERT INTO cp_channel_models (
+  channel_id, public_model, upstream_model, capabilities_json,
+  supported_parameters_json, health_status, test_status, cost_config_status, metadata_json
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			channel.ID, model.PublicModel, model.UpstreamModel, capabilities, parameters,
+			model.HealthStatus, model.TestStatus, model.CostConfigStatus, metadata); err != nil {
 			return nil, err
 		}
 	}
@@ -193,13 +226,23 @@ INSERT INTO cp_route_candidates (route_id, channel_id, priority, weight) VALUES 
 
 // UpsertPrice creates or updates a model price rule.
 func (r *MySQLRepository) UpsertPrice(ctx context.Context, price PriceRuleConfig) (*PriceRuleConfig, error) {
+	components, _ := json.Marshal(price.Components)
+	components = jsonOrDefault(components, `[]`)
+	metadata := []byte(price.Metadata)
+	if len(metadata) == 0 {
+		metadata = []byte(`{}`)
+	}
 	_, err := r.db.ExecContext(ctx, `
-INSERT INTO cp_price_rules (public_model, currency, input_micros_per_token, output_micros_per_token, estimated_output_tokens, enabled)
-VALUES (?, ?, ?, ?, ?, ?)
-ON DUPLICATE KEY UPDATE currency = VALUES(currency), input_micros_per_token = VALUES(input_micros_per_token),
+INSERT INTO cp_price_rules (
+  public_model, category, currency, components_json, input_micros_per_token,
+  output_micros_per_token, estimated_output_tokens, metadata_json, enabled
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON DUPLICATE KEY UPDATE category = VALUES(category), currency = VALUES(currency), components_json = VALUES(components_json),
+  input_micros_per_token = VALUES(input_micros_per_token),
   output_micros_per_token = VALUES(output_micros_per_token), estimated_output_tokens = VALUES(estimated_output_tokens),
-  enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
-		price.PublicModel, price.Currency, price.InputMicrosPerToken, price.OutputMicrosPerToken, price.EstimatedOutputTokens, price.Enabled)
+  metadata_json = VALUES(metadata_json), enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
+		price.PublicModel, price.Category, price.Currency, components, price.InputMicrosPerToken,
+		price.OutputMicrosPerToken, price.EstimatedOutputTokens, metadata, price.Enabled)
 	if err != nil {
 		return nil, err
 	}
@@ -279,7 +322,10 @@ func (r *MySQLRepository) ListVisibleModels(ctx context.Context, tenantID, proje
 SELECT
   market.id, market.tenant_id, market.project_id, market.public_model,
   market.display_name, market.description, model.protocol, model.capability,
-  COALESCE(price.currency, ''), COALESCE(price.input_micros_per_token, 0),
+  model.category, model.tags_json, model.provider_family, model.modalities_json,
+  model.capabilities_json, model.context_window, model.max_output_tokens,
+  model.status, model.deprecated,
+  COALESCE(price.currency, ''), COALESCE(price.components_json, JSON_ARRAY()), COALESCE(price.input_micros_per_token, 0),
   COALESCE(price.output_micros_per_token, 0), COALESCE(price.estimated_output_tokens, 0),
   market.sort_order, market.metadata_json
 FROM cp_model_marketplace market
@@ -296,14 +342,21 @@ ORDER BY market.sort_order, market.public_model, market.tenant_id DESC, market.p
 	var out []VisibleModel
 	for rows.Next() {
 		var model VisibleModel
+		var tags, modalities, capabilities, components []byte
 		if err := rows.Scan(
 			&model.ID, &model.TenantID, &model.ProjectID, &model.PublicModel,
 			&model.DisplayName, &model.Description, &model.Protocol, &model.Capability,
-			&model.Currency, &model.InputMicrosPerToken, &model.OutputMicrosPerToken,
+			&model.Category, &tags, &model.ProviderFamily, &modalities, &capabilities,
+			&model.ContextWindow, &model.MaxOutputTokens, &model.Status, &model.Deprecated,
+			&model.Currency, &components, &model.InputMicrosPerToken, &model.OutputMicrosPerToken,
 			&model.EstimatedOutputTokens, &model.SortOrder, &model.Metadata,
 		); err != nil {
 			return nil, err
 		}
+		_ = json.Unmarshal(tags, &model.Tags)
+		_ = json.Unmarshal(modalities, &model.Modalities)
+		_ = json.Unmarshal(capabilities, &model.Capabilities)
+		_ = json.Unmarshal(components, &model.Components)
 		out = append(out, model)
 	}
 	return out, rows.Err()
@@ -441,7 +494,13 @@ WHERE id = ?`, id))
 }
 
 func (r *MySQLRepository) listModels(ctx context.Context) ([]ModelConfig, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT public_model, aliases_json, display_name, description, protocol, capability, schema_json, enabled FROM cp_models ORDER BY public_model`)
+	rows, err := r.db.QueryContext(ctx, `
+SELECT public_model, aliases_json, display_name, description, protocol, capability,
+       category, tags_json, provider_family, modalities_json, capabilities_json,
+       context_window, max_output_tokens, status, deprecated, sort_order,
+       metadata_json, schema_json, enabled
+FROM cp_models
+ORDER BY public_model`)
 	if err != nil {
 		return nil, err
 	}
@@ -449,14 +508,25 @@ func (r *MySQLRepository) listModels(ctx context.Context) ([]ModelConfig, error)
 	var models []ModelConfig
 	for rows.Next() {
 		var model ModelConfig
-		var aliases []byte
-		var schema []byte
-		if err := rows.Scan(&model.PublicModel, &aliases, &model.DisplayName, &model.Description, &model.Protocol, &model.Capability, &schema, &model.Enabled); err != nil {
+		var aliases, tags, modalities, capabilities, metadata, schema []byte
+		if err := rows.Scan(
+			&model.PublicModel, &aliases, &model.DisplayName, &model.Description, &model.Protocol, &model.Capability,
+			&model.Category, &tags, &model.ProviderFamily, &modalities, &capabilities,
+			&model.ContextWindow, &model.MaxOutputTokens, &model.Status, &model.Deprecated, &model.SortOrder,
+			&metadata, &schema, &model.Enabled,
+		); err != nil {
 			return nil, err
 		}
 		if len(aliases) > 0 {
 			_ = json.Unmarshal(aliases, &model.Aliases)
 		}
+		_ = json.Unmarshal(tags, &model.Tags)
+		_ = json.Unmarshal(modalities, &model.Modalities)
+		_ = json.Unmarshal(capabilities, &model.Capabilities)
+		if len(metadata) == 0 {
+			metadata = []byte(`{}`)
+		}
+		model.Metadata = json.RawMessage(metadata)
 		if len(schema) == 0 {
 			schema = []byte(`{}`)
 		}
@@ -490,7 +560,12 @@ func (r *MySQLRepository) listChannels(ctx context.Context) ([]ChannelConfig, er
 }
 
 func (r *MySQLRepository) channelModels(ctx context.Context, channelID string) ([]ChannelModel, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT public_model, upstream_model FROM cp_channel_models WHERE channel_id = ? ORDER BY public_model`, channelID)
+	rows, err := r.db.QueryContext(ctx, `
+SELECT public_model, upstream_model, capabilities_json, supported_parameters_json,
+       health_status, test_status, cost_config_status, metadata_json
+FROM cp_channel_models
+WHERE channel_id = ?
+ORDER BY public_model`, channelID)
 	if err != nil {
 		return nil, err
 	}
@@ -498,9 +573,19 @@ func (r *MySQLRepository) channelModels(ctx context.Context, channelID string) (
 	var models []ChannelModel
 	for rows.Next() {
 		var model ChannelModel
-		if err := rows.Scan(&model.PublicModel, &model.UpstreamModel); err != nil {
+		var capabilities, parameters, metadata []byte
+		if err := rows.Scan(
+			&model.PublicModel, &model.UpstreamModel, &capabilities, &parameters,
+			&model.HealthStatus, &model.TestStatus, &model.CostConfigStatus, &metadata,
+		); err != nil {
 			return nil, err
 		}
+		_ = json.Unmarshal(capabilities, &model.Capabilities)
+		_ = json.Unmarshal(parameters, &model.SupportedParameters)
+		if len(metadata) == 0 {
+			metadata = []byte(`{}`)
+		}
+		model.Metadata = json.RawMessage(metadata)
 		models = append(models, model)
 	}
 	return models, rows.Err()
@@ -546,7 +631,10 @@ func (r *MySQLRepository) routeCandidates(ctx context.Context, routeID string) (
 }
 
 func (r *MySQLRepository) listPrices(ctx context.Context) ([]PriceRuleConfig, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT public_model, currency, input_micros_per_token, output_micros_per_token, estimated_output_tokens, enabled FROM cp_price_rules`)
+	rows, err := r.db.QueryContext(ctx, `
+SELECT public_model, category, currency, components_json, input_micros_per_token,
+       output_micros_per_token, estimated_output_tokens, metadata_json, enabled
+FROM cp_price_rules`)
 	if err != nil {
 		return nil, err
 	}
@@ -554,9 +642,18 @@ func (r *MySQLRepository) listPrices(ctx context.Context) ([]PriceRuleConfig, er
 	var prices []PriceRuleConfig
 	for rows.Next() {
 		var price PriceRuleConfig
-		if err := rows.Scan(&price.PublicModel, &price.Currency, &price.InputMicrosPerToken, &price.OutputMicrosPerToken, &price.EstimatedOutputTokens, &price.Enabled); err != nil {
+		var components, metadata []byte
+		if err := rows.Scan(
+			&price.PublicModel, &price.Category, &price.Currency, &components, &price.InputMicrosPerToken,
+			&price.OutputMicrosPerToken, &price.EstimatedOutputTokens, &metadata, &price.Enabled,
+		); err != nil {
 			return nil, err
 		}
+		_ = json.Unmarshal(components, &price.Components)
+		if len(metadata) == 0 {
+			metadata = []byte(`{}`)
+		}
+		price.Metadata = json.RawMessage(metadata)
 		prices = append(prices, price)
 	}
 	return prices, rows.Err()
@@ -685,4 +782,11 @@ func scanModelMarketplace(row rowScanner) (*ModelMarketplaceConfig, error) {
 	}
 	config.Metadata = json.RawMessage(metadata)
 	return &config, nil
+}
+
+func jsonOrDefault(data []byte, fallback string) []byte {
+	if len(data) == 0 || string(data) == "null" {
+		return []byte(fallback)
+	}
+	return data
 }

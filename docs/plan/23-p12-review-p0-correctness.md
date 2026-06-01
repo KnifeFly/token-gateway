@@ -44,6 +44,11 @@ P12 的目标是按 2026-05-31 静态 review 结果，优先修复会直接影�
 - 所有 billable request 的 hold 最终可通过测试证明 settled、released 或进入 repair。
 - `go test` focused packages、MySQL/Redis 相关集成测试和 `git diff --check` 通过。
 
+## 复验记录
+
+- 2026-06-01：P12 代码路径未重新展开功能范围；本次在 P11 之后复验全量 `go test ./...`，覆盖 `internal/dataplane/engine`、`internal/dataplane/stream`、`internal/task`、`internal/billing`、`internal/dataplane/limit` 和 `internal/worker/jobs` 等既有 P12 regression tests。
+- 2026-06-01：P11 的统一报价器改动保留 P12 的 async terminal submit settlement、zero-price/no-hold settlement 和 failed settlement replay 语义。
+
 ## 风险与处理
 
 | 风险 | 处理 |

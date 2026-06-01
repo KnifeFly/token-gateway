@@ -3,6 +3,7 @@ package reporting
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -56,20 +57,24 @@ func (r *MySQLRepository) UpsertProviderCostProfile(ctx context.Context, profile
 	if profile.ID == "" {
 		profile.ID = newID("cost")
 	}
+	components, _ := json.Marshal(profile.Components)
+	components = jsonOrDefault(components, `[]`)
 	_, err := r.db.ExecContext(ctx, `
 INSERT INTO provider_cost_profiles (
-  id, provider_type, channel_id, public_model, currency, input_micros_per_token,
-  output_micros_per_token, fixed_micros_per_request, effective_from, enabled
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  id, provider_type, channel_id, public_model, category, currency, components_json,
+  input_micros_per_token, output_micros_per_token, fixed_micros_per_request, effective_from, enabled
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON DUPLICATE KEY UPDATE
+  category = VALUES(category),
+  components_json = VALUES(components_json),
   input_micros_per_token = VALUES(input_micros_per_token),
   output_micros_per_token = VALUES(output_micros_per_token),
   fixed_micros_per_request = VALUES(fixed_micros_per_request),
   effective_from = VALUES(effective_from),
   enabled = VALUES(enabled),
   updated_at = CURRENT_TIMESTAMP`,
-		profile.ID, profile.ProviderType, profile.ChannelID, profile.PublicModel, profile.Currency,
-		profile.InputMicrosPerToken, profile.OutputMicrosPerToken, profile.FixedMicrosPerRequest,
+		profile.ID, profile.ProviderType, profile.ChannelID, profile.PublicModel, profile.Category,
+		profile.Currency, components, profile.InputMicrosPerToken, profile.OutputMicrosPerToken, profile.FixedMicrosPerRequest,
 		profile.EffectiveFrom, profile.Enabled,
 	)
 	if err != nil {
@@ -112,7 +117,7 @@ FROM usage_records`
 		if !ok || !profile.Enabled {
 			row.CostProfileMissing = true
 		} else {
-			row.ProviderCostMicros = row.InputTokens*profile.InputMicrosPerToken + row.OutputTokens*profile.OutputMicrosPerToken + row.Requests*profile.FixedMicrosPerRequest
+			row.ProviderCostMicros = providerCostMicros(profile, row)
 		}
 		row.ProfitMicros = row.RevenueMicros - row.ProviderCostMicros
 		report.Rows = append(report.Rows, row)
@@ -358,8 +363,9 @@ FROM ledger_entries`
 
 func (r *MySQLRepository) providerCostProfiles(ctx context.Context) (map[string]ProviderCostProfile, error) {
 	rows, err := r.db.QueryContext(ctx, `
-SELECT id, provider_type, channel_id, public_model, currency, input_micros_per_token,
-       output_micros_per_token, fixed_micros_per_request, effective_from, enabled, created_at, updated_at
+SELECT id, provider_type, channel_id, public_model, category, currency, components_json,
+       input_micros_per_token, output_micros_per_token, fixed_micros_per_request,
+       effective_from, enabled, created_at, updated_at
 FROM provider_cost_profiles
 WHERE enabled = TRUE`)
 	if err != nil {
@@ -379,8 +385,9 @@ WHERE enabled = TRUE`)
 
 func (r *MySQLRepository) getProviderCostProfile(ctx context.Context, providerType, channelID, model, currency string) (*ProviderCostProfile, error) {
 	return scanProviderCostProfile(r.db.QueryRowContext(ctx, `
-SELECT id, provider_type, channel_id, public_model, currency, input_micros_per_token,
-       output_micros_per_token, fixed_micros_per_request, effective_from, enabled, created_at, updated_at
+SELECT id, provider_type, channel_id, public_model, category, currency, components_json,
+       input_micros_per_token, output_micros_per_token, fixed_micros_per_request,
+       effective_from, enabled, created_at, updated_at
 FROM provider_cost_profiles
 WHERE provider_type = ? AND channel_id = ? AND public_model = ? AND currency = ?`,
 		providerType, channelID, model, currency,
@@ -549,15 +556,17 @@ type rowScanner interface {
 
 func scanProviderCostProfile(row rowScanner) (*ProviderCostProfile, error) {
 	var profile ProviderCostProfile
+	var components []byte
 	err := row.Scan(
 		&profile.ID, &profile.ProviderType, &profile.ChannelID, &profile.PublicModel,
-		&profile.Currency, &profile.InputMicrosPerToken, &profile.OutputMicrosPerToken,
+		&profile.Category, &profile.Currency, &components, &profile.InputMicrosPerToken, &profile.OutputMicrosPerToken,
 		&profile.FixedMicrosPerRequest, &profile.EffectiveFrom, &profile.Enabled,
 		&profile.CreatedAt, &profile.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
 	}
+	_ = json.Unmarshal(components, &profile.Components)
 	return &profile, nil
 }
 
@@ -572,6 +581,13 @@ func scanManualAdjustment(row rowScanner) (*ManualAdjustment, error) {
 		return nil, err
 	}
 	return &adjustment, nil
+}
+
+func jsonOrDefault(data []byte, fallback string) []byte {
+	if len(data) == 0 || string(data) == "null" {
+		return []byte(fallback)
+	}
+	return data
 }
 
 var _ Repository = (*MySQLRepository)(nil)

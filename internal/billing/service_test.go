@@ -436,6 +436,27 @@ func TestSettlementPlannerBillsPartialStreamClientDisconnect(t *testing.T) {
 	}
 }
 
+func TestSettlementPlannerUsesComponentPriceRule(t *testing.T) {
+	planner := NewSettlementPlanner(pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 10, OutputMicrosPerToken: 20})
+	state := settlementState("hold_1")
+	state.PriceRule = engine.PriceRuleView{
+		PublicModel: "image-plus",
+		Category:    string(pricing.CategoryImage),
+		Currency:    "USD",
+		Components: []pricing.Component{
+			{Unit: pricing.UnitInputToken, MicrosPerUnit: 2},
+			{Unit: pricing.UnitOutputToken, MicrosPerUnit: 3},
+			{Unit: pricing.UnitRequest, MicrosPerUnit: 50},
+		},
+		Enabled: true,
+	}
+
+	plan := planner.Plan(state)
+	if plan.AmountMicros != 85 {
+		t.Fatalf("AmountMicros = %d, want 85", plan.AmountMicros)
+	}
+}
+
 func TestAttemptWriterRecordsReliabilityFields(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemoryRepository()

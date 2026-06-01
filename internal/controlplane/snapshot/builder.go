@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -39,7 +40,7 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 	}
 	runtime := &RuntimeSnapshot{
 		Version:       fmt.Sprintf("snap-%d", time.Now().UTC().UnixNano()),
-		SchemaVersion: "m6",
+		SchemaVersion: "p11",
 		CreatedAt:     time.Now().UTC(),
 	}
 	providerMappings := providerMappingsByModel(cfg.Channels)
@@ -59,6 +60,10 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 		if len(schema) == 0 {
 			schema = json.RawMessage(`{}`)
 		}
+		metadata := append(json.RawMessage(nil), model.Metadata...)
+		if len(metadata) == 0 {
+			metadata = json.RawMessage(`{}`)
+		}
 		runtime.Models = append(runtime.Models, ModelRuntime{
 			PublicModel:      model.PublicModel,
 			Aliases:          append([]string(nil), model.Aliases...),
@@ -66,6 +71,17 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 			Description:      model.Description,
 			Protocol:         model.Protocol,
 			Capability:       model.Capability,
+			Category:         model.Category,
+			Tags:             append([]string(nil), model.Tags...),
+			ProviderFamily:   model.ProviderFamily,
+			Modalities:       append([]string(nil), model.Modalities...),
+			Capabilities:     append([]string(nil), model.Capabilities...),
+			ContextWindow:    model.ContextWindow,
+			MaxOutputTokens:  model.MaxOutputTokens,
+			Status:           model.Status,
+			Deprecated:       model.Deprecated,
+			SortOrder:        model.SortOrder,
+			Metadata:         metadata,
 			Schema:           schema,
 			ProviderMappings: append([]ProviderModelMappingRuntime(nil), providerMappings[model.PublicModel]...),
 			Enabled:          model.Enabled,
@@ -85,9 +101,19 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 			next.Timeout = time.Duration(channel.TimeoutMillis) * time.Millisecond
 		}
 		for _, model := range channel.Models {
+			metadata := append(json.RawMessage(nil), model.Metadata...)
+			if len(metadata) == 0 {
+				metadata = json.RawMessage(`{}`)
+			}
 			next.Models = append(next.Models, ChannelModelRuntime{
-				PublicModel:   model.PublicModel,
-				UpstreamModel: model.UpstreamModel,
+				PublicModel:         model.PublicModel,
+				UpstreamModel:       model.UpstreamModel,
+				Capabilities:        append([]string(nil), model.Capabilities...),
+				SupportedParameters: append([]string(nil), model.SupportedParameters...),
+				HealthStatus:        model.HealthStatus,
+				TestStatus:          model.TestStatus,
+				CostConfigStatus:    model.CostConfigStatus,
+				Metadata:            metadata,
 			})
 		}
 		runtime.Channels = append(runtime.Channels, next)
@@ -111,12 +137,19 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 		runtime.RoutePolicies = append(runtime.RoutePolicies, next)
 	}
 	for _, price := range cfg.Prices {
+		metadata := append(json.RawMessage(nil), price.Metadata...)
+		if len(metadata) == 0 {
+			metadata = json.RawMessage(`{}`)
+		}
 		runtime.PriceRules = append(runtime.PriceRules, PriceRuleRuntime{
 			PublicModel:           price.PublicModel,
+			Category:              price.Category,
 			Currency:              price.Currency,
+			Components:            append([]pricing.Component(nil), price.Components...),
 			InputMicrosPerToken:   price.InputMicrosPerToken,
 			OutputMicrosPerToken:  price.OutputMicrosPerToken,
 			EstimatedOutputTokens: price.EstimatedOutputTokens,
+			Metadata:              metadata,
 			Enabled:               price.Enabled,
 		})
 	}
@@ -184,6 +217,12 @@ func Validate(runtime RuntimeSnapshot) error {
 		if len(model.Schema) > 0 && !json.Valid(model.Schema) {
 			return apperr.InvalidArgument("model schema must be valid json")
 		}
+		if _, err := pricing.InferCategory(model.Category, model.Capability, model.PublicModel); err != nil {
+			return apperr.InvalidArgument(err.Error())
+		}
+		if len(model.Metadata) > 0 && !json.Valid(model.Metadata) {
+			return apperr.InvalidArgument("model metadata must be valid json")
+		}
 		for _, alias := range model.Aliases {
 			if alias == "" || alias == model.PublicModel {
 				continue
@@ -214,6 +253,9 @@ func Validate(runtime RuntimeSnapshot) error {
 			if mapping.UpstreamModel == "" {
 				return apperr.InvalidArgument("channel upstream_model is required")
 			}
+			if len(mapping.Metadata) > 0 && !json.Valid(mapping.Metadata) {
+				return apperr.InvalidArgument("channel model metadata must be valid json")
+			}
 		}
 	}
 	for _, route := range runtime.RoutePolicies {
@@ -233,6 +275,27 @@ func Validate(runtime RuntimeSnapshot) error {
 	for _, price := range runtime.PriceRules {
 		if price.Enabled && models[price.PublicModel].PublicModel == "" {
 			return apperr.InvalidArgument("price references unknown model")
+		}
+		if !price.Enabled {
+			continue
+		}
+		category, err := pricing.InferCategory(price.Category, models[price.PublicModel].Capability, price.PublicModel)
+		if err != nil {
+			return apperr.InvalidArgument(err.Error())
+		}
+		if _, err := pricing.NormalizePriceBook(pricing.PriceBook{
+			Category:   category,
+			Currency:   price.Currency,
+			Components: price.Components,
+		}, pricing.TokenPrice{
+			Currency:             price.Currency,
+			InputMicrosPerToken:  price.InputMicrosPerToken,
+			OutputMicrosPerToken: price.OutputMicrosPerToken,
+		}); err != nil {
+			return apperr.InvalidArgument(err.Error())
+		}
+		if len(price.Metadata) > 0 && !json.Valid(price.Metadata) {
+			return apperr.InvalidArgument("price metadata must be valid json")
 		}
 	}
 	for _, limit := range runtime.LimitRules {
@@ -270,11 +333,21 @@ func providerMappingsByModel(channels []admin.ChannelConfig) map[string][]Provid
 	out := map[string][]ProviderModelMappingRuntime{}
 	for _, channel := range channels {
 		for _, model := range channel.Models {
+			metadata := append(json.RawMessage(nil), model.Metadata...)
+			if len(metadata) == 0 {
+				metadata = json.RawMessage(`{}`)
+			}
 			out[model.PublicModel] = append(out[model.PublicModel], ProviderModelMappingRuntime{
-				ProviderType:  channel.ProviderType,
-				ChannelID:     channel.ID,
-				PublicModel:   model.PublicModel,
-				UpstreamModel: model.UpstreamModel,
+				ProviderType:        channel.ProviderType,
+				ChannelID:           channel.ID,
+				PublicModel:         model.PublicModel,
+				UpstreamModel:       model.UpstreamModel,
+				Capabilities:        append([]string(nil), model.Capabilities...),
+				SupportedParameters: append([]string(nil), model.SupportedParameters...),
+				HealthStatus:        model.HealthStatus,
+				TestStatus:          model.TestStatus,
+				CostConfigStatus:    model.CostConfigStatus,
+				Metadata:            metadata,
 			})
 		}
 	}

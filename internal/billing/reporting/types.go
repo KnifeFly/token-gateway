@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 // TimeRange bounds report rows by creation time.
@@ -86,18 +87,20 @@ type TenantUsageReport struct {
 
 // ProviderCostProfile pins provider-side cost assumptions for reports.
 type ProviderCostProfile struct {
-	ID                    string    `json:"id"`
-	ProviderType          string    `json:"provider_type"`
-	ChannelID             string    `json:"channel_id"`
-	PublicModel           string    `json:"public_model"`
-	Currency              string    `json:"currency"`
-	InputMicrosPerToken   int64     `json:"input_micros_per_token"`
-	OutputMicrosPerToken  int64     `json:"output_micros_per_token"`
-	FixedMicrosPerRequest int64     `json:"fixed_micros_per_request"`
-	EffectiveFrom         time.Time `json:"effective_from,omitempty"`
-	Enabled               bool      `json:"enabled"`
-	CreatedAt             time.Time `json:"created_at,omitempty"`
-	UpdatedAt             time.Time `json:"updated_at,omitempty"`
+	ID                    string              `json:"id"`
+	ProviderType          string              `json:"provider_type"`
+	ChannelID             string              `json:"channel_id"`
+	PublicModel           string              `json:"public_model"`
+	Category              string              `json:"category,omitempty"`
+	Currency              string              `json:"currency"`
+	Components            []pricing.Component `json:"components,omitempty"`
+	InputMicrosPerToken   int64               `json:"input_micros_per_token"`
+	OutputMicrosPerToken  int64               `json:"output_micros_per_token"`
+	FixedMicrosPerRequest int64               `json:"fixed_micros_per_request"`
+	EffectiveFrom         time.Time           `json:"effective_from,omitempty"`
+	Enabled               bool                `json:"enabled"`
+	CreatedAt             time.Time           `json:"created_at,omitempty"`
+	UpdatedAt             time.Time           `json:"updated_at,omitempty"`
 }
 
 // ProviderProfitFilter scopes operator cost and profit reports.

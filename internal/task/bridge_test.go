@@ -145,7 +145,9 @@ func TestBridgePinsAsyncTaskPriceSnapshot(t *testing.T) {
 	state.SnapshotRef = engine.SnapshotRef{Version: "snap_1"}
 	state.PriceRule = engine.PriceRuleView{
 		PublicModel:           "image-public",
+		Category:              string(pricing.CategoryImage),
 		Currency:              "CNY",
+		Components:            []pricing.Component{{Unit: pricing.UnitTask, MicrosPerUnit: 753}},
 		InputMicrosPerToken:   13,
 		OutputMicrosPerToken:  17,
 		EstimatedOutputTokens: 42,
@@ -164,6 +166,9 @@ func TestBridgePinsAsyncTaskPriceSnapshot(t *testing.T) {
 	snapshot := dispatcher.requests[0].Task.PriceSnapshot
 	if snapshot.Currency != "CNY" || snapshot.InputMicrosPerToken != 13 || snapshot.OutputMicrosPerToken != 17 {
 		t.Fatalf("price snapshot = %#v", snapshot)
+	}
+	if snapshot.Category != string(pricing.CategoryImage) || len(snapshot.Components) != 1 || snapshot.Components[0].Unit != pricing.UnitTask {
+		t.Fatalf("price snapshot components = %#v", snapshot)
 	}
 	if snapshot.EstimatedOutputTokens != 42 || snapshot.EstimatedChargeMicros != 753 || snapshot.RouteSnapshotVersion != "snap_1" || snapshot.RoutePolicyID != "route_1" {
 		t.Fatalf("price snapshot audit fields = %#v", snapshot)

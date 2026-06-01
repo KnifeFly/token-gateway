@@ -68,3 +68,28 @@ func TestPriceEstimatorUsesPinnedSnapshotPrice(t *testing.T) {
 		t.Fatalf("amount = %d, want 200", amount.Micros)
 	}
 }
+
+func TestPriceEstimatorUsesComponentSnapshotPrice(t *testing.T) {
+	state := &engine.RequestState{
+		EstimatedUsage: tokenusage.Estimate{InputTokens: 10},
+		PriceRule: engine.PriceRuleView{
+			PublicModel: "image-plus",
+			Category:    string(pricing.CategoryImage),
+			Currency:    "USD",
+			Components: []pricing.Component{
+				{Unit: pricing.UnitInputToken, MicrosPerUnit: 2},
+				{Unit: pricing.UnitRequest, MicrosPerUnit: 50},
+			},
+			Enabled: true,
+		},
+	}
+
+	amount := NewPriceEstimator(pricing.TokenPrice{
+		Currency:             "USD",
+		InputMicrosPerToken:  1,
+		OutputMicrosPerToken: 2,
+	}, 100).Estimate(state)
+	if amount.Micros != 70 {
+		t.Fatalf("amount = %d, want 70", amount.Micros)
+	}
+}

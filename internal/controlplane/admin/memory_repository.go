@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 // MemoryRepository is a local control-plane repository for tests and dev.
@@ -228,7 +230,17 @@ func (r *MemoryRepository) ListVisibleModels(_ context.Context, tenantID, projec
 			Description:           config.Description,
 			Protocol:              model.Protocol,
 			Capability:            model.Capability,
+			Category:              model.Category,
+			Tags:                  append([]string(nil), model.Tags...),
+			ProviderFamily:        model.ProviderFamily,
+			Modalities:            append([]string(nil), model.Modalities...),
+			Capabilities:          append([]string(nil), model.Capabilities...),
+			ContextWindow:         model.ContextWindow,
+			MaxOutputTokens:       model.MaxOutputTokens,
+			Status:                model.Status,
+			Deprecated:            model.Deprecated,
 			Currency:              price.Currency,
+			Components:            append([]pricing.Component(nil), price.Components...),
 			InputMicrosPerToken:   price.InputMicrosPerToken,
 			OutputMicrosPerToken:  price.OutputMicrosPerToken,
 			EstimatedOutputTokens: price.EstimatedOutputTokens,

@@ -27,13 +27,20 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 		t.Fatalf("key = %#v", key)
 	}
 	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
-		PublicModel: "gpt-4o-mini",
-		Aliases:     []string{"gpt-4o-mini-alias"},
-		DisplayName: "GPT 4o Mini",
-		Protocol:    string(engine.ProtocolNativeOpenAI),
-		Capability:  "chat",
-		Schema:      json.RawMessage(`{"type":"object","required":["model"]}`),
-		Enabled:     true,
+		PublicModel:     "gpt-4o-mini",
+		Aliases:         []string{"gpt-4o-mini-alias"},
+		DisplayName:     "GPT 4o Mini",
+		Protocol:        string(engine.ProtocolNativeOpenAI),
+		Capability:      "chat",
+		Category:        "chat",
+		Tags:            []string{"fast"},
+		ProviderFamily:  "openai",
+		Modalities:      []string{"text"},
+		Capabilities:    []string{"chat"},
+		ContextWindow:   128000,
+		MaxOutputTokens: 4096,
+		Schema:          json.RawMessage(`{"type":"object","required":["model"]}`),
+		Enabled:         true,
 	}); err != nil {
 		t.Fatalf("UpsertModel() error = %v", err)
 	}
@@ -43,7 +50,13 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 		BaseURL:      "https://provider.example",
 		APIKey:       "provider-secret",
 		Enabled:      true,
-		Models:       []admin.ChannelModel{{PublicModel: "gpt-4o-mini", UpstreamModel: "gpt-4o-mini"}},
+		Models: []admin.ChannelModel{{
+			PublicModel:         "gpt-4o-mini",
+			UpstreamModel:       "gpt-4o-mini",
+			SupportedParameters: []string{"temperature"},
+			TestStatus:          "passed",
+			CostConfigStatus:    "configured",
+		}},
 	})
 	if err != nil {
 		t.Fatalf("UpsertChannel() error = %v", err)
@@ -107,6 +120,12 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}
 	if len(runtime.Models[0].Aliases) != 1 || runtime.Models[0].DisplayName != "GPT 4o Mini" || len(runtime.Models[0].ProviderMappings) != 1 {
 		t.Fatalf("model catalog = %#v", runtime.Models[0])
+	}
+	if runtime.Models[0].Category != "chat" || runtime.Models[0].ProviderFamily != "openai" || runtime.Models[0].ContextWindow != 128000 {
+		t.Fatalf("p11 model catalog = %#v", runtime.Models[0])
+	}
+	if runtime.Channels[0].Models[0].CostConfigStatus != "configured" || runtime.Models[0].ProviderMappings[0].TestStatus != "passed" {
+		t.Fatalf("channel model metadata = %#v mappings = %#v", runtime.Channels[0].Models[0], runtime.Models[0].ProviderMappings)
 	}
 	if len(runtime.LimitRules) != 1 || runtime.LimitRules[0].APIKeyID != key.ID || runtime.LimitRules[0].RPM != 60 {
 		t.Fatalf("limit rules = %#v", runtime.LimitRules)

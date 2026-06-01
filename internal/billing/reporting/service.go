@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -61,6 +62,28 @@ func (s *Service) UpsertProviderCostProfile(ctx context.Context, profile Provide
 	if profile.InputMicrosPerToken < 0 || profile.OutputMicrosPerToken < 0 || profile.FixedMicrosPerRequest < 0 {
 		return nil, apperr.InvalidArgument("provider cost values must be non-negative")
 	}
+	category, err := pricing.InferCategory(profile.Category, profile.PublicModel)
+	if err != nil {
+		return nil, apperr.InvalidArgument(err.Error())
+	}
+	book, err := pricing.NormalizePriceBook(pricing.PriceBook{
+		Category:   category,
+		Currency:   profile.Currency,
+		Components: profile.Components,
+	}, pricing.TokenPrice{
+		Currency:             profile.Currency,
+		InputMicrosPerToken:  profile.InputMicrosPerToken,
+		OutputMicrosPerToken: profile.OutputMicrosPerToken,
+	})
+	if err != nil {
+		return nil, apperr.InvalidArgument(err.Error())
+	}
+	legacy := pricing.LegacyTokenPrice(book.Currency, book.Components)
+	profile.Category = string(book.Category)
+	profile.Currency = book.Currency
+	profile.Components = book.Components
+	profile.InputMicrosPerToken = legacy.InputMicrosPerToken
+	profile.OutputMicrosPerToken = legacy.OutputMicrosPerToken
 	if profile.EffectiveFrom.IsZero() {
 		profile.EffectiveFrom = s.now()
 	}
@@ -136,6 +159,43 @@ func normalizeLimit(limit int) int {
 
 func normalizeCurrency(currency string) string {
 	return strings.ToUpper(strings.TrimSpace(currency))
+}
+
+func providerCostMicros(profile ProviderCostProfile, row ProviderProfitRow) int64 {
+	book, err := pricing.NormalizePriceBook(pricing.PriceBook{
+		Category:   pricing.Category(profile.Category),
+		Currency:   profile.Currency,
+		Components: profile.Components,
+	}, pricing.TokenPrice{
+		Currency:             profile.Currency,
+		InputMicrosPerToken:  profile.InputMicrosPerToken,
+		OutputMicrosPerToken: profile.OutputMicrosPerToken,
+	})
+	if err != nil {
+		book = pricing.TokenPrice{
+			Currency:             profile.Currency,
+			InputMicrosPerToken:  profile.InputMicrosPerToken,
+			OutputMicrosPerToken: profile.OutputMicrosPerToken,
+		}.PriceBook(pricing.CategoryChat)
+	}
+	amount := book.QuoteMetered(pricing.MeteredUsage{
+		InputTokens:  row.InputTokens,
+		OutputTokens: row.OutputTokens,
+		Requests:     row.Requests,
+	})
+	if hasCostComponent(profile.Components, pricing.UnitRequest) {
+		return amount.Micros
+	}
+	return amount.Micros + row.Requests*profile.FixedMicrosPerRequest
+}
+
+func hasCostComponent(components []pricing.Component, unit pricing.Unit) bool {
+	for _, component := range components {
+		if component.Unit == unit {
+			return true
+		}
+	}
+	return false
 }
 
 func admissionBudgetSemantics() BudgetSemantics {

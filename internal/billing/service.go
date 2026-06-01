@@ -136,11 +136,7 @@ func (p *SettlementPlanner) Plan(state *engine.RequestState) SettlementPlan {
 	decision := p.policy.Decide(RequestBillabilityContext(state))
 	amount := p.price.QuoteActual(state.ActualUsage)
 	if state.PriceRule.Enabled {
-		amount = pricing.TokenPrice{
-			Currency:             state.PriceRule.Currency,
-			InputMicrosPerToken:  state.PriceRule.InputMicrosPerToken,
-			OutputMicrosPerToken: state.PriceRule.OutputMicrosPerToken,
-		}.QuoteActual(state.ActualUsage)
+		amount = state.PriceRule.PriceBook().QuoteActual(state.ActualUsage)
 	}
 	if !decision.Billable {
 		amount.Micros = 0

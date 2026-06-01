@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -45,15 +46,26 @@ type APIKey struct {
 
 // ModelConfig is a public model advertised by the gateway.
 type ModelConfig struct {
-	PublicModel string          `json:"public_model"`
-	Aliases     []string        `json:"aliases,omitempty"`
-	DisplayName string          `json:"display_name,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Protocol    string          `json:"protocol"`
-	Capability  string          `json:"capability"`
-	Schema      json.RawMessage `json:"schema,omitempty"`
-	Enabled     bool            `json:"enabled"`
-	EnabledSet  bool            `json:"-"`
+	PublicModel     string          `json:"public_model"`
+	Aliases         []string        `json:"aliases,omitempty"`
+	DisplayName     string          `json:"display_name,omitempty"`
+	Description     string          `json:"description,omitempty"`
+	Protocol        string          `json:"protocol"`
+	Capability      string          `json:"capability"`
+	Category        string          `json:"category,omitempty"`
+	Tags            []string        `json:"tags,omitempty"`
+	ProviderFamily  string          `json:"provider_family,omitempty"`
+	Modalities      []string        `json:"modalities,omitempty"`
+	Capabilities    []string        `json:"capabilities,omitempty"`
+	ContextWindow   int64           `json:"context_window,omitempty"`
+	MaxOutputTokens int64           `json:"max_output_tokens,omitempty"`
+	Status          string          `json:"status,omitempty"`
+	Deprecated      bool            `json:"deprecated,omitempty"`
+	SortOrder       int             `json:"sort_order,omitempty"`
+	Metadata        json.RawMessage `json:"metadata,omitempty"`
+	Schema          json.RawMessage `json:"schema,omitempty"`
+	Enabled         bool            `json:"enabled"`
+	EnabledSet      bool            `json:"-"`
 }
 
 // ChannelConfig is a provider channel and encrypted credential reference.
@@ -73,8 +85,44 @@ type ChannelConfig struct {
 
 // ChannelModel maps a public model to one upstream model.
 type ChannelModel struct {
-	PublicModel   string `json:"public_model"`
-	UpstreamModel string `json:"upstream_model"`
+	PublicModel         string          `json:"public_model"`
+	UpstreamModel       string          `json:"upstream_model"`
+	Capabilities        []string        `json:"capabilities,omitempty"`
+	SupportedParameters []string        `json:"supported_parameters,omitempty"`
+	HealthStatus        string          `json:"health_status,omitempty"`
+	TestStatus          string          `json:"test_status,omitempty"`
+	CostConfigStatus    string          `json:"cost_config_status,omitempty"`
+	Metadata            json.RawMessage `json:"metadata,omitempty"`
+}
+
+// ChannelModelSyncPreviewRequest requests a non-persistent upstream model diff.
+type ChannelModelSyncPreviewRequest struct {
+	ChannelID      string         `json:"channel_id"`
+	ProviderType   string         `json:"provider_type,omitempty"`
+	UpstreamModels []ChannelModel `json:"upstream_models"`
+}
+
+// ChannelModelSyncPreview summarizes channel model sync changes before writing.
+type ChannelModelSyncPreview struct {
+	ChannelID    string                    `json:"channel_id"`
+	ProviderType string                    `json:"provider_type,omitempty"`
+	Added        []ChannelModelPreviewItem `json:"added,omitempty"`
+	Removed      []ChannelModelPreviewItem `json:"removed,omitempty"`
+	Changed      []ChannelModelPreviewItem `json:"changed,omitempty"`
+	Unchanged    int                       `json:"unchanged"`
+	Warnings     []string                  `json:"warnings,omitempty"`
+}
+
+// ChannelModelPreviewItem describes one channel model diff row.
+type ChannelModelPreviewItem struct {
+	PublicModel             string `json:"public_model"`
+	UpstreamModel           string `json:"upstream_model,omitempty"`
+	CurrentUpstreamModel    string `json:"current_upstream_model,omitempty"`
+	HealthStatus            string `json:"health_status,omitempty"`
+	TestStatus              string `json:"test_status,omitempty"`
+	CostConfigStatus        string `json:"cost_config_status,omitempty"`
+	KnownCatalogModel       bool   `json:"known_catalog_model"`
+	CustomerPriceConfigured bool   `json:"customer_price_configured"`
 }
 
 // RoutePolicyConfig is the route candidate set for one public model.
@@ -96,13 +144,16 @@ type RouteCandidate struct {
 
 // PriceRuleConfig pins customer-facing price for one model.
 type PriceRuleConfig struct {
-	PublicModel           string `json:"public_model"`
-	Currency              string `json:"currency"`
-	InputMicrosPerToken   int64  `json:"input_micros_per_token"`
-	OutputMicrosPerToken  int64  `json:"output_micros_per_token"`
-	EstimatedOutputTokens int64  `json:"estimated_output_tokens"`
-	Enabled               bool   `json:"enabled"`
-	EnabledSet            bool   `json:"-"`
+	PublicModel           string              `json:"public_model"`
+	Category              string              `json:"category,omitempty"`
+	Currency              string              `json:"currency"`
+	Components            []pricing.Component `json:"components,omitempty"`
+	InputMicrosPerToken   int64               `json:"input_micros_per_token"`
+	OutputMicrosPerToken  int64               `json:"output_micros_per_token"`
+	EstimatedOutputTokens int64               `json:"estimated_output_tokens"`
+	Metadata              json.RawMessage     `json:"metadata,omitempty"`
+	Enabled               bool                `json:"enabled"`
+	EnabledSet            bool                `json:"-"`
 }
 
 // LimitRuleConfig pins request limits for one multi-dimensional scope.
@@ -160,20 +211,30 @@ type ModelMarketplaceConfig struct {
 
 // VisibleModel is a tenant-facing model marketplace row.
 type VisibleModel struct {
-	ID                    string          `json:"id"`
-	TenantID              string          `json:"tenant_id,omitempty"`
-	ProjectID             string          `json:"project_id,omitempty"`
-	PublicModel           string          `json:"public_model"`
-	DisplayName           string          `json:"display_name"`
-	Description           string          `json:"description,omitempty"`
-	Protocol              string          `json:"protocol"`
-	Capability            string          `json:"capability"`
-	Currency              string          `json:"currency,omitempty"`
-	InputMicrosPerToken   int64           `json:"input_micros_per_token,omitempty"`
-	OutputMicrosPerToken  int64           `json:"output_micros_per_token,omitempty"`
-	EstimatedOutputTokens int64           `json:"estimated_output_tokens,omitempty"`
-	SortOrder             int             `json:"sort_order"`
-	Metadata              json.RawMessage `json:"metadata"`
+	ID                    string              `json:"id"`
+	TenantID              string              `json:"tenant_id,omitempty"`
+	ProjectID             string              `json:"project_id,omitempty"`
+	PublicModel           string              `json:"public_model"`
+	DisplayName           string              `json:"display_name"`
+	Description           string              `json:"description,omitempty"`
+	Protocol              string              `json:"protocol"`
+	Capability            string              `json:"capability"`
+	Category              string              `json:"category,omitempty"`
+	Tags                  []string            `json:"tags,omitempty"`
+	ProviderFamily        string              `json:"provider_family,omitempty"`
+	Modalities            []string            `json:"modalities,omitempty"`
+	Capabilities          []string            `json:"capabilities,omitempty"`
+	ContextWindow         int64               `json:"context_window,omitempty"`
+	MaxOutputTokens       int64               `json:"max_output_tokens,omitempty"`
+	Status                string              `json:"status,omitempty"`
+	Deprecated            bool                `json:"deprecated,omitempty"`
+	Currency              string              `json:"currency,omitempty"`
+	Components            []pricing.Component `json:"components,omitempty"`
+	InputMicrosPerToken   int64               `json:"input_micros_per_token,omitempty"`
+	OutputMicrosPerToken  int64               `json:"output_micros_per_token,omitempty"`
+	EstimatedOutputTokens int64               `json:"estimated_output_tokens,omitempty"`
+	SortOrder             int                 `json:"sort_order"`
+	Metadata              json.RawMessage     `json:"metadata"`
 }
 
 // SnapshotRecord stores one published runtime snapshot payload.

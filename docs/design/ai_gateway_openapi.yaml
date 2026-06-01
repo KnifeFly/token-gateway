@@ -1185,6 +1185,35 @@ paths:
       security:
       - adminTokenAuth: []
       - bearerAuth: []
+  /admin/channels/model-sync-preview:
+    post:
+      tags:
+      - Admin
+      summary: Preview provider channel model sync
+      operationId: adminPreviewChannelModelSync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminChannelModelSyncPreviewRequest'
+            example:
+              channel_id: channel_release_openai
+              upstream_models:
+              - public_model: gpt-4o-mini
+                upstream_model: gpt-4o-mini-2026
+      responses:
+        '200':
+          description: Non-persistent channel model sync diff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminChannelModelSyncPreview'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+      security:
+      - adminTokenAuth: []
+      - bearerAuth: []
   /admin/routes:
     post:
       tags:
@@ -1957,6 +1986,47 @@ components:
           type: string
           format: date-time
           nullable: true
+    ModelPricingCategory:
+      type: string
+      enum:
+      - chat
+      - embedding
+      - rerank
+      - image
+      - video
+      - audio_speech
+      - audio_transcription
+      - music
+      - moderation
+      - realtime_reserved
+    PricingComponent:
+      type: object
+      required:
+      - unit
+      - micros_per_unit
+      properties:
+        unit:
+          type: string
+          enum:
+          - input_token
+          - output_token
+          - cache_read_token
+          - cache_write_token
+          - reasoning_token
+          - audio_input_token
+          - audio_output_token
+          - image_input_token
+          - image_output_token
+          - video_input_token
+          - video_output_token
+          - request
+          - image
+          - audio_second
+          - video_second
+          - task
+        micros_per_unit:
+          type: integer
+          format: int64
     AdminModelConfig:
       type: object
       required:
@@ -1983,6 +2053,37 @@ components:
           - unified
         capability:
           type: string
+        category:
+          $ref: '#/components/schemas/ModelPricingCategory'
+        tags:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        context_window:
+          type: integer
+          format: int64
+        max_output_tokens:
+          type: integer
+          format: int64
+        status:
+          type: string
+        deprecated:
+          type: boolean
+        sort_order:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
         schema:
           type: object
           additionalProperties: true
@@ -2029,6 +2130,81 @@ components:
           type: string
         upstream_model:
           type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminChannelModelSyncPreviewRequest:
+      type: object
+      required:
+      - channel_id
+      - upstream_models
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        upstream_models:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminChannelModel'
+    AdminChannelModelSyncPreview:
+      type: object
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        added:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminChannelModelPreviewItem'
+        removed:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminChannelModelPreviewItem'
+        changed:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminChannelModelPreviewItem'
+        unchanged:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+    AdminChannelModelPreviewItem:
+      type: object
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        current_upstream_model:
+          type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        known_catalog_model:
+          type: boolean
+        customer_price_configured:
+          type: boolean
     AdminRoutePolicyConfig:
       type: object
       required:
@@ -2073,8 +2249,14 @@ components:
       properties:
         public_model:
           type: string
+        category:
+          $ref: '#/components/schemas/ModelPricingCategory'
         currency:
           type: string
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingComponent'
         input_micros_per_token:
           type: integer
           format: int64
@@ -2084,6 +2266,9 @@ components:
         estimated_output_tokens:
           type: integer
           format: int64
+        metadata:
+          type: object
+          additionalProperties: true
         enabled:
           type: boolean
     AdminLimitRuleConfig:
@@ -2315,8 +2500,14 @@ components:
           type: string
         public_model:
           type: string
+        category:
+          $ref: '#/components/schemas/ModelPricingCategory'
         currency:
           type: string
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/PricingComponent'
         input_micros_per_token:
           type: integer
           format: int64
@@ -2400,8 +2591,38 @@ components:
             type: string
           capability:
             type: string
+          category:
+            $ref: '#/components/schemas/ModelPricingCategory'
+          tags:
+            type: array
+            items:
+              type: string
+          provider_family:
+            type: string
+          modalities:
+            type: array
+            items:
+              type: string
+          capabilities:
+            type: array
+            items:
+              type: string
+          context_window:
+            type: integer
+            format: int64
+          max_output_tokens:
+            type: integer
+            format: int64
+          status:
+            type: string
+          deprecated:
+            type: boolean
           currency:
             type: string
+          components:
+            type: array
+            items:
+              $ref: '#/components/schemas/PricingComponent'
           input_micros_per_token:
             type: integer
             format: int64

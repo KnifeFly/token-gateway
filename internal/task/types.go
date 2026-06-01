@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 )
 
@@ -71,15 +72,41 @@ type CallbackStatus string
 
 // PriceSnapshot pins the customer-facing async task price at task creation time.
 type PriceSnapshot struct {
-	PublicModel           string `json:"public_model,omitempty"`
-	Currency              string `json:"currency,omitempty"`
-	InputMicrosPerToken   int64  `json:"input_micros_per_token,omitempty"`
-	OutputMicrosPerToken  int64  `json:"output_micros_per_token,omitempty"`
-	EstimatedOutputTokens int64  `json:"estimated_output_tokens,omitempty"`
-	EstimatedChargeMicros int64  `json:"estimated_charge_micros,omitempty"`
-	RouteSnapshotVersion  string `json:"route_snapshot_version,omitempty"`
-	RoutePolicyID         string `json:"route_policy_id,omitempty"`
-	Source                string `json:"source,omitempty"`
+	PublicModel           string              `json:"public_model,omitempty"`
+	Category              string              `json:"category,omitempty"`
+	Currency              string              `json:"currency,omitempty"`
+	Components            []pricing.Component `json:"components,omitempty"`
+	InputMicrosPerToken   int64               `json:"input_micros_per_token,omitempty"`
+	OutputMicrosPerToken  int64               `json:"output_micros_per_token,omitempty"`
+	EstimatedOutputTokens int64               `json:"estimated_output_tokens,omitempty"`
+	EstimatedChargeMicros int64               `json:"estimated_charge_micros,omitempty"`
+	RouteSnapshotVersion  string              `json:"route_snapshot_version,omitempty"`
+	RoutePolicyID         string              `json:"route_policy_id,omitempty"`
+	Source                string              `json:"source,omitempty"`
+}
+
+// PriceBook returns the normalized price pinned at async task creation time.
+func (p PriceSnapshot) PriceBook(fallback pricing.TokenPrice) pricing.PriceBook {
+	if p.Currency == "" && len(p.Components) == 0 && p.InputMicrosPerToken == 0 && p.OutputMicrosPerToken == 0 {
+		return fallback.PriceBook(pricing.CategoryChat)
+	}
+	book, err := pricing.NormalizePriceBook(pricing.PriceBook{
+		Category:   pricing.Category(p.Category),
+		Currency:   p.Currency,
+		Components: p.Components,
+	}, pricing.TokenPrice{
+		Currency:             p.Currency,
+		InputMicrosPerToken:  p.InputMicrosPerToken,
+		OutputMicrosPerToken: p.OutputMicrosPerToken,
+	})
+	if err != nil {
+		return pricing.TokenPrice{
+			Currency:             p.Currency,
+			InputMicrosPerToken:  p.InputMicrosPerToken,
+			OutputMicrosPerToken: p.OutputMicrosPerToken,
+		}.PriceBook(pricing.CategoryChat)
+	}
+	return book
 }
 
 // Task is the durable async task aggregate used by M4 media workflows.

@@ -21,13 +21,19 @@ type ModelSummary struct {
 	ID               string   `json:"id"`
 	Object           string   `json:"object"`
 	Type             string   `json:"type"`
+	Category         string   `json:"category,omitempty"`
 	DisplayName      string   `json:"display_name"`
 	Description      string   `json:"description,omitempty"`
 	Aliases          []string `json:"aliases,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
+	ProviderFamily   string   `json:"provider_family,omitempty"`
 	Owner            string   `json:"owner"`
 	Capabilities     []string `json:"capabilities"`
 	InputModalities  []string `json:"input_modalities"`
 	OutputModalities []string `json:"output_modalities"`
+	ContextWindow    int64    `json:"context_window,omitempty"`
+	MaxOutputTokens  int64    `json:"max_output_tokens,omitempty"`
+	Status           string   `json:"status,omitempty"`
 	Async            bool     `json:"async"`
 	Deprecated       bool     `json:"deprecated"`
 }

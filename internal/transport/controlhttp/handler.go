@@ -69,6 +69,7 @@ func NewHandlerWithEmergency(adminService *admin.Service, publisher *cpsnapshot.
 	mux.HandleFunc("POST /admin/api-keys/", h.requireAdmin(h.apiKeyAction))
 	mux.HandleFunc("POST /admin/models", h.requireAdmin(h.upsertModel))
 	mux.HandleFunc("POST /admin/channels", h.requireAdmin(h.upsertChannel))
+	mux.HandleFunc("POST /admin/channels/model-sync-preview", h.requireAdmin(h.previewChannelModelSync))
 	mux.HandleFunc("POST /admin/routes", h.requireAdmin(h.upsertRoute))
 	mux.HandleFunc("POST /admin/prices", h.requireAdmin(h.upsertPrice))
 	mux.HandleFunc("POST /admin/limits", h.requireAdmin(h.upsertLimit))
@@ -257,6 +258,15 @@ func (h *Handler) upsertChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.admin.UpsertChannel(r.Context(), request)
+	writeResult(w, result, err)
+}
+
+func (h *Handler) previewChannelModelSync(w http.ResponseWriter, r *http.Request) {
+	var request admin.ChannelModelSyncPreviewRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.admin.PreviewChannelModelSync(r.Context(), request)
 	writeResult(w, result, err)
 }
 

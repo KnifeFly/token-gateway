@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
@@ -128,15 +129,33 @@ func (s *Service) UpsertModel(ctx context.Context, model ModelConfig) (*ModelCon
 	if model.PublicModel == "" || model.Protocol == "" || model.Capability == "" {
 		return nil, apperr.InvalidArgument("public_model, protocol, and capability are required")
 	}
+	category, err := pricing.InferCategory(model.Category, model.Capability, model.PublicModel)
+	if err != nil {
+		return nil, apperr.InvalidArgument(err.Error())
+	}
+	model.Category = string(category)
 	model.Aliases = cleanStrings(model.Aliases)
+	model.Tags = cleanStrings(model.Tags)
+	model.ProviderFamily = strings.TrimSpace(model.ProviderFamily)
+	model.Modalities = cleanStrings(model.Modalities)
+	model.Capabilities = cleanStrings(model.Capabilities)
 	if model.DisplayName == "" {
 		model.DisplayName = model.PublicModel
+	}
+	if model.Status == "" {
+		model.Status = "active"
 	}
 	if len(model.Schema) == 0 {
 		model.Schema = json.RawMessage(`{}`)
 	}
 	if !json.Valid(model.Schema) {
 		return nil, apperr.InvalidArgument("model schema must be valid json")
+	}
+	if len(model.Metadata) == 0 {
+		model.Metadata = json.RawMessage(`{}`)
+	}
+	if !json.Valid(model.Metadata) {
+		return nil, apperr.InvalidArgument("model metadata must be valid json")
 	}
 	model.Enabled = defaultEnabled(model.Enabled, model.EnabledSet)
 	return s.repo.UpsertModel(ctx, model)
@@ -161,8 +180,89 @@ func (s *Service) UpsertChannel(ctx context.Context, channel ChannelConfig) (*Ch
 		channel.EncryptedAPIKey = ciphertext
 		channel.APIKey = ""
 	}
+	for i := range channel.Models {
+		normalized, err := normalizeChannelModel(channel.Models[i])
+		if err != nil {
+			return nil, err
+		}
+		channel.Models[i] = normalized
+	}
 	channel.Enabled = defaultEnabled(channel.Enabled, channel.EnabledSet)
 	return s.repo.UpsertChannel(ctx, channel)
+}
+
+// PreviewChannelModelSync compares current channel models with upstream discovery results without writing.
+func (s *Service) PreviewChannelModelSync(ctx context.Context, request ChannelModelSyncPreviewRequest) (*ChannelModelSyncPreview, error) {
+	request.ChannelID = strings.TrimSpace(request.ChannelID)
+	if request.ChannelID == "" {
+		return nil, apperr.InvalidArgument("channel_id is required")
+	}
+	cfg, err := s.repo.LoadSnapshotConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	models := make(map[string]ModelConfig, len(cfg.Models))
+	for _, model := range cfg.Models {
+		models[model.PublicModel] = model
+	}
+	prices := make(map[string]PriceRuleConfig, len(cfg.Prices))
+	for _, price := range cfg.Prices {
+		if price.Enabled {
+			prices[price.PublicModel] = price
+		}
+	}
+
+	var current ChannelConfig
+	for _, channel := range cfg.Channels {
+		if channel.ID == request.ChannelID {
+			current = channel
+			break
+		}
+	}
+	if current.ID == "" {
+		return nil, apperr.NotFound("channel not found")
+	}
+	preview := &ChannelModelSyncPreview{
+		ChannelID:    current.ID,
+		ProviderType: firstNonEmpty(request.ProviderType, current.ProviderType),
+	}
+	currentByModel := make(map[string]ChannelModel, len(current.Models))
+	for _, model := range current.Models {
+		currentByModel[model.PublicModel] = model
+	}
+	upstreamByModel := make(map[string]ChannelModel, len(request.UpstreamModels))
+	for _, model := range request.UpstreamModels {
+		normalized, err := normalizeChannelModel(model)
+		if err != nil {
+			return nil, err
+		}
+		upstreamByModel[normalized.PublicModel] = normalized
+		if existing, ok := currentByModel[normalized.PublicModel]; !ok {
+			preview.Added = append(preview.Added, previewItem(normalized, ChannelModel{}, models, prices))
+		} else if existing.UpstreamModel != normalized.UpstreamModel {
+			preview.Changed = append(preview.Changed, previewItem(normalized, existing, models, prices))
+		} else {
+			preview.Unchanged++
+		}
+	}
+	for publicModel, existing := range currentByModel {
+		if _, ok := upstreamByModel[publicModel]; !ok {
+			preview.Removed = append(preview.Removed, previewItem(existing, existing, models, prices))
+		}
+	}
+	for _, item := range append(append([]ChannelModelPreviewItem{}, preview.Added...), preview.Changed...) {
+		if !item.KnownCatalogModel {
+			preview.Warnings = append(preview.Warnings, "upstream model "+item.PublicModel+" is not in the public model catalog")
+			continue
+		}
+		if !item.CustomerPriceConfigured {
+			preview.Warnings = append(preview.Warnings, "public model "+item.PublicModel+" has no enabled customer price rule")
+		}
+		if item.CostConfigStatus != "configured" {
+			preview.Warnings = append(preview.Warnings, "public model "+item.PublicModel+" has no configured provider cost status")
+		}
+	}
+	return preview, nil
 }
 
 // UpsertRoute creates or updates a route policy.
@@ -187,10 +287,39 @@ func (s *Service) UpsertRoute(ctx context.Context, route RoutePolicyConfig) (*Ro
 
 // UpsertPrice creates or updates a price rule.
 func (s *Service) UpsertPrice(ctx context.Context, price PriceRuleConfig) (*PriceRuleConfig, error) {
+	price.PublicModel = strings.TrimSpace(price.PublicModel)
 	if price.PublicModel == "" || strings.TrimSpace(price.Currency) == "" {
 		return nil, apperr.InvalidArgument("public_model and currency are required")
 	}
 	price.Currency = strings.ToUpper(strings.TrimSpace(price.Currency))
+	category, err := pricing.InferCategory(price.Category, price.PublicModel)
+	if err != nil {
+		return nil, apperr.InvalidArgument(err.Error())
+	}
+	book, err := pricing.NormalizePriceBook(pricing.PriceBook{
+		Category:   category,
+		Currency:   price.Currency,
+		Components: price.Components,
+	}, pricing.TokenPrice{
+		Currency:             price.Currency,
+		InputMicrosPerToken:  price.InputMicrosPerToken,
+		OutputMicrosPerToken: price.OutputMicrosPerToken,
+	})
+	if err != nil {
+		return nil, apperr.InvalidArgument(err.Error())
+	}
+	legacy := pricing.LegacyTokenPrice(book.Currency, book.Components)
+	price.Category = string(book.Category)
+	price.Currency = book.Currency
+	price.Components = book.Components
+	price.InputMicrosPerToken = legacy.InputMicrosPerToken
+	price.OutputMicrosPerToken = legacy.OutputMicrosPerToken
+	if len(price.Metadata) == 0 {
+		price.Metadata = json.RawMessage(`{}`)
+	}
+	if !json.Valid(price.Metadata) {
+		return nil, apperr.InvalidArgument("price metadata must be valid json")
+	}
 	price.Enabled = defaultEnabled(price.Enabled, price.EnabledSet)
 	return s.repo.UpsertPrice(ctx, price)
 }
@@ -334,4 +463,60 @@ func cleanStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func defaultStatus(value string, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func normalizeChannelModel(model ChannelModel) (ChannelModel, error) {
+	model.PublicModel = strings.TrimSpace(model.PublicModel)
+	model.UpstreamModel = strings.TrimSpace(model.UpstreamModel)
+	if model.PublicModel == "" {
+		model.PublicModel = model.UpstreamModel
+	}
+	if model.PublicModel == "" || model.UpstreamModel == "" {
+		return ChannelModel{}, apperr.InvalidArgument("public_model and upstream_model are required")
+	}
+	model.Capabilities = cleanStrings(model.Capabilities)
+	model.SupportedParameters = cleanStrings(model.SupportedParameters)
+	model.HealthStatus = defaultStatus(model.HealthStatus, "unknown")
+	model.TestStatus = defaultStatus(model.TestStatus, "untested")
+	model.CostConfigStatus = defaultStatus(model.CostConfigStatus, "unknown")
+	if len(model.Metadata) == 0 {
+		model.Metadata = json.RawMessage(`{}`)
+	}
+	if !json.Valid(model.Metadata) {
+		return ChannelModel{}, apperr.InvalidArgument("channel model metadata must be valid json")
+	}
+	return model, nil
+}
+
+func previewItem(model ChannelModel, current ChannelModel, models map[string]ModelConfig, prices map[string]PriceRuleConfig) ChannelModelPreviewItem {
+	_, known := models[model.PublicModel]
+	_, priced := prices[model.PublicModel]
+	return ChannelModelPreviewItem{
+		PublicModel:             model.PublicModel,
+		UpstreamModel:           model.UpstreamModel,
+		CurrentUpstreamModel:    current.UpstreamModel,
+		HealthStatus:            model.HealthStatus,
+		TestStatus:              model.TestStatus,
+		CostConfigStatus:        model.CostConfigStatus,
+		KnownCatalogModel:       known,
+		CustomerPriceConfigured: priced,
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

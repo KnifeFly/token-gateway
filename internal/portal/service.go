@@ -258,19 +258,30 @@ func modelSummary(model engine.ModelView) ModelSummary {
 		ID:               model.PublicModel,
 		Object:           "model",
 		Type:             modelType(model),
+		Category:         model.Category,
 		DisplayName:      displayName(model),
 		Description:      model.Description,
 		Aliases:          append([]string(nil), model.Aliases...),
+		Tags:             append([]string(nil), model.Tags...),
+		ProviderFamily:   model.ProviderFamily,
 		Owner:            "platform",
 		Capabilities:     capabilities(model),
 		InputModalities:  inputModalities(model),
 		OutputModalities: outputModalities(model),
+		ContextWindow:    model.ContextWindow,
+		MaxOutputTokens:  model.MaxOutputTokens,
+		Status:           model.Status,
 		Async:            model.Protocol == engine.ProtocolUnified,
-		Deprecated:       false,
+		Deprecated:       model.Deprecated,
 	}
 }
 
 func capabilities(model engine.ModelView) []string {
+	if len(model.Capabilities) > 0 {
+		out := append([]string(nil), model.Capabilities...)
+		sort.Strings(out)
+		return out
+	}
 	if model.Capability == "" {
 		return []string{string(model.Protocol)}
 	}
@@ -312,6 +323,9 @@ func modelType(model engine.ModelView) string {
 }
 
 func inputModalities(model engine.ModelView) []string {
+	if len(model.Modalities) > 0 {
+		return append([]string(nil), model.Modalities...)
+	}
 	switch modelType(model) {
 	case "image":
 		return []string{"text", "image"}
@@ -325,6 +339,9 @@ func inputModalities(model engine.ModelView) []string {
 }
 
 func outputModalities(model engine.ModelView) []string {
+	if len(model.Modalities) > 0 {
+		return append([]string(nil), model.Modalities...)
+	}
 	switch modelType(model) {
 	case "image":
 		return []string{"image"}

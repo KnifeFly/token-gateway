@@ -54,6 +54,11 @@ P11 的目标是在 P10 发布交接收口之后，补齐模型分类、复杂�
 - `go test ./internal/domain/pricing ./internal/billing ./internal/controlplane ./internal/dataplane/snapshot ./internal/portal` 或等价 focused tests 通过。
 - `git diff --check` 通过，OpenAPI、计划和任务看板保持一致。
 
+## 实现记录
+
+- 2026-06-01：已落地 category/template/component quoter、旧 token 字段兼容、客户售价到 hold/settlement/async task settlement 的统一报价路径、provider cost component profile、模型目录字段、渠道模型 metadata 和 `/admin/channels/model-sync-preview` 非持久化预览。
+- 2026-06-01：已同步 MySQL migration `000016_p11_model_pricing_catalog`、runtime snapshot/index、Portal 模型摘要、OpenAPI 管理合同和 focused regression tests。
+
 ## 风险与处理
 
 | 风险 | 处理 |

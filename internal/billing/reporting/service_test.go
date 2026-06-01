@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 func TestManualAdjustmentIsIdempotentAndFeedsTenantUsage(t *testing.T) {
@@ -92,6 +94,46 @@ func TestProviderProfitReportUsesCostProfile(t *testing.T) {
 	wantCost := int64(10*10 + 20*20 + 2*5)
 	if report.Rows[0].ProviderCostMicros != wantCost || report.Rows[0].ProfitMicros != 1000-wantCost {
 		t.Fatalf("row = %#v", report.Rows[0])
+	}
+}
+
+func TestProviderProfitReportUsesComponentCostProfile(t *testing.T) {
+	repo := NewMemoryRepository()
+	repo.usage = append(repo.usage, memoryUsageRecord{
+		UsageSummary: UsageSummary{
+			Model:        "image-plus",
+			ProviderType: "image_provider",
+			ChannelID:    "channel_img",
+			Currency:     "USD",
+			Requests:     3,
+			InputTokens:  10,
+			AmountMicros: 1000,
+		},
+		TenantID:  "tenant_1",
+		ProjectID: "project_1",
+		CreatedAt: time.Now().UTC(),
+	})
+	service := NewService(repo)
+	if _, err := service.UpsertProviderCostProfile(context.Background(), ProviderCostProfile{
+		ProviderType: "image_provider",
+		ChannelID:    "channel_img",
+		PublicModel:  "image-plus",
+		Category:     string(pricing.CategoryImage),
+		Currency:     "USD",
+		Components: []pricing.Component{
+			{Unit: pricing.UnitInputToken, MicrosPerUnit: 2},
+			{Unit: pricing.UnitRequest, MicrosPerUnit: 50},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertProviderCostProfile() error = %v", err)
+	}
+
+	report, err := service.ProviderProfitReport(context.Background(), ProviderProfitFilter{TenantID: "tenant_1"})
+	if err != nil {
+		t.Fatalf("ProviderProfitReport() error = %v", err)
+	}
+	if len(report.Rows) != 1 || report.Rows[0].ProviderCostMicros != 170 {
+		t.Fatalf("rows = %#v", report.Rows)
 	}
 }
 

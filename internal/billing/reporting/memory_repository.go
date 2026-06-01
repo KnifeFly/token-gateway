@@ -145,7 +145,7 @@ func (r *MemoryRepository) ProviderProfitReport(_ context.Context, filter Provid
 		if !ok || !profile.Enabled {
 			row.CostProfileMissing = true
 		} else {
-			row.ProviderCostMicros = row.InputTokens*profile.InputMicrosPerToken + row.OutputTokens*profile.OutputMicrosPerToken + row.Requests*profile.FixedMicrosPerRequest
+			row.ProviderCostMicros = providerCostMicros(profile, *row)
 		}
 		row.ProfitMicros = row.RevenueMicros - row.ProviderCostMicros
 		report.Rows = append(report.Rows, *row)
