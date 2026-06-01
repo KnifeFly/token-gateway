@@ -4,6 +4,40 @@
  */
 
 export interface paths {
+    "/api/portal/v1/auth/api-key-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange a customer API key for a browser session */
+        post: operations["loginPortalWithAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke the current Portal browser session */
+        post: operations["logoutPortalSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/v1/auth/me": {
         parameters: {
             query?: never;
@@ -28,8 +62,213 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Portal dashboard shell data */
+        /** Get Portal dashboard data */
         get: operations["getPortalDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Portal onboarding checklist */
+        get: operations["getPortalOnboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List customer-visible models */
+        get: operations["listPortalModels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/models/{model}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a customer-visible model schema */
+        get: operations["getPortalModelSchema"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get customer credit buckets */
+        get: operations["getPortalCredits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get customer usage rows */
+        get: operations["getPortalUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/usage/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Reserved usage export endpoint */
+        get: operations["exportPortalUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/api-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List safe API key metadata */
+        get: operations["listPortalAPIKeys"];
+        put?: never;
+        /** Create a derived customer API key */
+        post: operations["createPortalAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/api-keys/{key_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a derived customer API key */
+        post: operations["disablePortalAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List project-scoped tasks */
+        get: operations["listPortalTasks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one project-scoped task */
+        get: operations["getPortalTask"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reserved task cancel endpoint */
+        post: operations["cancelPortalTask"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/portal/v1/settings/project": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get safe project settings */
+        get: operations["getPortalProjectSettings"];
         put?: never;
         post?: never;
         delete?: never;
@@ -42,26 +281,172 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ErrorEnvelope: {
-            error: components["schemas"]["ErrorBody"];
+        APIKeyLoginRequest: {
+            /** Format: password */
+            api_key: string;
         };
-        ErrorBody: {
-            /** @example not_implemented */
-            code: string;
-            message: string;
-            type: string;
-            request_id?: string;
+        LoginResponse: {
+            authenticated: boolean;
+            session: components["schemas"]["PortalSessionResponse"];
+            csrf_token: string;
         };
         PortalSessionResponse: {
             authenticated: boolean;
             tenant_id?: string;
             project_id?: string;
+            api_key_id?: string;
+            allowed_models?: string[];
             /** Format: date-time */
             expires_at?: string;
+            /** Format: date-time */
+            last_seen_at?: string;
+            csrf_token?: string;
         };
         PortalDashboardResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            credits: components["schemas"]["CreditsResponse"];
+            usage: components["schemas"]["UsageResponse"];
+            api_key_count: number;
+            active_key_count: number;
+            task_summary: components["schemas"]["TaskSummary"];
+            recent_tasks: components["schemas"]["TaskObject"][];
+        };
+        TaskSummary: {
+            total: number;
+            queued: number;
+            processing: number;
+            completed: number;
+            failed: number;
+        };
+        OnboardingState: {
+            /** Format: date-time */
+            generated_at: string;
+            steps: components["schemas"]["OnboardingStep"][];
+        };
+        OnboardingStep: {
+            id: string;
+            title: string;
+            complete: boolean;
+            description?: string;
+        };
+        ModelListResponse: {
             /** @enum {string} */
-            status: "reserved" | "ready";
+            object: "list";
+            data: components["schemas"]["ModelSummary"][];
+        };
+        ModelSummary: {
+            id: string;
+            object: string;
+            type: string;
+            display_name: string;
+            description?: string;
+            aliases?: string[];
+            owner: string;
+            capabilities: string[];
+            input_modalities: string[];
+            output_modalities: string[];
+            async: boolean;
+            deprecated: boolean;
+        };
+        ModelSchemaResponse: {
+            model: string;
+            version: string;
+            schema: {
+                [key: string]: unknown;
+            };
+        };
+        CreditsResponse: {
+            success: boolean;
+            message: string;
+            data: {
+                [key: string]: components["schemas"]["CreditsBucket"];
+            };
+        };
+        CreditsBucket: {
+            remaining_credits: number;
+            used_credits: number;
+            held_credits?: number;
+            unlimited_credits: boolean;
+            currency: string;
+        };
+        UsageResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            currency: string;
+            totals: components["schemas"]["UsageTotals"];
+            items: components["schemas"]["UsageItem"][];
+            next_cursor?: string | null;
+        };
+        UsageTotals: {
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            input_tokens: number;
+            /** Format: int64 */
+            output_tokens: number;
+            credits_used: number;
+        };
+        UsageItem: {
+            request_id?: string;
+            api_key_id?: string;
+            model?: string;
+            capability?: string;
+            status: string;
+            /** Format: int64 */
+            input_tokens: number;
+            /** Format: int64 */
+            output_tokens: number;
+            credits_used: number;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        APIKeyListResponse: {
+            data: components["schemas"]["APIKey"][];
+        };
+        APIKey: {
+            id: string;
+            name: string;
+            enabled: boolean;
+            allowed_models: string[];
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+        };
+        APIKeyCreateRequest: {
+            name: string;
+            allowed_models?: string[];
+        };
+        APIKeyCreateResponse: {
+            api_key: components["schemas"]["APIKey"];
+            plaintext_key: string;
+        };
+        TaskListResponse: {
+            data: components["schemas"]["TaskObject"][];
+            next_cursor?: string | null;
+        };
+        TaskObject: {
+            [key: string]: unknown;
+        };
+        ProjectSettings: {
+            tenant_id: string;
+            project_id: string;
+            api_key_id: string;
+            allowed_models: string[];
+            /** Format: date-time */
+            generated_at: string;
+        };
+        ErrorEnvelope: {
+            error: components["schemas"]["ErrorBody"];
+        };
+        ErrorBody: {
+            /** @example unauthorized */
+            code: string;
+            message: string;
+            type: string;
+            retryable?: boolean;
+            request_id?: string;
         };
     };
     responses: {
@@ -82,6 +467,57 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    loginPortalWithAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIKeyLoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Portal session and CSRF token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            503: components["responses"]["ErrorResponse"];
+        };
+    };
+    logoutPortalSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logout state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        authenticated: false;
+                    };
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
     getPortalSession: {
         parameters: {
             query?: never;
@@ -101,7 +537,6 @@ export interface operations {
                 };
             };
             401: components["responses"]["ErrorResponse"];
-            501: components["responses"]["ErrorResponse"];
         };
     };
     getPortalDashboard: {
@@ -113,7 +548,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Portal dashboard shell data */
+            /** @description Portal dashboard data */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -123,7 +558,292 @@ export interface operations {
                 };
             };
             401: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Portal onboarding checklist */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingState"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
+    listPortalModels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Customer-visible models */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelListResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalModelSchema: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model schema */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelSchemaResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalCredits: {
+        parameters: {
+            query?: {
+                currency?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Credit buckets */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditsResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalUsage: {
+        parameters: {
+            query?: {
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Usage rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
+    exportPortalUsage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
             501: components["responses"]["ErrorResponse"];
+        };
+    };
+    listPortalAPIKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API key metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKeyListResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
+    createPortalAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["APIKeyCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created API key and one-time plaintext */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKeyCreateResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+        };
+    };
+    disablePortalAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled API key metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKey"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    listPortalTasks: {
+        parameters: {
+            query?: {
+                status?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project-scoped tasks */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskListResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Project-scoped task */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskObject"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    cancelPortalTask: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            501: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalProjectSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe project settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectSettings"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
         };
     };
 }

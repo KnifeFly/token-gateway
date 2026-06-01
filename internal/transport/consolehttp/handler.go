@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/KnifeFly/token-gateway/internal/transport/adminhttp"
+	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
 	"github.com/KnifeFly/token-gateway/internal/transport/portalwebhttp"
 )
 
@@ -17,6 +18,8 @@ import (
 type Config struct {
 	PortalStaticDir string
 	AdminStaticDir  string
+	PortalRoutes    httpserver.RouteRegistrar
+	AdminRoutes     httpserver.RouteRegistrar
 }
 
 // Handler registers console-owned browser BFF and optional static routes.
@@ -35,8 +38,17 @@ func NewHandler(cfg Config, logger *slog.Logger) *Handler {
 
 // Register adds console routes without claiming gateway or machine-control paths.
 func (h *Handler) Register(mux *http.ServeMux) {
-	portalwebhttp.NewHandler(h.logger).Register(mux)
-	adminhttp.NewHandler(h.logger).Register(mux)
+	portalRoutes := h.cfg.PortalRoutes
+	if portalRoutes == nil {
+		portalRoutes = portalwebhttp.NewHandler(nil, h.logger)
+	}
+	portalRoutes.Register(mux)
+
+	adminRoutes := h.cfg.AdminRoutes
+	if adminRoutes == nil {
+		adminRoutes = adminhttp.NewHandler(h.logger)
+	}
+	adminRoutes.Register(mux)
 
 	mux.HandleFunc("GET /portal", redirectToSlash)
 	mux.HandleFunc("GET /portal/", h.staticApp("Portal Console", "/portal/", h.cfg.PortalStaticDir))

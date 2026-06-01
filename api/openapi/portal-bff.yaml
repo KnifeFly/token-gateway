@@ -1,15 +1,70 @@
 openapi: 3.0.3
 info:
   title: token-gateway Portal Web BFF
-  version: 0.1.0
-  description: Browser-facing Portal BFF contract owned by cmd/console. P19 keeps this as a route and type-generation skeleton; P20 fills the workflows.
+  version: 0.2.0
+  description: Browser-facing Portal BFF contract owned by cmd/console.
 servers:
   - url: http://localhost:9505
     description: Local console process
 tags:
   - name: Portal Web Auth
   - name: Portal Web Dashboard
+  - name: Portal Web Models
+  - name: Portal Web Usage
+  - name: Portal Web API Keys
+  - name: Portal Web Tasks
+  - name: Portal Web Settings
 paths:
+  /api/portal/v1/auth/api-key-login:
+    post:
+      tags:
+        - Portal Web Auth
+      summary: Exchange a customer API key for a browser session
+      operationId: loginPortalWithAPIKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyLoginRequest"
+      responses:
+        "200":
+          description: Portal session and CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "503":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/auth/logout:
+    post:
+      tags:
+        - Portal Web Auth
+      summary: Revoke the current Portal browser session
+      operationId: logoutPortalSession
+      security:
+        - portalSession: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Logout state
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - authenticated
+                properties:
+                  authenticated:
+                    type: boolean
+                    enum:
+                      - false
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
   /api/portal/v1/auth/me:
     get:
       tags:
@@ -27,26 +82,328 @@ paths:
                 $ref: "#/components/schemas/PortalSessionResponse"
         "401":
           $ref: "#/components/responses/ErrorResponse"
-        "501":
-          $ref: "#/components/responses/ErrorResponse"
   /api/portal/v1/dashboard:
     get:
       tags:
         - Portal Web Dashboard
-      summary: Get Portal dashboard shell data
+      summary: Get Portal dashboard data
       operationId: getPortalDashboard
       security:
         - portalSession: []
       responses:
         "200":
-          description: Portal dashboard shell data
+          description: Portal dashboard data
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/PortalDashboardResponse"
         "401":
           $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/onboarding:
+    get:
+      tags:
+        - Portal Web Dashboard
+      summary: Get Portal onboarding checklist
+      operationId: getPortalOnboarding
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Portal onboarding checklist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingState"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/models:
+    get:
+      tags:
+        - Portal Web Models
+      summary: List customer-visible models
+      operationId: listPortalModels
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Customer-visible models
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelListResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/models/{model}/schema:
+    get:
+      tags:
+        - Portal Web Models
+      summary: Get a customer-visible model schema
+      operationId: getPortalModelSchema
+      security:
+        - portalSession: []
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Model schema
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelSchemaResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/credits:
+    get:
+      tags:
+        - Portal Web Usage
+      summary: Get customer credit buckets
+      operationId: getPortalCredits
+      security:
+        - portalSession: []
+      parameters:
+        - name: currency
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Credit buckets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditsResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/usage:
+    get:
+      tags:
+        - Portal Web Usage
+      summary: Get customer usage rows
+      operationId: getPortalUsage
+      security:
+        - portalSession: []
+      parameters:
+        - name: currency
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Usage rows
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/usage/export:
+    get:
+      tags:
+        - Portal Web Usage
+      summary: Reserved usage export endpoint
+      operationId: exportPortalUsage
+      security:
+        - portalSession: []
+      responses:
         "501":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/api-keys:
+    get:
+      tags:
+        - Portal Web API Keys
+      summary: List safe API key metadata
+      operationId: listPortalAPIKeys
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyListResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags:
+        - Portal Web API Keys
+      summary: Create a derived customer API key
+      operationId: createPortalAPIKey
+      security:
+        - portalSession: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/APIKeyCreateRequest"
+      responses:
+        "200":
+          description: Created API key and one-time plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyCreateResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/api-keys/{key_id}/disable:
+    post:
+      tags:
+        - Portal Web API Keys
+      summary: Disable a derived customer API key
+      operationId: disablePortalAPIKey
+      security:
+        - portalSession: []
+          csrfHeader: []
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Disabled API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKey"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/tasks:
+    get:
+      tags:
+        - Portal Web Tasks
+      summary: List project-scoped tasks
+      operationId: listPortalTasks
+      security:
+        - portalSession: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Project-scoped tasks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskListResponse"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/tasks/{task_id}:
+    get:
+      tags:
+        - Portal Web Tasks
+      summary: Get one project-scoped task
+      operationId: getPortalTask
+      security:
+        - portalSession: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Project-scoped task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskObject"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/tasks/{task_id}/cancel:
+    post:
+      tags:
+        - Portal Web Tasks
+      summary: Reserved task cancel endpoint
+      operationId: cancelPortalTask
+      security:
+        - portalSession: []
+          csrfHeader: []
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/settings/project:
+    get:
+      tags:
+        - Portal Web Settings
+      summary: Get safe project settings
+      operationId: getPortalProjectSettings
+      security:
+        - portalSession: []
+      responses:
+        "200":
+          description: Safe project settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectSettings"
+        "401":
           $ref: "#/components/responses/ErrorResponse"
 components:
   securitySchemes:
@@ -66,6 +423,396 @@ components:
           schema:
             $ref: "#/components/schemas/ErrorEnvelope"
   schemas:
+    APIKeyLoginRequest:
+      type: object
+      required:
+        - api_key
+      properties:
+        api_key:
+          type: string
+          format: password
+    LoginResponse:
+      type: object
+      required:
+        - authenticated
+        - session
+        - csrf_token
+      properties:
+        authenticated:
+          type: boolean
+        session:
+          $ref: "#/components/schemas/PortalSessionResponse"
+        csrf_token:
+          type: string
+    PortalSessionResponse:
+      type: object
+      required:
+        - authenticated
+      properties:
+        authenticated:
+          type: boolean
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
+    PortalDashboardResponse:
+      type: object
+      required:
+        - generated_at
+        - credits
+        - usage
+        - api_key_count
+        - active_key_count
+        - task_summary
+        - recent_tasks
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        credits:
+          $ref: "#/components/schemas/CreditsResponse"
+        usage:
+          $ref: "#/components/schemas/UsageResponse"
+        api_key_count:
+          type: integer
+        active_key_count:
+          type: integer
+        task_summary:
+          $ref: "#/components/schemas/TaskSummary"
+        recent_tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskObject"
+    TaskSummary:
+      type: object
+      required:
+        - total
+        - queued
+        - processing
+        - completed
+        - failed
+      properties:
+        total:
+          type: integer
+        queued:
+          type: integer
+        processing:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+    OnboardingState:
+      type: object
+      required:
+        - generated_at
+        - steps
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnboardingStep"
+    OnboardingStep:
+      type: object
+      required:
+        - id
+        - title
+        - complete
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        complete:
+          type: boolean
+        description:
+          type: string
+    ModelListResponse:
+      type: object
+      required:
+        - object
+        - data
+      properties:
+        object:
+          type: string
+          enum:
+            - list
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelSummary"
+    ModelSummary:
+      type: object
+      required:
+        - id
+        - object
+        - type
+        - display_name
+        - owner
+        - capabilities
+        - input_modalities
+        - output_modalities
+        - async
+        - deprecated
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+        type:
+          type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        owner:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        input_modalities:
+          type: array
+          items:
+            type: string
+        output_modalities:
+          type: array
+          items:
+            type: string
+        async:
+          type: boolean
+        deprecated:
+          type: boolean
+    ModelSchemaResponse:
+      type: object
+      required:
+        - model
+        - version
+        - schema
+      properties:
+        model:
+          type: string
+        version:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+    CreditsResponse:
+      type: object
+      required:
+        - success
+        - message
+        - data
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CreditsBucket"
+    CreditsBucket:
+      type: object
+      required:
+        - remaining_credits
+        - used_credits
+        - unlimited_credits
+        - currency
+      properties:
+        remaining_credits:
+          type: number
+        used_credits:
+          type: number
+        held_credits:
+          type: number
+        unlimited_credits:
+          type: boolean
+        currency:
+          type: string
+    UsageResponse:
+      type: object
+      required:
+        - generated_at
+        - currency
+        - totals
+        - items
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        currency:
+          type: string
+        totals:
+          $ref: "#/components/schemas/UsageTotals"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageItem"
+        next_cursor:
+          type: string
+          nullable: true
+    UsageTotals:
+      type: object
+      required:
+        - requests
+        - input_tokens
+        - output_tokens
+        - credits_used
+      properties:
+        requests:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        credits_used:
+          type: number
+    UsageItem:
+      type: object
+      required:
+        - status
+        - input_tokens
+        - output_tokens
+        - credits_used
+      properties:
+        request_id:
+          type: string
+        api_key_id:
+          type: string
+        model:
+          type: string
+        capability:
+          type: string
+        status:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        credits_used:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+    APIKeyListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/APIKey"
+    APIKey:
+      type: object
+      required:
+        - id
+        - name
+        - enabled
+        - allowed_models
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        allowed_models:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    APIKeyCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+    APIKeyCreateResponse:
+      type: object
+      required:
+        - api_key
+        - plaintext_key
+      properties:
+        api_key:
+          $ref: "#/components/schemas/APIKey"
+        plaintext_key:
+          type: string
+    TaskListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskObject"
+        next_cursor:
+          type: string
+          nullable: true
+    TaskObject:
+      type: object
+      additionalProperties: true
+    ProjectSettings:
+      type: object
+      required:
+        - tenant_id
+        - project_id
+        - api_key_id
+        - allowed_models
+        - generated_at
+      properties:
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        generated_at:
+          type: string
+          format: date-time
     ErrorEnvelope:
       type: object
       required:
@@ -82,34 +829,12 @@ components:
       properties:
         code:
           type: string
-          example: not_implemented
+          example: unauthorized
         message:
           type: string
         type:
           type: string
+        retryable:
+          type: boolean
         request_id:
           type: string
-    PortalSessionResponse:
-      type: object
-      required:
-        - authenticated
-      properties:
-        authenticated:
-          type: boolean
-        tenant_id:
-          type: string
-        project_id:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-    PortalDashboardResponse:
-      type: object
-      required:
-        - status
-      properties:
-        status:
-          type: string
-          enum:
-            - reserved
-            - ready

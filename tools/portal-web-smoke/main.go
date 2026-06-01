@@ -1,0 +1,409 @@
+// Command portal-web-smoke validates the browser-facing Portal Web BFF
+// against a running console process.
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"os"
+	"strings"
+	"time"
+)
+
+const csrfHeaderName = "X-CSRF-Token"
+
+type config struct {
+	consoleURL       string
+	apiKey           string
+	model            string
+	createDerivedKey bool
+	timeout          time.Duration
+}
+
+type smokeClient struct {
+	baseURL    string
+	apiKey     string
+	csrfToken  string
+	httpClient *http.Client
+}
+
+type loginResponse struct {
+	Authenticated bool   `json:"authenticated"`
+	CSRFToken     string `json:"csrf_token"`
+	Session       struct {
+		Authenticated bool     `json:"authenticated"`
+		TenantID      string   `json:"tenant_id"`
+		ProjectID     string   `json:"project_id"`
+		APIKeyID      string   `json:"api_key_id"`
+		AllowedModels []string `json:"allowed_models"`
+	} `json:"session"`
+}
+
+type dashboardResponse struct {
+	APIKeyCount    int `json:"api_key_count"`
+	ActiveKeyCount int `json:"active_key_count"`
+	TaskSummary    struct {
+		Total int `json:"total"`
+	} `json:"task_summary"`
+	RecentTasks []map[string]any `json:"recent_tasks"`
+}
+
+type modelListResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+type apiKeyListResponse struct {
+	Data []struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+	} `json:"data"`
+}
+
+type apiKeyCreateResponse struct {
+	APIKey struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+	} `json:"api_key"`
+	PlaintextKey string `json:"plaintext_key"`
+}
+
+type usageResponse struct {
+	Totals struct {
+		Requests int64 `json:"requests"`
+	} `json:"totals"`
+	Items []map[string]any `json:"items"`
+}
+
+type taskListResponse struct {
+	Data []map[string]any `json:"data"`
+}
+
+func main() {
+	if err := run(context.Background(), os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "portal_web_smoke=failed error=%q\n", err.Error())
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, args []string) error {
+	cfg, err := parseConfig(args)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, cfg.timeout)
+	defer cancel()
+
+	client, err := newSmokeClient(cfg)
+	if err != nil {
+		return err
+	}
+	if err := client.login(ctx); err != nil {
+		return err
+	}
+	if err := client.checkDashboard(ctx); err != nil {
+		return err
+	}
+	model, err := client.checkModels(ctx, cfg.model)
+	if err != nil {
+		return err
+	}
+	if err := client.checkAPIKeys(ctx); err != nil {
+		return err
+	}
+	if cfg.createDerivedKey {
+		if err := client.checkDerivedAPIKeyLifecycle(ctx, model); err != nil {
+			return err
+		}
+	}
+	if err := client.checkUsage(ctx); err != nil {
+		return err
+	}
+	if err := client.checkTasks(ctx); err != nil {
+		return err
+	}
+	if err := client.logout(ctx); err != nil {
+		return err
+	}
+
+	fmt.Printf("portal_web_smoke=passed console_url=%q model=%q\n", cfg.consoleURL, model)
+	return nil
+}
+
+func parseConfig(args []string) (config, error) {
+	cfg := config{
+		consoleURL: getenvDefault("CONSOLE_URL", "http://127.0.0.1:9505"),
+		apiKey:     getenvDefault("API_KEY", os.Getenv("TOKEN_GATEWAY_RC_API_KEY")),
+		timeout:    30 * time.Second,
+	}
+	fs := flag.NewFlagSet("portal-web-smoke", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	fs.StringVar(&cfg.consoleURL, "console-url", cfg.consoleURL, "base URL for the running console")
+	fs.StringVar(&cfg.apiKey, "api-key", cfg.apiKey, "customer API key used only for session login")
+	fs.StringVar(&cfg.model, "model", "", "visible model to use for derived key checks")
+	fs.BoolVar(&cfg.createDerivedKey, "create-derived-key", false, "create and disable a derived Portal API key")
+	fs.DurationVar(&cfg.timeout, "timeout", cfg.timeout, "overall smoke timeout")
+	if err := fs.Parse(args); err != nil {
+		return config{}, err
+	}
+	cfg.consoleURL = strings.TrimRight(strings.TrimSpace(cfg.consoleURL), "/")
+	cfg.apiKey = strings.TrimSpace(cfg.apiKey)
+	cfg.model = strings.TrimSpace(cfg.model)
+	if cfg.consoleURL == "" {
+		return config{}, errors.New("console URL is required")
+	}
+	if cfg.apiKey == "" {
+		return config{}, errors.New("api key is required; pass -api-key or set API_KEY")
+	}
+	if cfg.timeout <= 0 {
+		return config{}, errors.New("timeout must be positive")
+	}
+	return cfg, nil
+}
+
+func newSmokeClient(cfg config) (*smokeClient, error) {
+	parsed, err := url.Parse(cfg.consoleURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse console URL: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("console URL must include scheme and host: %q", cfg.consoleURL)
+	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return nil, fmt.Errorf("create cookie jar: %w", err)
+	}
+	return &smokeClient{
+		baseURL: cfg.consoleURL,
+		apiKey:  cfg.apiKey,
+		httpClient: &http.Client{
+			Jar:     jar,
+			Timeout: cfg.timeout,
+		},
+	}, nil
+}
+
+func (c *smokeClient) login(ctx context.Context) error {
+	var response loginResponse
+	raw, err := c.do(ctx, http.MethodPost, "/api/portal/v1/auth/api-key-login", map[string]string{"api_key": c.apiKey}, &response, false)
+	if err != nil {
+		return err
+	}
+	if err := rejectLeakage("portal web login", raw, c.apiKey, "key_hash"); err != nil {
+		return err
+	}
+	if !response.Authenticated || !response.Session.Authenticated || response.CSRFToken == "" {
+		return fmt.Errorf("login response missing authenticated session or csrf token")
+	}
+	c.csrfToken = response.CSRFToken
+	fmt.Printf("portal_web_smoke=login tenant=%q project=%q api_key_id=%q\n", response.Session.TenantID, response.Session.ProjectID, response.Session.APIKeyID)
+	return nil
+}
+
+func (c *smokeClient) checkDashboard(ctx context.Context) error {
+	var response dashboardResponse
+	raw, err := c.do(ctx, http.MethodGet, "/api/portal/v1/dashboard", nil, &response, false)
+	if err != nil {
+		return err
+	}
+	if err := rejectLeakage("portal web dashboard", raw, "provider_secret", "credential", "key_hash", "plaintext_key"); err != nil {
+		return err
+	}
+	fmt.Printf("portal_web_smoke=dashboard active_keys=%d tasks=%d\n", response.ActiveKeyCount, response.TaskSummary.Total)
+	return nil
+}
+
+func (c *smokeClient) checkModels(ctx context.Context, preferredModel string) (string, error) {
+	var response modelListResponse
+	raw, err := c.do(ctx, http.MethodGet, "/api/portal/v1/models", nil, &response, false)
+	if err != nil {
+		return "", err
+	}
+	if err := rejectLeakage("portal web models", raw, "provider_secret", "credential", "key_hash", "plaintext_key"); err != nil {
+		return "", err
+	}
+	if len(response.Data) == 0 {
+		return "", fmt.Errorf("portal web models returned no visible models")
+	}
+	if preferredModel == "" {
+		model := response.Data[0].ID
+		fmt.Printf("portal_web_smoke=models count=%d model=%q\n", len(response.Data), model)
+		return model, nil
+	}
+	for _, model := range response.Data {
+		if model.ID == preferredModel {
+			fmt.Printf("portal_web_smoke=models count=%d model=%q\n", len(response.Data), preferredModel)
+			return preferredModel, nil
+		}
+	}
+	return "", fmt.Errorf("preferred model %q is not visible in Portal Web model list", preferredModel)
+}
+
+func (c *smokeClient) checkAPIKeys(ctx context.Context) error {
+	var response apiKeyListResponse
+	raw, err := c.do(ctx, http.MethodGet, "/api/portal/v1/api-keys", nil, &response, false)
+	if err != nil {
+		return err
+	}
+	if err := rejectLeakage("portal web api key list", raw, "key_hash", "plaintext_key"); err != nil {
+		return err
+	}
+	fmt.Printf("portal_web_smoke=api_keys count=%d\n", len(response.Data))
+	return nil
+}
+
+func (c *smokeClient) checkDerivedAPIKeyLifecycle(ctx context.Context, model string) error {
+	payload := map[string]any{
+		"name":           fmt.Sprintf("p20-web-smoke-%d", time.Now().UTC().Unix()),
+		"allowed_models": []string{model},
+	}
+	var created apiKeyCreateResponse
+	if _, err := c.do(ctx, http.MethodPost, "/api/portal/v1/api-keys", payload, &created, true); err != nil {
+		return err
+	}
+	if created.APIKey.ID == "" || created.PlaintextKey == "" {
+		return fmt.Errorf("derived api key create response is missing id or plaintext key")
+	}
+	if err := c.checkAPIKeys(ctx); err != nil {
+		return err
+	}
+
+	var disabled struct {
+		ID      string `json:"id"`
+		Enabled bool   `json:"enabled"`
+	}
+	path := "/api/portal/v1/api-keys/" + url.PathEscape(created.APIKey.ID) + "/disable"
+	if _, err := c.do(ctx, http.MethodPost, path, nil, &disabled, true); err != nil {
+		return err
+	}
+	if disabled.ID != created.APIKey.ID || disabled.Enabled {
+		return fmt.Errorf("derived api key disable response = id:%q enabled:%v", disabled.ID, disabled.Enabled)
+	}
+	fmt.Printf("portal_web_smoke=derived_key_lifecycle key_id=%q\n", created.APIKey.ID)
+	return nil
+}
+
+func (c *smokeClient) checkUsage(ctx context.Context) error {
+	var response usageResponse
+	raw, err := c.do(ctx, http.MethodGet, "/api/portal/v1/usage?limit=5", nil, &response, false)
+	if err != nil {
+		return err
+	}
+	if err := rejectLeakage("portal web usage", raw, "provider_cost", "failed_settlement", "repair", "key_hash", "plaintext_key"); err != nil {
+		return err
+	}
+	fmt.Printf("portal_web_smoke=usage requests=%d items=%d\n", response.Totals.Requests, len(response.Items))
+	return nil
+}
+
+func (c *smokeClient) checkTasks(ctx context.Context) error {
+	var response taskListResponse
+	raw, err := c.do(ctx, http.MethodGet, "/api/portal/v1/tasks?limit=5", nil, &response, false)
+	if err != nil {
+		return err
+	}
+	if err := rejectLeakage("portal web tasks", raw, "secret-token", "provider_secret", "password", "credential"); err != nil {
+		return err
+	}
+	fmt.Printf("portal_web_smoke=tasks count=%d\n", len(response.Data))
+	return nil
+}
+
+func (c *smokeClient) logout(ctx context.Context) error {
+	if _, err := c.do(ctx, http.MethodPost, "/api/portal/v1/auth/logout", nil, nil, true); err != nil {
+		return err
+	}
+	raw, err := c.doExpect(ctx, http.MethodGet, "/api/portal/v1/dashboard", nil, nil, false, http.StatusUnauthorized)
+	if err != nil {
+		return err
+	}
+	if err := rejectLeakage("portal web unauthorized response", raw, c.apiKey, "key_hash", "plaintext_key"); err != nil {
+		return err
+	}
+	fmt.Println("portal_web_smoke=logout")
+	return nil
+}
+
+func (c *smokeClient) do(ctx context.Context, method string, path string, payload any, out any, csrf bool) ([]byte, error) {
+	return c.doExpect(ctx, method, path, payload, out, csrf, http.StatusOK)
+}
+
+func (c *smokeClient) doExpect(ctx context.Context, method string, path string, payload any, out any, csrf bool, status int) ([]byte, error) {
+	var body io.Reader
+	if payload != nil {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("marshal %s %s: %w", method, path, err)
+		}
+		body = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	if err != nil {
+		return nil, fmt.Errorf("create %s %s request: %w", method, path, err)
+	}
+	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if csrf {
+		req.Header.Set(csrfHeaderName, c.csrfToken)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("%s %s failed: %w", method, path, err)
+	}
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read %s %s response: %w", method, path, err)
+	}
+	if resp.StatusCode != status {
+		return raw, fmt.Errorf("%s %s status=%d want=%d body=%s", method, path, resp.StatusCode, status, compactBody(raw))
+	}
+	if out != nil {
+		if err := json.Unmarshal(raw, out); err != nil {
+			return raw, fmt.Errorf("decode %s %s response: %w body=%s", method, path, err, compactBody(raw))
+		}
+	}
+	return raw, nil
+}
+
+func rejectLeakage(label string, raw []byte, forbidden ...string) error {
+	body := strings.ToLower(string(raw))
+	for _, value := range forbidden {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if strings.Contains(body, strings.ToLower(value)) {
+			return fmt.Errorf("%s response contains forbidden marker %q", label, value)
+		}
+	}
+	return nil
+}
+
+func compactBody(raw []byte) string {
+	body := strings.TrimSpace(string(raw))
+	if len(body) > 500 {
+		return body[:500] + "..."
+	}
+	return body
+}
+
+func getenvDefault(name string, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value != "" {
+		return value
+	}
+	return strings.TrimSpace(fallback)
+}

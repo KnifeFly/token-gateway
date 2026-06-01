@@ -23,7 +23,7 @@ func TestConsoleRouteBoundaries(t *testing.T) {
 		body   string
 	}{
 		{method: http.MethodGet, path: "/healthz", status: http.StatusOK, body: `"status":"ok"`},
-		{method: http.MethodGet, path: "/api/portal/v1/dashboard", status: http.StatusNotImplemented, body: "portal web BFF is reserved for P20"},
+		{method: http.MethodGet, path: "/api/portal/v1/dashboard", status: http.StatusServiceUnavailable, body: "portal web service is unavailable"},
 		{method: http.MethodPost, path: "/api/admin/v1/operators", status: http.StatusNotImplemented, body: "admin web BFF is reserved for P21"},
 		{method: http.MethodGet, path: "/portal/", status: http.StatusOK, body: "Portal Console"},
 		{method: http.MethodGet, path: "/admin-ui/", status: http.StatusOK, body: "Admin Console"},

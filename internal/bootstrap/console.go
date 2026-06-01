@@ -7,12 +7,18 @@ import (
 	"os"
 	"time"
 
+	portalapp "github.com/KnifeFly/token-gateway/internal/app/portal"
+	portalrepo "github.com/KnifeFly/token-gateway/internal/app/portal/repository"
+	portalservice "github.com/KnifeFly/token-gateway/internal/app/portal/service"
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
+	legacyportal "github.com/KnifeFly/token-gateway/internal/portal"
 	"github.com/KnifeFly/token-gateway/internal/transport/consolehttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
+	"github.com/KnifeFly/token-gateway/internal/transport/portalwebhttp"
 )
 
 // ConsoleApp wires the Human Console Plane process.
@@ -45,6 +51,24 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 	if err != nil {
 		return nil, err
 	}
+	runtime, err := newGatewayRuntime(ctx, cfg, tel, logger, database, redisClient)
+	if err != nil {
+		return nil, err
+	}
+	reportRepo := reporting.Repository(reporting.NewMemoryRepository())
+	if cfg.Database.Enabled && database.DB() != nil {
+		reportRepo = reporting.NewMySQLRepository(database.DB())
+	}
+	var sessionStore portalapp.SessionStore = portalrepo.NewMemorySessionStore()
+	if cfg.Redis.Enabled && redisClient.Raw() != nil {
+		sessionStore = portalrepo.NewRedisSessionStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
+	}
+	portalWeb := portalservice.New(
+		runtime.snapshotProvider,
+		runtime.authenticator,
+		legacyportal.NewService(runtime.adminService, reporting.NewService(reportRepo), runtime.taskRepo, runtime.portalOptions()...),
+		sessionStore,
+	)
 
 	readiness := func(ctx context.Context) []httpserver.DependencyStatus {
 		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
@@ -58,6 +82,7 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 	routes := consolehttp.NewHandler(consolehttp.Config{
 		PortalStaticDir: cfg.Console.PortalStaticDir,
 		AdminStaticDir:  cfg.Console.AdminStaticDir,
+		PortalRoutes:    portalwebhttp.NewHandler(portalWeb, logger),
 	}, logger)
 	handler := httpserver.NewHandlerWithRoutes(readiness, tel.Registry, logger, []httpserver.RouteRegistrar{routes})
 	server := httpserver.New(consoleServerConfig(cfg), handler, logger)
