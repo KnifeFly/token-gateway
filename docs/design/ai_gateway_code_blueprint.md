@@ -41,6 +41,23 @@ pkg/apperr/errors.go
 
 先保证 `go test ./...` 通过，再扩展业务。
 
+P19-P22 新增 console monorepo 后，最小可编译骨架需要额外覆盖：
+
+```text
+cmd/console/main.go
+internal/bootstrap/console.go
+internal/transport/consolehttp/handler.go
+internal/transport/consolehttp/session.go
+internal/transport/portalwebhttp/handler.go
+internal/transport/adminhttp/handler.go
+internal/app/portal/service/service.go
+internal/app/portal/repository/repository.go
+internal/app/admin/service/service.go
+internal/app/admin/repository/repository.go
+```
+
+这些包只服务 browser Portal/Admin 和 BFF，不进入 `GatewayEngine` 热路径。
+
 ---
 
 ## 3. `pkg/apperr`
@@ -115,6 +132,95 @@ type GatewayConfig struct {
     Degradation DegradationConfig `yaml:"degradation"`
 }
 ```
+
+Console 配置建议独立命名，避免复用 control admin token 作为浏览器认证：
+
+```go
+type ConsoleConfig struct {
+    HTTP        HTTPConfig       `yaml:"http"`
+    Session     SessionConfig    `yaml:"session"`
+    CSRF        CSRFConfig       `yaml:"csrf"`
+    Static      StaticConfig     `yaml:"static"`
+    Portal      PortalWebConfig  `yaml:"portal"`
+    Admin       AdminWebConfig   `yaml:"admin"`
+}
+
+type SessionConfig struct {
+    CookieName string        `yaml:"cookie_name"`
+    Secure     bool          `yaml:"secure"`
+    SameSite   string        `yaml:"same_site"`
+    TTL        time.Duration `yaml:"ttl"`
+}
+```
+
+生产环境 session secret、CSRF secret 和 password/OIDC 配置必须 fail closed；不得从 `control.admin_token` 派生 browser session。
+
+---
+
+### 4.1 Console App 蓝图
+
+文件：`internal/bootstrap/console.go`
+
+```go
+type ConsoleApp struct {
+    HTTPServer *http.Server
+    Shutdown   func(context.Context) error
+}
+
+func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
+    // DB/Redis/logger/telemetry
+    // API key authenticator for Portal API key login
+    // controlplane admin owner service for config writes
+    // billing/task/reporting read services
+    // portal service + repository
+    // admin service + repository
+    // consolehttp mux with portalwebhttp + adminhttp + optional static assets
+    return nil, nil
+}
+```
+
+Bootstrap 只组装依赖，不做 RBAC 判断、SQL 聚合、审计 diff 或业务事务。
+
+文件：`internal/app/portal/service/ports.go`
+
+```go
+type DashboardReader interface {
+    Dashboard(ctx context.Context, principal portalapp.Principal, filter portalapp.DashboardFilter) (portalapp.Dashboard, error)
+}
+
+type APIKeyStore interface {
+    ListAPIKeys(ctx context.Context, principal portalapp.Principal) ([]portalapp.APIKey, error)
+    CreateDerivedAPIKey(ctx context.Context, principal portalapp.Principal, input portalapp.CreateAPIKeyInput) (portalapp.CreatedAPIKey, error)
+    DisableAPIKey(ctx context.Context, principal portalapp.Principal, keyID string) (portalapp.APIKey, error)
+}
+
+type SessionStore interface {
+    CreateSession(ctx context.Context, session portalapp.Session) error
+    GetSession(ctx context.Context, sessionID string) (portalapp.Session, bool, error)
+    DeleteSession(ctx context.Context, sessionID string) error
+}
+```
+
+文件：`internal/app/admin/service/ports.go`
+
+```go
+type OperatorStore interface {
+    Authenticate(ctx context.Context, input adminapp.LoginInput) (adminapp.Operator, error)
+    GetOperator(ctx context.Context, operatorID string) (adminapp.Operator, bool, error)
+}
+
+type AuditStore interface {
+    Record(ctx context.Context, event adminapp.AuditEvent) error
+    Search(ctx context.Context, filter adminapp.AuditFilter) (adminapp.AuditPage, error)
+}
+
+type ConfigOwner interface {
+    CreateModel(ctx context.Context, actor adminapp.Actor, input adminapp.ModelInput) (adminapp.Model, error)
+    PublishSnapshot(ctx context.Context, actor adminapp.Actor, input adminapp.PublishSnapshotInput) (adminapp.Snapshot, error)
+}
+```
+
+Admin app service 负责 operator workflow、RBAC、audit intent、redaction 和 owner service 调用，不直接更新 control/config 表。
 
 ---
 

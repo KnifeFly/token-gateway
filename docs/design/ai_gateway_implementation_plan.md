@@ -378,8 +378,26 @@ ADR 更新
 
 ## 14. 当前后续路线边界
 
-M0-M9 之后的执行路线以 `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/21-p10-release-handoff.md` 为准。当前只继续推进 provider 协议兼容、provider 可靠性、非存储媒体转发生态、portal API、客户接入验收和发布交接收口。
+M0-M9 之后的执行路线以 `docs/plan/16-p5-provider-protocol-compatibility.md` 到 `docs/plan/33-p22-console-frontend-production.md` 为准。P5-P18 先完成 provider 兼容、provider 可靠性、非存储媒体转发、portal API、客户验收、发布交接、模型价格目录和 review remediation。P19-P22 在这些基础上新增完整 Portal/Admin 前后端。
 
-当前不做：控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件。
+P19-P22 后续阶段：
+
+```text
+P19 Console Monorepo Foundation
+  cmd/console、OpenAPI split、web workspace、generated API client、CI baseline
+
+P20 Portal Web BFF
+  internal/app/portal、portalwebhttp、Portal session、Portal UI、Portal smoke
+
+P21 Admin Web BFF
+  internal/app/admin、operator session、RBAC、audit、adminhttp、owner service write flow
+
+P22 Console Frontend Production
+  Admin UI、static asset delivery、E2E、CSP/security headers、deployment/rollback runbook
+```
+
+当前仍不做：复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件。
 
 当前先不做：semantic routing/cache、多地域 active-active。
+
+Browser Portal/Admin 必须走 `/api/portal/v1/*` 和 `/api/admin/v1/*`。`/v1/portal/*` 保持 programmatic customer API，`/admin/*` 保持 machine Control API。

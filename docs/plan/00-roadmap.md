@@ -2,7 +2,7 @@
 
 ## 阶段目标
 
-把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 已根据 2026-05-31 review 结果作为第一轮可靠性收敛阶段；P15-P18 根据后续 review 暴露的生产生命周期、身份边界、worker/callback 和文件资产边界问题作为第二轮收敛阶段。当 P15-P18 处于待执行状态时，优先级高于继续 P11 这类功能扩展。
+把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 已根据 2026-05-31 review 结果作为第一轮可靠性收敛阶段；P15-P18 根据后续 review 暴露的生产生命周期、身份边界、worker/callback 和文件资产边界问题作为第二轮收敛阶段。P19-P22 在核心网关和可靠性收敛完成后，解除“只做后端 API”的阶段性限制，新增完整 Portal/Admin 前后端、browser BFF、frontend monorepo、RBAC、audit 和 console 生产化路线。
 
 ## 版本节奏
 
@@ -36,6 +36,10 @@
 | v1.17 review follow-up accounting audit | P16 | 收敛 async idempotency race、async attempt audit、final failed attempt、failed settlement claim 和 budget 语义 |
 | v1.18 review follow-up worker callback stability | P17 | 收敛 worker lease heartbeat、per-job concurrency、poller 错误隔离、callback durable claim 和 delivery 稳定性 |
 | v1.19 review follow-up file asset boundary | P18 | 收敛 transient input asset metadata registry、expired quota、cleanup job、stream disabled contract 和文件能力文档边界 |
+| v1.20 console monorepo foundation | P19 | 建立 `cmd/console`、OpenAPI 拆分、frontend workspace、generated client、CI 和本地开发基线 |
+| v1.21 portal web bff | P20 | 建立 Portal Web BFF、Portal session、Portal UI、dashboard/onboarding 和 Portal smoke |
+| v1.22 admin web bff | P21 | 建立 Admin Web BFF、operator session、RBAC、audit、safe read/write workflow 和 operations views |
+| v1.23 console frontend production | P22 | 完成 Admin UI、Portal/Admin 前端收口、静态资源部署、安全头、E2E smoke 和 console 发布交接 |
 
 ## 交付物
 
@@ -47,6 +51,7 @@
 - `docs/plan/22-p11-model-pricing-catalog.md` 作为模型分类、复杂价格体系、渠道成本和模型目录增强规划。
 - `docs/plan/23-p12-review-p0-correctness.md` 到 `docs/plan/25-p14-review-p2-engineering-readiness.md` 作为 2026-05-31 第一轮 review 后的可靠性收敛规划。
 - `docs/plan/26-p15-review-followup-p0-production-blockers.md` 到 `docs/plan/29-p18-review-followup-file-asset-boundary.md` 作为后续 review 暴露的生产生命周期、账务审计、worker/callback 和文件资产边界收敛规划。
+- `docs/plan/30-p19-console-monorepo-foundation.md` 到 `docs/plan/33-p22-console-frontend-production.md` 作为 Portal/Admin full console、BFF、frontend monorepo 和生产化收敛规划。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -81,6 +86,10 @@
 27. P16 收敛 follow-up review 账务审计一致性：async idempotency 并发 replay、async submit attempt durable audit、final failed attempt durable 标记、failed settlement row claim 和 budget 语义。
 28. P17 收敛 follow-up review worker/callback 稳定性：worker lease heartbeat、job concurrency、poller 单任务错误隔离、callback durable claim、response body drain 和 failure drills。
 29. P18 收敛 follow-up review 文件资产边界：坚持 transient metadata registry，修正 expired quota、cleanup job、stream disabled contract 和文件能力文档边界。
+30. P19 建立 console monorepo foundation：`cmd/console`、`api/openapi/*`、`web/*` workspace、generated client、CI 和本地开发代理。
+31. P20 建立 Portal Web BFF：迁移 `internal/app/portal`、新增 `/api/portal/v1/*`、Portal session、Portal UI 和 Portal smoke。
+32. P21 建立 Admin Web BFF：新增 `internal/app/admin`、operator session、RBAC、audit、Admin read model 和 owner service 写 workflow。
+33. P22 完成 console frontend production：Admin UI、Portal/Admin UI 收口、static asset strategy、安全头、E2E smoke、deployment/rollback runbook。
 
 ## 关键设计约束
 
@@ -98,16 +107,22 @@
 - 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - P3 优先处理已实现能力的生产语义缺口，不新增大范围产品面。
 - P4 不再扩大协议面，优先把已有能力放到干净依赖环境和真实上游中验收，并形成可重复 release gate。
-- P5-P11 只覆盖当前明确要做的剩余能力、验收、发布交接和模型价格目录增强；控制面 RBAC/审计平台、复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线。
+- P5-P11 只覆盖当前明确要做的剩余能力、验收、发布交接和模型价格目录增强；复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件不进入当前路线。
 - P12-P18 是 review-driven remediation 阶段，用于可靠性收敛；它们不重新定义旧 P0-P2 历史范围，也不引入新的 public API 或大型产品面。
 - P12-P14 表示第一轮 review remediation；P15-P18 表示后续 review 暴露的生产 lifecycle、身份边界、worker/callback 和文件资产边界收敛。
 - 当 P15 生产阻塞问题未通过验收时，暂停继续 P11 这类功能扩展，先保证账务、限流、stream、异步任务、callback 和 outbound 安全不变量成立。
+- P19-P22 是完整 Portal/Admin console 路线；它们新增 browser BFF 和 frontend monorepo，但不改变 `/v1/*`、`/v1/portal/*` 和 `/admin/*` 的既有职责。
+- `/api/portal/v1/*` 与 `/api/admin/v1/*` 只能由 `cmd/console` 承载；`/admin/*` 继续是 machine Control API，不作为 Admin SPA 浏览器接口。
+- Admin Web 必须使用 operator session、RBAC、CSRF、Idempotency-Key、durable audit 和 redacted safe DTO；不得把 control admin token 放入浏览器。
+- Portal Web API key login 只用于交换 HttpOnly session；不得把 customer API key 长期保存到 browser storage。
+- Portal/Admin 后端按 `internal/app/portal`、`internal/app/admin` 拆分 service/repository；不要新增全局 service/repository 目录。
+- Frontend monorepo 使用 `web/apps/portal`、`web/apps/admin` 和 `web/packages/*`，API 类型由 OpenAPI 生成或接受 contract check。
 - 价格展示币种和存储精度分离：展示使用 USD、CNY 等真实币种和人可读单位，存储使用 currency + micros 整数。
 - 模型 category 驱动可配置价格单位、默认展示方式和模型目录筛选；category 不等于 provider type、route strategy 或 New API group。
 - 客户售价和 provider 成本可以同构，但必须分表、分用途、分权限；settlement 只能使用客户售价。
 - Semantic routing/cache 和多地域 active-active 先不做；如重新进入范围，需要另立路线和任务板。
 - 文件能力按非存储输入资产处理，gateway 不承诺媒体对象持久化、下载、生命周期或存储 SLA。
-- Portal 第一版复用 API key 鉴权，只做客户自助查询和受限 key 管理，不暴露 admin/control 配置能力。
+- P8 Portal 第一版复用 API key 鉴权，只做客户自助查询和受限 key 管理；P20 Portal Web 只能扩展 browser self-service，不暴露 admin/control 配置能力。
 - 客户传入的 `X-Request-ID` 只能作为 client request id；内部账务、limit、attempt、usage、ledger 和 failed settlement 必须使用服务端生成的 internal request id。
 - Provider webhook 不能直接暴露 customer callback URL；客户 callback 只能通过 gateway outbox 按 gateway contract 投递。
 - Worker lease、stream lease 和 task hold 都必须绑定真实生命周期，不能只依赖短 TTL 或本地内存语义。
@@ -115,9 +130,9 @@
 ## 验收标准
 
 - 每个阶段都有明确目标、交付物、实现顺序、设计约束、验收标准和风险处理。
-- `docs/tasks.md` 能直接指导 P5-P18 后续开发、验收、发布交接、模型价格目录增强和 review remediation。
+- `docs/tasks.md` 能直接指导 P5-P22 后续开发、验收、发布交接、模型价格目录增强、review remediation 和 console full-stack 实现。
 - M0-M9 的先后关系与最终设计包一致。
-- P0-P18 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强和 review remediation，且每个阶段都有可验证的完成标准。
+- P0-P22 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强、review remediation 和 Portal/Admin console 建设，且每个阶段都有可验证的完成标准。
 - 所有 public API 变更都回到 OpenAPI 合同维护。
 
 ## 风险与处理
@@ -149,6 +164,11 @@
 | 长 stream、长 task、worker job 超过 TTL 后状态失真 | 为 stream lease 和 worker lease 增加 renewal，为 task hold 增加 task-aware reaper |
 | Provider webhook 绕过 gateway callback contract | 禁止 provider 直接调用 customer callback URL，统一通过 gateway internal webhook/polling 和 callback outbox |
 | 文件 metadata registry 被误解为对象存储 | P18 固化 transient/non-storage 语义，expired quota 与 cleanup job 对齐该边界 |
+| Portal/Admin console 继续按单文件 service/repository 扩张 | P19-P22 使用 `internal/app/{portal,admin}/service` 和 `repository` 子目录，按 use case/read model 拆文件 |
+| Admin Web 污染 `/admin/*` machine API | Browser Admin 固定走 `/api/admin/v1/*`，`/admin/*` 只给内部 automation/control |
+| Customer API key 长期暴露在浏览器 | Portal API key login 只换取 HttpOnly session，禁止 localStorage/sessionStorage 保存 key |
+| OpenAPI 与前端类型漂移 | API contract split、generated client 和 CI diff check |
+| Console 静态资源影响 gateway 热路径 | `cmd/console` 独立部署，静态资源优先 CDN/Nginx，gateway 不服务 Portal/Admin SPA |
 
 ## 设计来源
 
@@ -156,6 +176,7 @@
 - [系统设计](../design/ai_gateway_system_design.md)
 - [架构设计](../design/ai_gateway_architecture_design.md)
 - [代码蓝图](../design/ai_gateway_code_blueprint.md)
+- [Portal/Admin Console Monorepo 设计](../design/ai_gateway_console_monorepo_design.md)
 - [实施计划](../design/ai_gateway_implementation_plan.md)
 - [任务清单](../tasks.md)
 - [OpenAPI 合同](../design/ai_gateway_openapi.yaml)

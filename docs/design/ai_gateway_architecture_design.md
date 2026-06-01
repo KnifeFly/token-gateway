@@ -2,7 +2,7 @@
 
 ## 1. 总体架构
 
-系统采用四平面架构：
+系统采用四个核心运行平面，并在 P19-P22 后新增 Human Console Plane：
 
 ```text
 Data Plane
@@ -20,9 +20,15 @@ Config Plane
 Worker Plane
   cmd/worker
   异步媒体任务、provider task polling、failed settlement replay、callback、对账
+
+Human Console Plane
+  cmd/console
+  Portal/Admin browser BFF、session、CSRF、RBAC、audit、dashboard/read model、可选静态资源
 ```
 
 Observability 和 Security 是横切能力，不单独作为进程。当前路线保留基础日志、metrics、trace、redaction 和审计插件接入点，不规划独立生产级 Observability 平台。
+
+Human Console Plane 不进入数据面热路径，不拥有账务、task、snapshot 或 provider 状态机。它只能通过应用服务和 owner service 读取或发起受控操作。
 
 ---
 
@@ -40,13 +46,13 @@ module github.com/your-org/token-gateway
 cmd/                  进程入口
 internal/bootstrap/   依赖组装
 internal/transport/   HTTP/SSE/WebSocket 传输层
+internal/app/         Portal/Admin human app use case
 internal/domain/      纯领域模型和领域服务
 internal/dataplane/   数据面核心链路
 internal/controlplane/控制面配置与发布
 internal/provider/    provider adapter
 internal/billing/     账务、ledger、结算
 internal/task/        异步任务领域
-internal/portal/      客户自助 Portal use case
 internal/worker/      worker job
 internal/infra/       DB/Redis/KMS/OTel 等基础设施
 pkg/                  可被外部复用的小包
@@ -57,6 +63,8 @@ pkg/                  可被外部复用的小包
 ```text
 transport -> dataplane -> domain
 controlplane -> domain
+app/portal -> billing/task/controlplane/domain read ports
+app/admin -> controlplane/billing/task/worker read ports and owner services
 worker -> billing/task/provider/domain
 infra -> domain interfaces implementation
 provider -> provider/relay + domain types
@@ -69,6 +77,8 @@ domain import gin/chi/sql/redis
 provider adapter 写 ledger
 handler 写业务事务
 worker 直接绕过 billing service 写账务表
+adminhttp 直接写 control/config 表
+portalwebhttp 直接暴露 provider secret、raw prompt 或 raw response
 ```
 
 ---
@@ -81,6 +91,7 @@ cmd/
   control-api/main.go
   configd/main.go
   worker/main.go
+  console/main.go
 
 internal/
   bootstrap/
@@ -94,6 +105,7 @@ internal/
     control_api.go
     configd.go
     worker.go
+    console.go
 
   transport/
     httpserver/
@@ -127,9 +139,77 @@ internal/
     portalhttp/
       handler.go
       error_writer.go
+    consolehttp/
+      handler.go
+      session.go
+      csrf.go
+      static.go
+    portalwebhttp/
+      handler.go
+      auth_handler.go
+      dashboard_handler.go
+      response.go
+    adminhttp/
+      handler.go
+      auth_handler.go
+      dashboard_handler.go
+      audit_handler.go
+      response.go
+
+  app/
+    portal/
+      types.go
+      service/
+        service.go
+        ports.go
+        dashboard.go
+        models.go
+        credits.go
+        usage.go
+        api_keys.go
+        tasks.go
+        onboarding.go
+        sessions.go
+      repository/
+        repository.go
+        mysql.go
+        mysql_dashboard.go
+        mysql_usage.go
+        mysql_api_keys.go
+        mysql_tasks.go
+        mysql_sessions.go
+    admin/
+      types.go
+      service/
+        service.go
+        ports.go
+        auth.go
+        dashboard.go
+        tenants.go
+        projects.go
+        api_keys.go
+        models.go
+        channels.go
+        routes.go
+        pricing.go
+        limits.go
+        snapshots.go
+        operations.go
+        audit.go
+        operators.go
+        sessions.go
+      repository/
+        repository.go
+        mysql.go
+        mysql_sessions.go
+        mysql_operators.go
+        mysql_dashboard.go
+        mysql_config_views.go
+        mysql_operations.go
+        mysql_audit.go
 
   portal/
-    service.go
+    service.go     # temporary compatibility shim for /v1/portal/* during migration
     types.go
 
   domain/
@@ -440,6 +520,21 @@ callback_dispatcher
 balance_hold_reaper
 reconciliation_job
 ```
+
+### 4.5 `cmd/console`
+
+职责：启动 Human Console HTTP 服务。
+
+支持：
+
+```text
+/api/portal/v1/*  Portal Web BFF
+/api/admin/v1/*   Admin Web BFF
+/portal/*         optional Portal static assets
+/admin-ui/*       optional Admin static assets
+```
+
+`cmd/console` 不服务 `/v1/*` 数据面，不服务 `/admin/*` machine Control API。生产环境可以只让它承载 BFF，由 CDN/Nginx 托管 `/portal/*` 和 `/admin-ui/*` 静态资源。
 
 ---
 

@@ -11,8 +11,9 @@ It must support:
 - Native-compatible APIs for OpenAI, Claude, Gemini, embeddings, images, and audio.
 - Unified media and Agent APIs for image, video, audio, music, files, async tasks, callback, credits, and usage.
 - Multi-tenant routing, provider fallback, API resale, token/credit billing, ledger, reconciliation, security governance, and observability.
+- Full human-facing Portal/Admin console support after the gateway core is stable: Portal Web, Admin Web, browser-session BFF APIs, RBAC, audit, and frontend monorepo delivery.
 
-The product target is: one stable customer-facing API surface, many upstream providers, auditable commercial accounting.
+The product target is: one stable customer-facing API surface, many upstream providers, auditable commercial accounting, and an operator/customer console that does not weaken the machine API boundaries.
 
 ## Documentation Map
 
@@ -25,7 +26,8 @@ Before implementing architecture or domain behavior, use the docs in this order:
 5. `docs/design/ai_gateway_system_design.md` for product scope, protocols, lifecycle, security, and acceptance criteria.
 6. `docs/design/ai_gateway_architecture_design.md` for planes, layering, package ownership, runtime snapshot, routing, billing, and stream rules.
 7. `docs/design/ai_gateway_code_blueprint.md` for package layout, interfaces, structs, and code-level architecture references.
-8. `docs/design/ai_gateway_openapi.yaml` for API contract updates.
+8. `docs/design/ai_gateway_console_monorepo_design.md` for Portal/Admin console, BFF, frontend monorepo, session, RBAC, audit, and deployment boundaries.
+9. `docs/design/ai_gateway_openapi.yaml` for API contract updates.
 
 `docs/plan/` and `docs/tasks.md` are the execution entry points. `docs/design/` remains the source of truth for system, architecture, code blueprint, and OpenAPI design. Do not copy long design or plan text into code; keep implementation comments focused on local behavior.
 
@@ -36,6 +38,12 @@ Before implementing architecture or domain behavior, use the docs in this order:
 - Data Plane must read runtime snapshot/indexes on the hot path. Do not query admin/config tables from request handling.
 - Provider adapters only translate protocol, call upstream, map errors, parse usage, and submit/poll provider tasks. They must not own routing, policy, billing, or tenant decisions.
 - Keep package ownership clear: `domain` has entities and invariants; `app` coordinates use cases; `infra` implements repositories and external services; `provider` handles upstream protocol; `transport` handles HTTP decode/write; `dataplane` is the hot path.
+- Keep browser-facing BFF APIs separate from machine APIs. `/api/portal/v1/*` and `/api/admin/v1/*` belong to `cmd/console`; `/v1/*` and `/v1/portal/*` remain customer/programmatic APIs; `/admin/*` remains the machine Control API.
+- Admin Web must not call `/admin/*` directly from the browser and must not reuse the control-plane admin token as browser auth. Use operator sessions, RBAC, CSRF, idempotency for mutations, durable audit, and redacted responses.
+- Portal Web may use API key login for MVP, but the API key must be exchanged for an HttpOnly browser session and must not be stored in localStorage/sessionStorage.
+- Use `internal/app/portal` and `internal/app/admin` for human Portal/Admin application services and repositories. Keep `internal/controlplane/admin` as the machine control/config domain.
+- Do not create a global repository or service package. Split Portal/Admin service and repository files by use case/read model once a single file starts collecting unrelated methods.
+- Frontend code lives under `web/apps/portal`, `web/apps/admin`, and shared `web/packages/*`. Frontend API clients must be generated from OpenAPI contracts or kept contract-checked against them.
 - `internal/bootstrap` wires dependencies only. Do not put business logic there.
 - Use a single request state through the GatewayEngine hot path. The main flow should remain readable enough to act as system documentation.
 - Plugins are configuration-driven built-ins first. Do not introduce dynamic code execution or plugin marketplaces in the MVP.
@@ -116,6 +124,10 @@ Prefer the staged path from `docs/plan/00-roadmap.md`:
 8. M7: production metrics, tracing, dashboards, alerts, load tests, and failure drills.
 9. M8: realtime reserved extension with session APIs, RealtimeEngine interface, and WebSocket handler stub.
 10. M9: commercial operations, usage/cost/profit reports, reconciliation, billing export, disaster recovery, and model marketplace support.
+11. P19: console monorepo foundation with `cmd/console`, OpenAPI split, frontend workspace, generated API clients, and local development contracts.
+12. P20: Portal Web BFF and Portal frontend, keeping `/v1/portal/*` backward-compatible and browser auth session-based.
+13. P21: Admin Web BFF with operator sessions, RBAC, audit, safe read models, and write workflows delegated to owner services.
+14. P22: Admin frontend, console static/deployment hardening, E2E smoke, security headers, rollback, and operations handoff.
 
 When a task is broad, narrow it to the next milestone unless the user explicitly asks for a later capability.
 
@@ -126,13 +138,17 @@ The intended Go layout is:
 ```text
 cmd/gateway
 cmd/control-api
+cmd/console
 cmd/worker
 cmd/configd
+api/openapi
 configs
 migrations
 internal/bootstrap
 internal/transport
 internal/app
+internal/app/portal
+internal/app/admin
 internal/domain
 internal/dataplane
 internal/controlplane
@@ -141,6 +157,12 @@ internal/billing
 internal/task
 internal/infra
 internal/worker
+web/apps/portal
+web/apps/admin
+web/packages/api-client
+web/packages/ui
+web/packages/auth
+web/packages/format
 pkg/apperr
 pkg/money
 pkg/redaction
@@ -171,6 +193,7 @@ make lint
 make build
 make run-gateway
 go run ./cmd/gateway -config configs/local.yaml
+go run ./cmd/console -config configs/local.yaml
 ```
 
 For M0 acceptance, the gateway should expose:
@@ -182,6 +205,17 @@ GET /metrics
 ```
 
 If a command is missing because the scaffold has not reached that stage yet, add the smallest useful target instead of inventing a parallel workflow.
+
+When the console monorepo phases are active, keep these targets or equivalents working:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm generate:api
+```
 
 ## Definition Of Done
 
