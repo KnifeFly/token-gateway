@@ -204,6 +204,139 @@ type APIKeyView struct {
 	UpdatedAt     time.Time  `json:"updated_at,omitempty"`
 }
 
+// CustomerAccountView is a safe tenant/project scoped customer account row.
+type CustomerAccountView struct {
+	CustomerAccountID string                  `json:"customer_account_id"`
+	TenantID          string                  `json:"tenant_id"`
+	TenantName        string                  `json:"tenant_name"`
+	ProjectID         string                  `json:"project_id"`
+	ProjectName       string                  `json:"project_name"`
+	DisplayName       string                  `json:"display_name,omitempty"`
+	Email             string                  `json:"email,omitempty"`
+	Status            string                  `json:"status"`
+	Role              string                  `json:"role"`
+	Notes             string                  `json:"notes,omitempty"`
+	TenantEnabled     bool                    `json:"tenant_enabled"`
+	ProjectEnabled    bool                    `json:"project_enabled"`
+	APIKeyCount       int                     `json:"api_key_count"`
+	ActiveAPIKeyCount int                     `json:"active_api_key_count"`
+	AllowedModels     CustomerAllowedModels   `json:"allowed_models_summary"`
+	Credits           []CustomerCreditSummary `json:"credits,omitempty"`
+	RecentUsage       CustomerUsageSummary    `json:"recent_usage"`
+	LastSeenAt        *time.Time              `json:"last_seen_at,omitempty"`
+	CreatedAt         time.Time               `json:"created_at,omitempty"`
+	UpdatedAt         time.Time               `json:"updated_at,omitempty"`
+}
+
+// CustomerAccountFilter scopes customer account list queries.
+type CustomerAccountFilter struct {
+	TenantID  string
+	ProjectID string
+	Status    string
+	Keyword   string
+}
+
+// CustomerAllowedModels summarizes model ACLs across account API keys.
+type CustomerAllowedModels struct {
+	Models      []string `json:"models,omitempty"`
+	Wildcard    bool     `json:"wildcard"`
+	UniqueCount int      `json:"unique_count"`
+}
+
+// CustomerCreditSummary is a safe balance bucket summary for one currency.
+type CustomerCreditSummary struct {
+	AccountID          string `json:"account_id,omitempty"`
+	Currency           string `json:"currency"`
+	AvailableMicros    int64  `json:"available_micros"`
+	HeldMicros         int64  `json:"held_micros"`
+	OpeningMicros      int64  `json:"opening_micros"`
+	TotalGrantedMicros int64  `json:"total_granted_micros"`
+	UsedMicros         int64  `json:"used_micros"`
+}
+
+// CustomerUsageSummary summarizes recent customer account usage.
+type CustomerUsageSummary struct {
+	Requests      int64  `json:"requests"`
+	InputTokens   int64  `json:"input_tokens"`
+	OutputTokens  int64  `json:"output_tokens"`
+	RevenueMicros int64  `json:"revenue_micros"`
+	Currency      string `json:"currency,omitempty"`
+}
+
+// CustomerAccountDetail returns account overview, keys, credits, usage, and ledger.
+type CustomerAccountDetail struct {
+	Account CustomerAccountView  `json:"account"`
+	APIKeys []APIKeyView         `json:"api_keys"`
+	Usage   []CustomerUsageRow   `json:"usage,omitempty"`
+	Ledger  []CustomerLedgerLine `json:"ledger,omitempty"`
+}
+
+// CustomerUsageRow is an operator-safe usage aggregate row for one account.
+type CustomerUsageRow struct {
+	Model        string `json:"model,omitempty"`
+	ProviderType string `json:"provider_type,omitempty"`
+	ChannelID    string `json:"channel_id,omitempty"`
+	Currency     string `json:"currency,omitempty"`
+	Requests     int64  `json:"requests"`
+	InputTokens  int64  `json:"input_tokens"`
+	OutputTokens int64  `json:"output_tokens"`
+	TotalTokens  int64  `json:"total_tokens"`
+	AmountMicros int64  `json:"amount_micros"`
+}
+
+// CustomerLedgerLine is an operator-safe account ledger row.
+type CustomerLedgerLine struct {
+	ID                 string    `json:"id"`
+	RequestID          string    `json:"request_id,omitempty"`
+	SettlementKind     string    `json:"settlement_kind"`
+	AccountID          string    `json:"account_id"`
+	Currency           string    `json:"currency"`
+	AmountMicros       int64     `json:"amount_micros"`
+	BalanceAfterMicros int64     `json:"balance_after_micros"`
+	Reason             string    `json:"reason,omitempty"`
+	CreatedAt          time.Time `json:"created_at,omitempty"`
+}
+
+// CustomerAccountCreateRequest creates a tenant/project scoped customer account.
+type CustomerAccountCreateRequest struct {
+	TenantID            string   `json:"tenant_id,omitempty"`
+	TenantName          string   `json:"tenant_name"`
+	ProjectID           string   `json:"project_id,omitempty"`
+	ProjectName         string   `json:"project_name"`
+	DisplayName         string   `json:"display_name,omitempty"`
+	Email               string   `json:"email,omitempty"`
+	Role                string   `json:"role,omitempty"`
+	Notes               string   `json:"notes,omitempty"`
+	APIKeyName          string   `json:"api_key_name,omitempty"`
+	AllowedModels       []string `json:"allowed_models,omitempty"`
+	Currency            string   `json:"currency,omitempty"`
+	InitialCreditMicros int64    `json:"initial_credit_micros,omitempty"`
+	InitialCreditReason string   `json:"initial_credit_reason,omitempty"`
+}
+
+// CustomerCreditAdjustmentRequest requests an audited manual credit adjustment.
+type CustomerCreditAdjustmentRequest struct {
+	Currency     string `json:"currency"`
+	AmountMicros int64  `json:"amount_micros"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+// CustomerCreditAdjustmentResult returns the adjustment and refreshed account detail.
+type CustomerCreditAdjustmentResult struct {
+	Adjustment any                   `json:"adjustment"`
+	Account    CustomerAccountDetail `json:"account"`
+}
+
+// CustomerSessionResetResult summarizes forced Portal session revocation.
+type CustomerSessionResetResult struct {
+	CustomerAccountID string    `json:"customer_account_id"`
+	TenantID          string    `json:"tenant_id"`
+	ProjectID         string    `json:"project_id"`
+	APIKeyID          string    `json:"api_key_id,omitempty"`
+	RevokedSessions   int       `json:"revoked_sessions"`
+	ResetAt           time.Time `json:"reset_at"`
+}
+
 // ChannelView is safe provider channel metadata without credential material.
 type ChannelView struct {
 	ID                   string             `json:"id"`

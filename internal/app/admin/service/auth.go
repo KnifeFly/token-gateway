@@ -252,6 +252,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "dashboard"},
 		{Action: "read", Resource: "tenant"}, {Action: "write", Resource: "tenant"},
 		{Action: "read", Resource: "project"}, {Action: "write", Resource: "project"},
+		{Action: "read", Resource: "customer_account"}, {Action: "write", Resource: "customer_account"},
 		{Action: "read", Resource: "api_key"}, {Action: "write", Resource: "api_key"},
 		{Action: "read", Resource: "model"}, {Action: "write", Resource: "model"},
 		{Action: "read", Resource: "channel"}, {Action: "write", Resource: "channel"},
@@ -263,6 +264,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 	adminapp.RoleFinanceAdmin: {
 		{Action: "read", Resource: "dashboard"},
 		{Action: "read", Resource: "tenant"}, {Action: "read", Resource: "project"},
+		{Action: "read", Resource: "customer_account"}, {Action: "write", Resource: "customer_account"},
 		{Action: "read", Resource: "api_key"}, {Action: "read", Resource: "pricing"},
 		{Action: "read", Resource: "limit"}, {Action: "read", Resource: "settlement"},
 		{Action: "replay", Resource: "settlement"}, {Action: "read", Resource: "hold"},
@@ -271,6 +273,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 	adminapp.RoleSupport: {
 		{Action: "read", Resource: "dashboard"},
 		{Action: "read", Resource: "tenant"}, {Action: "read", Resource: "project"},
+		{Action: "read", Resource: "customer_account"},
 		{Action: "read", Resource: "api_key"}, {Action: "read", Resource: "model"},
 		{Action: "read", Resource: "task"}, {Action: "read", Resource: "callback"},
 	},
@@ -284,6 +287,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 	adminapp.RoleReadOnly: {
 		{Action: "read", Resource: "dashboard"},
 		{Action: "read", Resource: "tenant"}, {Action: "read", Resource: "project"},
+		{Action: "read", Resource: "customer_account"},
 		{Action: "read", Resource: "api_key"}, {Action: "read", Resource: "model"},
 		{Action: "read", Resource: "channel"}, {Action: "read", Resource: "route"},
 		{Action: "read", Resource: "pricing"}, {Action: "read", Resource: "limit"},

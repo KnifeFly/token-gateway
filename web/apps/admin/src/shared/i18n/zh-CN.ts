@@ -113,6 +113,66 @@ export const adminCopy = {
       componentPrice: "组件价格"
     }
   },
+  accounts: {
+    title: "客户账户管理",
+    subtitle: "T05 把 NewAPI 用户管理转译为租户/项目账户、状态、角色、额度、密钥、会话重置和审计。",
+    status: "P24-T05",
+    sections: {
+      list: "客户列表",
+      overview: "账户概览",
+      credits: "额度",
+      keys: "密钥元数据",
+      usage: "近期用量",
+      ledger: "账本记录",
+      workflow: "工作流"
+    },
+    columns: {
+      account: "账户",
+      tenantProject: "租户/项目",
+      status: "状态",
+      role: "角色",
+      credits: "可用额度",
+      keys: "有效密钥",
+      models: "模型范围",
+      usage: "请求数",
+      lastSeen: "最近访问",
+      email: "联系人",
+      notes: "备注",
+      available: "可用",
+      held: "冻结",
+      granted: "已授予",
+      used: "已使用",
+      requests: "次请求"
+    },
+    actions: {
+      create: "创建账户",
+      enable: "启用账户",
+      disable: "停用账户",
+      adjustCredit: "手动额度调整",
+      resetSession: "重置会话"
+    },
+    state: {
+      active: "启用",
+      disabled: "停用",
+      closed: "关闭",
+      enabled: "启用",
+      allModels: "全部模型",
+      noModels: "未配置模型",
+      modelCount: "个模型",
+      never: "无记录"
+    },
+    role: {
+      owner: "负责人",
+      developer: "开发者",
+      viewer: "只读"
+    },
+    hints: {
+      safeKey: "详情只展示密钥元数据，不返回明文密钥或密钥哈希。",
+      session: "会话重置按租户、项目和可选密钥范围撤销浏览器会话。",
+      adjustment: "调整必须带理由和 Idempotency-Key，并写入审计。",
+      audit: "创建、停用、额度调整和会话重置都记录操作员审计。"
+    }
+  },
   session: {
     signedIn: "已登录",
     signedOut: "未登录"

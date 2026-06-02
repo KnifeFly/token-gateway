@@ -9,6 +9,7 @@ import (
 
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
 	adminrepo "github.com/KnifeFly/token-gateway/internal/app/admin/repository"
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
@@ -351,6 +352,106 @@ func TestModelManagementWorkflowsReturnSafeViews(t *testing.T) {
 	}
 }
 
+func TestCustomerAccountManagementWorkflows(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
+	repo := adminrepo.NewMemoryRepository()
+	owner := configadmin.NewService(configadmin.NewMemoryRepository(), configadmin.NewCredentialCodec("test-secret"), nil)
+	resetter := &fakePortalSessionResetter{count: 2}
+	svc := New(
+		repo,
+		owner,
+		WithClock(func() time.Time { return now }),
+		WithCommercialReporting(reporting.NewService(reporting.NewMemoryRepository())),
+		WithPortalSessionResetter(resetter),
+	)
+	if _, err := svc.EnsureBootstrapOperator(ctx, "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
+		t.Fatalf("EnsureBootstrapOperator() error = %v", err)
+	}
+	login, err := svc.Login(ctx, adminapp.LoginRequest{Email: "admin@example.com", Password: "admin-local"}, "ua-customer", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	_, actor, err := svc.Session(ctx, login.Session.SessionID)
+	if err != nil {
+		t.Fatalf("Session() error = %v", err)
+	}
+
+	created, err := svc.CreateCustomerAccount(ctx, actor, adminapp.CustomerAccountCreateRequest{
+		TenantName:          "Acme",
+		ProjectName:         "Production",
+		APIKeyName:          "primary",
+		AllowedModels:       []string{"gpt-public"},
+		Currency:            "CNY",
+		InitialCreditMicros: 5_000_000,
+		InitialCreditReason: "seed credits",
+	}, mutationOptions("customer_create"))
+	if err != nil {
+		t.Fatalf("CreateCustomerAccount() error = %v", err)
+	}
+	accountID := created.Account.CustomerAccountID
+	if created.Account.Status != "active" || created.Account.ActiveAPIKeyCount != 1 || len(created.Account.Credits) != 1 {
+		t.Fatalf("created account = %#v", created)
+	}
+	if created.Account.Credits[0].AvailableMicros != 5_000_000 || created.Account.AllowedModels.Models[0] != "gpt-public" {
+		t.Fatalf("created account credits/models = %#v", created.Account)
+	}
+	encoded := mustJSON(t, created)
+	if strings.Contains(encoded, "plaintext_key") || strings.Contains(encoded, "key_hash") || strings.Contains(encoded, "user_group") {
+		t.Fatalf("customer account leaked secret or cut-scope field: %s", encoded)
+	}
+
+	list, err := svc.ListCustomerAccounts(ctx, actor, adminapp.CustomerAccountFilter{Status: "active", Keyword: "acme"})
+	if err != nil {
+		t.Fatalf("ListCustomerAccounts() error = %v", err)
+	}
+	if len(list.Data) != 1 || list.Data[0].CustomerAccountID != accountID {
+		t.Fatalf("customer list = %#v", list)
+	}
+
+	adjusted, err := svc.AdjustCustomerCredits(ctx, actor, accountID, adminapp.CustomerCreditAdjustmentRequest{
+		Currency:     "CNY",
+		AmountMicros: 2_000_000,
+		Reason:       "support credit",
+	}, mutationOptions("customer_adjust"))
+	if err != nil {
+		t.Fatalf("AdjustCustomerCredits() error = %v", err)
+	}
+	if adjusted.Account.Account.Credits[0].AvailableMicros != 7_000_000 || len(adjusted.Account.Ledger) < 2 {
+		t.Fatalf("adjusted account = %#v", adjusted.Account)
+	}
+
+	reset, err := svc.ResetCustomerPortalSessions(ctx, actor, accountID, "", mutationOptions("customer_reset"))
+	if err != nil {
+		t.Fatalf("ResetCustomerPortalSessions() error = %v", err)
+	}
+	if reset.RevokedSessions != 2 || resetter.filter.ProjectID == "" {
+		t.Fatalf("reset result = %#v filter=%#v", reset, resetter.filter)
+	}
+
+	disabled, err := svc.SetCustomerAccountEnabled(ctx, actor, accountID, false, mutationOptions("customer_disable"))
+	if err != nil {
+		t.Fatalf("SetCustomerAccountEnabled() error = %v", err)
+	}
+	if disabled.Account.Status != "disabled" || disabled.Account.ProjectEnabled {
+		t.Fatalf("disabled account = %#v", disabled.Account)
+	}
+
+	auditEvents, err := repo.ListAuditEvents(ctx, adminapp.AuditFilter{Resource: "customer_account"})
+	if err != nil {
+		t.Fatalf("ListAuditEvents(customer_account) error = %v", err)
+	}
+	if len(auditEvents) < 4 {
+		t.Fatalf("audit event count = %d, want >= 4", len(auditEvents))
+	}
+	for _, event := range auditEvents {
+		combined := string(event.Before) + string(event.After)
+		if strings.Contains(combined, "plaintext_key") || strings.Contains(combined, "key_hash") || strings.Contains(combined, "user_group") {
+			t.Fatalf("customer audit leaked secret or cut-scope field: %#v", event)
+		}
+	}
+}
+
 func testService(t *testing.T) (*Service, *adminrepo.MemoryRepository) {
 	t.Helper()
 	now := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
@@ -362,6 +463,16 @@ func testService(t *testing.T) (*Service, *adminrepo.MemoryRepository) {
 		t.Fatalf("EnsureBootstrapOperator() error = %v", err)
 	}
 	return svc, repo
+}
+
+type fakePortalSessionResetter struct {
+	count  int
+	filter PortalSessionResetFilter
+}
+
+func (f *fakePortalSessionResetter) ResetPortalSessions(_ context.Context, filter PortalSessionResetFilter) (int, error) {
+	f.filter = filter
+	return f.count, nil
 }
 
 func mustJSON(t *testing.T, value any) string {

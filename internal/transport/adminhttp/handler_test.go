@@ -13,6 +13,7 @@ import (
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
 	adminrepo "github.com/KnifeFly/token-gateway/internal/app/admin/repository"
 	adminservice "github.com/KnifeFly/token-gateway/internal/app/admin/service"
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 )
 
@@ -215,11 +216,74 @@ func TestAdminModelWorkflows(t *testing.T) {
 	}
 }
 
+func TestAdminCustomerAccountWorkflows(t *testing.T) {
+	mux, _ := testMux(t)
+	cookie, csrf := loginOperator(t, mux, "admin@example.com", "admin-local")
+
+	create := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/customer-accounts", `{
+		"tenant_name":"Acme",
+		"project_name":"Production",
+		"api_key_name":"primary",
+		"allowed_models":["gpt-public"],
+		"currency":"CNY",
+		"initial_credit_micros":5000000,
+		"initial_credit_reason":"seed credits"
+	}`, cookie, csrf, "customer_create")
+	if create.Code != http.StatusOK {
+		t.Fatalf("create customer status=%d body=%s", create.Code, create.Body.String())
+	}
+	if strings.Contains(create.Body.String(), "plaintext_key") || strings.Contains(create.Body.String(), "key_hash") || strings.Contains(create.Body.String(), "user_group") {
+		t.Fatalf("create customer exposed secret or cut-scope field: %s", create.Body.String())
+	}
+	var created adminapp.CustomerAccountDetail
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode customer detail: %v", err)
+	}
+	accountID := created.Account.CustomerAccountID
+	if accountID == "" || created.Account.ActiveAPIKeyCount != 1 {
+		t.Fatalf("created customer = %#v", created)
+	}
+
+	list := request(t, mux, http.MethodGet, "/api/admin/v1/customer-accounts?keyword=acme", "", cookie, "")
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), accountID) {
+		t.Fatalf("customer list status=%d body=%s", list.Code, list.Body.String())
+	}
+
+	detail := request(t, mux, http.MethodGet, "/api/admin/v1/customer-accounts/"+accountID, "", cookie, "")
+	if detail.Code != http.StatusOK || !strings.Contains(detail.Body.String(), `"api_keys"`) {
+		t.Fatalf("customer detail status=%d body=%s", detail.Code, detail.Body.String())
+	}
+
+	adjust := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/customer-accounts/"+accountID+"/manual-adjustment", `{
+		"currency":"CNY",
+		"amount_micros":2000000,
+		"reason":"support credit"
+	}`, cookie, csrf, "customer_adjust")
+	if adjust.Code != http.StatusOK || !strings.Contains(adjust.Body.String(), `"amount_micros":2000000`) {
+		t.Fatalf("adjust status=%d body=%s", adjust.Code, adjust.Body.String())
+	}
+
+	reset := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/customer-accounts/"+accountID+"/reset-session", `{}`, cookie, csrf, "customer_reset")
+	if reset.Code != http.StatusOK || !strings.Contains(reset.Body.String(), `"revoked_sessions":1`) {
+		t.Fatalf("reset status=%d body=%s", reset.Code, reset.Body.String())
+	}
+
+	disable := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/customer-accounts/"+accountID+"/disable", "", cookie, csrf, "customer_disable")
+	if disable.Code != http.StatusOK || !strings.Contains(disable.Body.String(), `"status":"disabled"`) {
+		t.Fatalf("disable status=%d body=%s", disable.Code, disable.Body.String())
+	}
+}
+
 func testMux(t *testing.T) (*http.ServeMux, *adminservice.Service) {
 	t.Helper()
 	repo := adminrepo.NewMemoryRepository()
 	owner := configadmin.NewService(configadmin.NewMemoryRepository(), configadmin.NewCredentialCodec("test-secret"), nil)
-	svc := adminservice.New(repo, owner)
+	svc := adminservice.New(
+		repo,
+		owner,
+		adminservice.WithCommercialReporting(reporting.NewService(reporting.NewMemoryRepository())),
+		adminservice.WithPortalSessionResetter(fakePortalSessionResetter{count: 1}),
+	)
 	if _, err := svc.EnsureBootstrapOperator(context.Background(), "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
 		t.Fatalf("EnsureBootstrapOperator() error = %v", err)
 	}
@@ -262,6 +326,14 @@ func request(t *testing.T, mux http.Handler, method string, path string, body st
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	return rec
+}
+
+type fakePortalSessionResetter struct {
+	count int
+}
+
+func (f fakePortalSessionResetter) ResetPortalSessions(context.Context, adminservice.PortalSessionResetFilter) (int, error) {
+	return f.count, nil
 }
 
 func mutationRequest(t *testing.T, mux http.Handler, method string, path string, body string, cookie *http.Cookie, csrf string, seed string) *httptest.ResponseRecorder {

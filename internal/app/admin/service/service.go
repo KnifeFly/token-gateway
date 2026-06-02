@@ -28,6 +28,19 @@ type SnapshotManager interface {
 	Diagnostics(ctx context.Context) (*cpsnapshot.Diagnostics, error)
 }
 
+// PortalSessionResetFilter scopes forced Portal session revocation.
+type PortalSessionResetFilter struct {
+	TenantID  string
+	ProjectID string
+	APIKeyID  string
+	RevokedAt time.Time
+}
+
+// PortalSessionResetter revokes Portal browser sessions by customer account scope.
+type PortalSessionResetter interface {
+	ResetPortalSessions(ctx context.Context, filter PortalSessionResetFilter) (int, error)
+}
+
 // Service coordinates Admin Web BFF authorization, audit, and owner-service workflows.
 type Service struct {
 	repo              adminapp.Repository
@@ -36,6 +49,7 @@ type Service struct {
 	tasks             tasksvc.Repository
 	failedSettlements *billing.FailedSettlementService
 	snapshots         SnapshotManager
+	portalSessions    PortalSessionResetter
 	now               func() time.Time
 	ttl               time.Duration
 }
@@ -86,6 +100,13 @@ func WithFailedSettlementService(failedSettlements *billing.FailedSettlementServ
 func WithSnapshotManager(snapshots SnapshotManager) Option {
 	return func(s *Service) {
 		s.snapshots = snapshots
+	}
+}
+
+// WithPortalSessionResetter attaches Portal browser session reset workflow.
+func WithPortalSessionResetter(portalSessions PortalSessionResetter) Option {
+	return func(s *Service) {
+		s.portalSessions = portalSessions
 	}
 }
 

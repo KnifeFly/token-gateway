@@ -87,6 +87,7 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 		adminservice.WithTaskRepository(runtime.taskRepo),
 		adminservice.WithFailedSettlementService(runtime.failedSettlements),
 		adminservice.WithSnapshotManager(runtime.snapshotManager),
+		adminservice.WithPortalSessionResetter(portalSessionResetter{store: sessionStore}),
 	)
 	if !cfg.Database.Enabled {
 		if _, err := adminWeb.EnsureBootstrapOperator(ctx, "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
@@ -150,6 +151,18 @@ func (a *ConsoleApp) Close(ctx context.Context) error {
 // Logger returns the process logger.
 func (a *ConsoleApp) Logger() *slog.Logger {
 	return a.logger
+}
+
+type portalSessionResetter struct {
+	store portalapp.SessionStore
+}
+
+func (r portalSessionResetter) ResetPortalSessions(ctx context.Context, filter adminservice.PortalSessionResetFilter) (int, error) {
+	scoped, ok := r.store.(portalapp.ScopedSessionStore)
+	if !ok {
+		return 0, nil
+	}
+	return scoped.RevokeByScope(ctx, filter.TenantID, filter.ProjectID, filter.APIKeyID, filter.RevokedAt)
 }
 
 func consoleServerConfig(cfg Config) httpserver.Config {

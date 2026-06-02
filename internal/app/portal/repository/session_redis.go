@@ -88,6 +88,47 @@ func (s *RedisSessionStore) Revoke(ctx context.Context, sessionID string, revoke
 	return session, true, nil
 }
 
+// RevokeByScope marks all matching tenant/project/API key sessions revoked.
+func (s *RedisSessionStore) RevokeByScope(ctx context.Context, tenantID string, projectID string, apiKeyID string, revokedAt time.Time) (int, error) {
+	if s == nil || s.client == nil {
+		return 0, nil
+	}
+	count := 0
+	cursor := uint64(0)
+	for {
+		keys, next, err := s.client.Scan(ctx, cursor, s.prefix+":*", 100).Result()
+		if err != nil {
+			return count, err
+		}
+		for _, key := range keys {
+			content, err := s.client.Get(ctx, key).Bytes()
+			if err == goredis.Nil {
+				continue
+			}
+			if err != nil {
+				return count, err
+			}
+			var session portalapp.Session
+			if err := json.Unmarshal(content, &session); err != nil {
+				return count, err
+			}
+			if !sessionMatchesScope(session, tenantID, projectID, apiKeyID) {
+				continue
+			}
+			session.RevokedAt = &revokedAt
+			session.LastSeenAt = revokedAt
+			if _, err := s.Create(ctx, session); err != nil {
+				return count, err
+			}
+			count++
+		}
+		cursor = next
+		if cursor == 0 {
+			return count, nil
+		}
+	}
+}
+
 // Delete removes a session.
 func (s *RedisSessionStore) Delete(ctx context.Context, sessionID string) error {
 	if s == nil || s.client == nil {

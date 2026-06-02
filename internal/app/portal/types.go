@@ -38,6 +38,11 @@ type SessionStore interface {
 	Delete(ctx context.Context, sessionID string) error
 }
 
+// ScopedSessionStore can revoke Portal sessions for one tenant/project/API key scope.
+type ScopedSessionStore interface {
+	RevokeByScope(ctx context.Context, tenantID string, projectID string, apiKeyID string, revokedAt time.Time) (int, error)
+}
+
 // APIKeyLoginRequest exchanges a customer API key for a browser session.
 type APIKeyLoginRequest struct {
 	APIKey string `json:"api_key"`

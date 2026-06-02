@@ -5,6 +5,8 @@ import { adminCutScopeItems, adminRouteSections } from "../../app/routes";
 import { adminCopy } from "../../shared/i18n";
 import { scaffoldSession } from "../../shared/session/session";
 
+const implementedRouteAnchors = new Set(["catalog", "routing", "accounts"]);
+
 export function RoutePlanPanel() {
   return (
     <section className="panel route-plan">
@@ -21,7 +23,11 @@ export function RoutePlanPanel() {
 
       <div className="route-grid" aria-label={adminCopy.routePlan.title}>
         {adminRouteSections.map((section) => (
-          <article className="route-card" id={section.id} key={section.id}>
+          <article
+            className="route-card"
+            id={implementedRouteAnchors.has(section.id) ? `plan-${section.id}` : section.id}
+            key={section.id}
+          >
             <div className="route-card-header">
               <h3>{section.label}</h3>
               <span>{section.routePrefix}</span>

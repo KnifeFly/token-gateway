@@ -198,6 +198,165 @@ paths:
           $ref: "#/components/responses/ObjectResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminCustomerAccounts
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: keyword
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Safe customer account list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: createAdminCustomerAccount
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCustomerAccountCreateRequest"
+      responses:
+        "200":
+          description: Created customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminCustomerAccount
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      responses:
+        "200":
+          description: Safe customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/enable:
+    post:
+      tags: [Admin Web Config]
+      operationId: enableAdminCustomerAccount
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      responses:
+        "200":
+          description: Enabled customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminCustomerAccount
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      responses:
+        "200":
+          description: Disabled customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/manual-adjustment:
+    post:
+      tags: [Admin Web Config]
+      operationId: adjustAdminCustomerCredits
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCustomerCreditAdjustmentRequest"
+      responses:
+        "200":
+          description: Manual adjustment result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerCreditAdjustmentResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/reset-session:
+    post:
+      tags: [Admin Web Config]
+      operationId: resetAdminCustomerPortalSessions
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key_id:
+                  type: string
+      responses:
+        "200":
+          description: Portal session reset result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerSessionResetResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/models:
     get:
       tags: [Admin Web Config]
@@ -922,6 +1081,11 @@ components:
       name: project_id
       in: query
       schema: { type: string }
+    CustomerAccountID:
+      name: customer_account_id
+      in: path
+      required: true
+      schema: { type: string }
     KeyID:
       name: key_id
       in: path
@@ -1055,6 +1219,301 @@ components:
           items:
             type: object
             additionalProperties: true
+    AdminCustomerAccountListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerAccountView"
+    AdminCustomerAccountView:
+      type: object
+      required:
+        - customer_account_id
+        - tenant_id
+        - tenant_name
+        - project_id
+        - project_name
+        - status
+        - role
+        - tenant_enabled
+        - project_enabled
+        - api_key_count
+        - active_api_key_count
+        - allowed_models_summary
+        - recent_usage
+      properties:
+        customer_account_id:
+          type: string
+        tenant_id:
+          type: string
+        tenant_name:
+          type: string
+        project_id:
+          type: string
+        project_name:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled, closed]
+        role:
+          type: string
+          enum: [owner, developer, viewer]
+        notes:
+          type: string
+        tenant_enabled:
+          type: boolean
+        project_enabled:
+          type: boolean
+        api_key_count:
+          type: integer
+        active_api_key_count:
+          type: integer
+        allowed_models_summary:
+          $ref: "#/components/schemas/AdminCustomerAllowedModels"
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerCreditSummary"
+        recent_usage:
+          $ref: "#/components/schemas/AdminCustomerUsageSummary"
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminCustomerAllowedModels:
+      type: object
+      required: [wildcard, unique_count]
+      properties:
+        models:
+          type: array
+          items:
+            type: string
+        wildcard:
+          type: boolean
+        unique_count:
+          type: integer
+    AdminCustomerCreditSummary:
+      type: object
+      required: [currency, available_micros, held_micros, opening_micros, total_granted_micros, used_micros]
+      properties:
+        account_id:
+          type: string
+        currency:
+          type: string
+        available_micros:
+          type: integer
+          format: int64
+        held_micros:
+          type: integer
+          format: int64
+        opening_micros:
+          type: integer
+          format: int64
+        total_granted_micros:
+          type: integer
+          format: int64
+        used_micros:
+          type: integer
+          format: int64
+    AdminCustomerUsageSummary:
+      type: object
+      required: [requests, input_tokens, output_tokens, revenue_micros]
+      properties:
+        requests:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        revenue_micros:
+          type: integer
+          format: int64
+        currency:
+          type: string
+    AdminCustomerAccountDetail:
+      type: object
+      required: [account, api_keys]
+      properties:
+        account:
+          $ref: "#/components/schemas/AdminCustomerAccountView"
+        api_keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAPIKeyView"
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerUsageRow"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+    AdminAPIKeyView:
+      type: object
+      required: [id, tenant_id, project_id, name, enabled]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        allowed_models:
+          type: array
+          items:
+            type: string
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminCustomerUsageRow:
+      type: object
+      required: [requests, input_tokens, output_tokens, total_tokens, amount_micros]
+      properties:
+        model:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        currency:
+          type: string
+        requests:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        amount_micros:
+          type: integer
+          format: int64
+    AdminCustomerLedgerLine:
+      type: object
+      required: [id, settlement_kind, account_id, currency, amount_micros, balance_after_micros]
+      properties:
+        id:
+          type: string
+        request_id:
+          type: string
+        settlement_kind:
+          type: string
+        account_id:
+          type: string
+        currency:
+          type: string
+        amount_micros:
+          type: integer
+          format: int64
+        balance_after_micros:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AdminCustomerAccountCreateRequest:
+      type: object
+      required: [tenant_name, project_name]
+      properties:
+        tenant_id:
+          type: string
+        tenant_name:
+          type: string
+        project_id:
+          type: string
+        project_name:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, developer, viewer]
+        notes:
+          type: string
+        api_key_name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        currency:
+          type: string
+        initial_credit_micros:
+          type: integer
+          format: int64
+        initial_credit_reason:
+          type: string
+    AdminCustomerCreditAdjustmentRequest:
+      type: object
+      required: [currency, amount_micros]
+      properties:
+        currency:
+          type: string
+        amount_micros:
+          type: integer
+          format: int64
+        reason:
+          type: string
+    AdminCustomerCreditAdjustmentResult:
+      type: object
+      required: [adjustment, account]
+      properties:
+        adjustment:
+          type: object
+          additionalProperties: true
+        account:
+          $ref: "#/components/schemas/AdminCustomerAccountDetail"
+    AdminCustomerSessionResetResult:
+      type: object
+      required: [customer_account_id, tenant_id, project_id, revoked_sessions, reset_at]
+      properties:
+        customer_account_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        revoked_sessions:
+          type: integer
+        reset_at:
+          type: string
+          format: date-time
     AdminModelListResponse:
       type: object
       required: [data]

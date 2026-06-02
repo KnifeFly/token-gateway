@@ -1,3 +1,4 @@
+import { CustomerAccountsPanel } from "../features/accounts/CustomerAccountsPanel";
 import { ChannelManagementPanel } from "../features/channels/ChannelManagementPanel";
 import { ModelManagementPanel } from "../features/models/ModelManagementPanel";
 import { RoutePlanPanel } from "../features/route-plan/RoutePlanPanel";
@@ -15,6 +16,7 @@ export function App() {
         <RoutePlanPanel />
         <ModelManagementPanel />
         <ChannelManagementPanel />
+        <CustomerAccountsPanel />
       </section>
     </main>
   );

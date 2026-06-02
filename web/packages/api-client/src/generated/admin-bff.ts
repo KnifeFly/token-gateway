@@ -152,6 +152,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/customer-accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminCustomerAccounts"];
+        put?: never;
+        post: operations["createAdminCustomerAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminCustomerAccount"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enableAdminCustomerAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableAdminCustomerAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/manual-adjustment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["adjustAdminCustomerCredits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/reset-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["resetAdminCustomerPortalSessions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/models": {
         parameters: {
             query?: never;
@@ -707,6 +803,154 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        AdminCustomerAccountListResponse: {
+            data: components["schemas"]["AdminCustomerAccountView"][];
+        };
+        AdminCustomerAccountView: {
+            customer_account_id: string;
+            tenant_id: string;
+            tenant_name: string;
+            project_id: string;
+            project_name: string;
+            display_name?: string;
+            email?: string;
+            /** @enum {string} */
+            status: "active" | "disabled" | "closed";
+            /** @enum {string} */
+            role: "owner" | "developer" | "viewer";
+            notes?: string;
+            tenant_enabled: boolean;
+            project_enabled: boolean;
+            api_key_count: number;
+            active_api_key_count: number;
+            allowed_models_summary: components["schemas"]["AdminCustomerAllowedModels"];
+            credits?: components["schemas"]["AdminCustomerCreditSummary"][];
+            recent_usage: components["schemas"]["AdminCustomerUsageSummary"];
+            /** Format: date-time */
+            last_seen_at?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        AdminCustomerAllowedModels: {
+            models?: string[];
+            wildcard: boolean;
+            unique_count: number;
+        };
+        AdminCustomerCreditSummary: {
+            account_id?: string;
+            currency: string;
+            /** Format: int64 */
+            available_micros: number;
+            /** Format: int64 */
+            held_micros: number;
+            /** Format: int64 */
+            opening_micros: number;
+            /** Format: int64 */
+            total_granted_micros: number;
+            /** Format: int64 */
+            used_micros: number;
+        };
+        AdminCustomerUsageSummary: {
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            input_tokens: number;
+            /** Format: int64 */
+            output_tokens: number;
+            /** Format: int64 */
+            revenue_micros: number;
+            currency?: string;
+        };
+        AdminCustomerAccountDetail: {
+            account: components["schemas"]["AdminCustomerAccountView"];
+            api_keys: components["schemas"]["AdminAPIKeyView"][];
+            usage?: components["schemas"]["AdminCustomerUsageRow"][];
+            ledger?: components["schemas"]["AdminCustomerLedgerLine"][];
+        };
+        AdminAPIKeyView: {
+            id: string;
+            tenant_id: string;
+            project_id: string;
+            name: string;
+            enabled: boolean;
+            allowed_models?: string[];
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        AdminCustomerUsageRow: {
+            model?: string;
+            provider_type?: string;
+            channel_id?: string;
+            currency?: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            input_tokens: number;
+            /** Format: int64 */
+            output_tokens: number;
+            /** Format: int64 */
+            total_tokens: number;
+            /** Format: int64 */
+            amount_micros: number;
+        };
+        AdminCustomerLedgerLine: {
+            id: string;
+            request_id?: string;
+            settlement_kind: string;
+            account_id: string;
+            currency: string;
+            /** Format: int64 */
+            amount_micros: number;
+            /** Format: int64 */
+            balance_after_micros: number;
+            reason?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
+        AdminCustomerAccountCreateRequest: {
+            tenant_id?: string;
+            tenant_name: string;
+            project_id?: string;
+            project_name: string;
+            display_name?: string;
+            email?: string;
+            /** @enum {string} */
+            role?: "owner" | "developer" | "viewer";
+            notes?: string;
+            api_key_name?: string;
+            allowed_models?: string[];
+            currency?: string;
+            /** Format: int64 */
+            initial_credit_micros?: number;
+            initial_credit_reason?: string;
+        };
+        AdminCustomerCreditAdjustmentRequest: {
+            currency: string;
+            /** Format: int64 */
+            amount_micros: number;
+            reason?: string;
+        };
+        AdminCustomerCreditAdjustmentResult: {
+            adjustment: {
+                [key: string]: unknown;
+            };
+            account: components["schemas"]["AdminCustomerAccountDetail"];
+        };
+        AdminCustomerSessionResetResult: {
+            customer_account_id: string;
+            tenant_id: string;
+            project_id: string;
+            api_key_id?: string;
+            revoked_sessions: number;
+            /** Format: date-time */
+            reset_at: string;
+        };
         AdminModelListResponse: {
             data: components["schemas"]["AdminModelView"][];
         };
@@ -1005,6 +1249,7 @@ export interface components {
         TenantID: string;
         TenantIDQuery: string;
         ProjectIDQuery: string;
+        CustomerAccountID: string;
         KeyID: string;
         ModelID: string;
         ChannelID: string;
@@ -1226,6 +1471,182 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["ObjectResponse"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminCustomerAccounts: {
+        parameters: {
+            query?: {
+                tenant_id?: components["parameters"]["TenantIDQuery"];
+                project_id?: components["parameters"]["ProjectIDQuery"];
+                status?: string;
+                keyword?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe customer account list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerAccountListResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createAdminCustomerAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCustomerAccountCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Created customer account detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerAccountDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminCustomerAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe customer account detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerAccountDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    enableAdminCustomerAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enabled customer account detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerAccountDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    disableAdminCustomerAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled customer account detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerAccountDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    adjustAdminCustomerCredits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminCustomerCreditAdjustmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Manual adjustment result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerCreditAdjustmentResult"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    resetAdminCustomerPortalSessions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    api_key_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Portal session reset result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerSessionResetResult"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };

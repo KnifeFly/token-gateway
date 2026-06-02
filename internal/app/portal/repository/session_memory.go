@@ -65,6 +65,24 @@ func (s *MemorySessionStore) Revoke(_ context.Context, sessionID string, revoked
 	return cloneSession(session), true, nil
 }
 
+// RevokeByScope marks all matching tenant/project/API key sessions revoked.
+func (s *MemorySessionStore) RevokeByScope(_ context.Context, tenantID string, projectID string, apiKeyID string, revokedAt time.Time) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	for id, session := range s.sessions {
+		if !sessionMatchesScope(session, tenantID, projectID, apiKeyID) {
+			continue
+		}
+		session.RevokedAt = &revokedAt
+		session.LastSeenAt = revokedAt
+		s.sessions[id] = session
+		count++
+	}
+	return count, nil
+}
+
 // Delete removes a session.
 func (s *MemorySessionStore) Delete(_ context.Context, sessionID string) error {
 	s.mu.Lock()
@@ -81,4 +99,17 @@ func cloneSession(session portalapp.Session) portalapp.Session {
 		session.RevokedAt = &revokedAt
 	}
 	return session
+}
+
+func sessionMatchesScope(session portalapp.Session, tenantID string, projectID string, apiKeyID string) bool {
+	if tenantID != "" && session.TenantID != tenantID {
+		return false
+	}
+	if projectID != "" && session.ProjectID != projectID {
+		return false
+	}
+	if apiKeyID != "" && session.APIKeyID != apiKeyID {
+		return false
+	}
+	return session.RevokedAt == nil
 }
