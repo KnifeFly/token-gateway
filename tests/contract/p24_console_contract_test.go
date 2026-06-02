@@ -59,6 +59,21 @@ func TestP24ConsoleOpenAPIPaths(t *testing.T) {
 	})
 }
 
+func TestP24CutScopeExcludedFromOpenAPIPaths(t *testing.T) {
+	root := filepath.Join("..", "..", "api", "openapi")
+	for _, name := range []string{"admin-bff.yaml", "portal-bff.yaml"} {
+		t.Run(name, func(t *testing.T) {
+			doc := readOpenAPIDoc(t, filepath.Join(root, name))
+			paths := getMap(t, doc, "paths")
+			for pathName := range paths {
+				if reason := forbiddenP24PathReason(pathName); reason != "" {
+					t.Fatalf("%s path %s is forbidden: %s", name, pathName, reason)
+				}
+			}
+		})
+	}
+}
+
 func TestP24ConsoleMutationSecurity(t *testing.T) {
 	root := filepath.Join("..", "..", "api", "openapi")
 	admin := readOpenAPIDoc(t, filepath.Join(root, "admin-bff.yaml"))
@@ -252,6 +267,40 @@ func securityRequirementHasSchemes(requirement map[string]any, schemes []string)
 		}
 	}
 	return true
+}
+
+func forbiddenP24PathReason(pathName string) string {
+	normalized := strings.ToLower(strings.ReplaceAll(pathName, "_", "-"))
+	for _, term := range []string{
+		"/groups",
+		"/user-groups",
+		"/model-groups",
+		"/channel-groups",
+		"/ratios",
+		"/payment",
+		"/payments",
+		"/subscription",
+		"/subscriptions",
+		"/redemption",
+		"/redemptions",
+		"/invite",
+		"/invite-reward",
+		"/invite-rewards",
+		"/deployment",
+		"/deployments",
+		"/model-deployment",
+		"/model-deployments",
+		"/system-settings",
+		"/settings/system",
+		"/settings/global",
+		"/settings/payment",
+		"/settings/billing",
+	} {
+		if strings.Contains(normalized, term) {
+			return "P24 keeps NewAPI groups, ratios, payment, subscription, redemption, invite rewards, model deployment, and broad settings out of browser BFF APIs"
+		}
+	}
+	return ""
 }
 
 func assertSafeSchemaPropertyNames(t *testing.T, doc map[string]any, docName string, schemaName string) {

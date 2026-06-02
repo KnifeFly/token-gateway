@@ -53,11 +53,17 @@ web/apps/portal/src/shared/i18n/zh-CN.ts
 
 ## Cut Scope Check
 
-后续 P24 任务提交前，至少检查：
+后续 P24 任务提交前运行：
 
 ```bash
-rg -n "分组|倍率|订阅|兑换码|支付|邀请|部署|group|ratio|subscription|redemption|payment|invite|deployment" \
-  web/apps/admin/src web/apps/portal/src api/openapi/admin-bff.yaml api/openapi/portal-bff.yaml
+make p24-cut-scope-check
 ```
 
-命中不一定都是违规，但如果命中出现在路由、表单字段、菜单或 DTO 中，需要确认是否违背 P24 裁剪边界。
+该检查覆盖：
+
+- BFF OpenAPI path 不出现 group、ratio、payment、subscription、redemption、invite、deployment 或 broad settings route。
+- BFF OpenAPI schema 和 generated client 不出现 NewAPI 分组、倍率、支付、订阅、兑换、邀请返利或模型部署字段。
+- Admin/Portal 前端 route config 和 API call 不指向裁剪范围外 route。
+- Admin/Portal 前端不新增裁剪范围外 feature 文件。
+
+允许保留“裁剪边界”说明文案，用于提醒后续开发不要把范围外能力加回页面、路由、字段或 DTO。

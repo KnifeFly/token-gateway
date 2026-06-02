@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 CONFIG ?= configs/local.yaml
 
-.PHONY: help test lint fmt fmt-check vet race build run-gateway run-console run-worker loadtest portal-smoke portal-web-smoke release-handoff release-handoff-check failure-drills api-generate api-check boundary-check web-install web-lint web-typecheck web-test web-build migrate-up migrate-down compose-up compose-down
+.PHONY: help test lint fmt fmt-check vet race build run-gateway run-console run-worker loadtest portal-smoke portal-web-smoke release-handoff release-handoff-check failure-drills api-generate api-check boundary-check p24-cut-scope-check web-install web-lint web-typecheck web-test web-build migrate-up migrate-down compose-up compose-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -49,6 +49,9 @@ api-check: ## Check split OpenAPI generated client drift
 
 boundary-check: ## Check P23 import and app/package boundaries
 	scripts/check_import_boundaries.sh
+
+p24-cut-scope-check: ## Check P24 lean console non-goals stay out of API/UI routes and fields
+	scripts/check_p24_cut_scope.sh
 
 web-install: ## Install frontend workspace dependencies
 	pnpm install --frozen-lockfile
