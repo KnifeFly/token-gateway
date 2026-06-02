@@ -545,6 +545,70 @@ nav a:hover {
   border-color: #bfe8cb;
 }
 
+.credit-ops-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.credit-ops-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.credit-ops-section {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.credit-ops-section.wide {
+  grid-column: span 1;
+}
+
+.credit-ops-section h3 {
+  margin: 0;
+  color: #101828;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.credit-ops-section dl,
+.credit-ops-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.credit-ops-section dl div,
+.credit-ops-list div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #e1e7f0;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 14px;
+}
+
+.credit-ops-section dt,
+.credit-ops-list span,
+.credit-ops-list small {
+  color: #667085;
+  font-size: 13px;
+}
+
+.credit-ops-section dd,
+.credit-ops-list strong {
+  min-width: 0;
+  margin: 0;
+  color: #101828;
+  font-size: 14px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
 .api-key-panel {
   display: grid;
   gap: 18px;
@@ -967,6 +1031,7 @@ nav a:hover {
   .coverage-grid,
   .coverage-grid.compact,
   .portal-preview-grid,
+  .credit-ops-grid,
   .account-detail-grid,
   .api-key-detail-grid,
   .activity-detail-grid,

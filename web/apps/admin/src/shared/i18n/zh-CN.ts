@@ -173,6 +173,42 @@ export const adminCopy = {
       audit: "创建、停用、额度调整和会话重置都记录操作员审计。"
     }
   },
+  creditOps: {
+    title: "额度运营",
+    subtitle: "T09 聚合余额、账本、冻结、修复队列、人工调整约束和安全导出。",
+    status: "P24-T09",
+    sections: {
+      balance: "余额摘要",
+      holds: "冻结状态",
+      repairs: "结算修复",
+      ledger: "账本记录",
+      exports: "安全导出"
+    },
+    columns: {
+      available: "可用额度",
+      held: "冻结额度",
+      used: "已用额度",
+      retry: "重试"
+    },
+    state: {
+      active: "活跃冻结",
+      protected_task_holds: "任务保护冻结",
+      manual_adjustment: "人工调整",
+      usage_debit: "用量扣减",
+      usage_settlement: "用量结算"
+    },
+    exportKind: {
+      usage: "用量导出",
+      ledger: "账本导出"
+    },
+    hints: {
+      reason: "额度调整必须带理由和 Idempotency-Key。",
+      audit: "调整、修复和导出入口必须保留操作员审计证据。",
+      safeExport: "导出只包含 safe DTO，不包含密钥、原始提示词、响应或回调地址。",
+      noPayment: "不接入支付、订阅、兑换码或充值配置。",
+      exportFile: "示例导出文件"
+    }
+  },
   apiKeys: {
     title: "密钥管理",
     subtitle: "T06 收口创建、更新范围、启用、停用、轮换、允许模型、IP 白名单、过期时间和用量摘要。",

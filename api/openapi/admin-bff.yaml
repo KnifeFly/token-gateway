@@ -349,6 +349,87 @@ paths:
                 $ref: "#/components/schemas/AdminCustomerAccountDetail"
         default:
           $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/credit-report:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminCustomerCreditReport
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Minimal credit operations report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerCreditReport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/usage/export:
+    get:
+      tags: [Admin Web Config]
+      operationId: exportAdminCustomerUsage
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Safe customer usage export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerReportExport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/ledger/export:
+    get:
+      tags: [Admin Web Config]
+      operationId: exportAdminCustomerLedger
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Safe customer ledger export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerReportExport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/customer-accounts/{customer_account_id}/enable:
     post:
       tags: [Admin Web Config]
@@ -1669,6 +1750,121 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AdminCustomerLedgerLine"
+    AdminCustomerCreditReport:
+      type: object
+      required: [generated_at, account, credits, usage, ledger, active_holds, failed_settlements, exports]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        account:
+          $ref: "#/components/schemas/AdminCustomerAccountView"
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerCreditSummary"
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerUsageRow"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+        active_holds:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminHoldAgingView"
+        failed_settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerFailedSettlementLink"
+        exports:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerExportLink"
+    AdminCustomerFailedSettlementLink:
+      type: object
+      required: [id, request_id, status, retry_count]
+      properties:
+        id:
+          type: string
+        request_id:
+          type: string
+        status:
+          type: string
+        retry_count:
+          type: integer
+        last_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    AdminCustomerExportLink:
+      type: object
+      required: [kind, path, format, safe_fields]
+      properties:
+        kind:
+          type: string
+          enum: [usage, ledger]
+        path:
+          type: string
+        format:
+          type: string
+          enum: [json]
+        safe_fields:
+          type: array
+          items:
+            type: string
+    AdminHoldAgingView:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+    AdminCustomerReportExport:
+      type: object
+      required: [generated_at, kind, format, filename, customer_account_id, tenant_id, project_id, totals, safe_fields]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [usage, ledger]
+        format:
+          type: string
+          enum: [json]
+        filename:
+          type: string
+        customer_account_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        currency:
+          type: string
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerUsageRow"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+        totals:
+          $ref: "#/components/schemas/AdminCustomerUsageSummary"
+        safe_fields:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
     AdminAPIKeyListResponse:
       type: object
       required: [data]

@@ -397,6 +397,66 @@ nav button:hover {
   text-align: right;
 }
 
+.credits-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.credits-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 16px;
+}
+
+.credits-detail-grid article {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.credits-detail-grid h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.credits-ledger-list,
+.credits-export-summary {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.credits-ledger-list div,
+.credits-export-summary div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #dde5f2;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 12px;
+}
+
+.credits-ledger-list strong,
+.credits-export-summary dd {
+  min-width: 0;
+  margin: 0;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.credits-ledger-list span,
+.credits-ledger-list small,
+.credits-export-summary dt {
+  color: #667085;
+  font-size: 13px;
+}
+
 .table {
   display: grid;
   overflow: hidden;
@@ -660,7 +720,8 @@ nav button:hover {
 @media (max-width: 980px) {
   .app-shell,
   .panel-grid,
-  .panel-grid.split {
+  .panel-grid.split,
+  .credits-detail-grid {
     grid-template-columns: 1fr;
   }
 

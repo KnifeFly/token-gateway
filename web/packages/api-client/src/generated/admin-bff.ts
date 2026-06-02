@@ -232,6 +232,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/credit-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminCustomerCreditReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/usage/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportAdminCustomerUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/customer-accounts/{customer_account_id}/ledger/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["exportAdminCustomerLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/customer-accounts/{customer_account_id}/enable": {
         parameters: {
             query?: never;
@@ -1028,6 +1076,58 @@ export interface components {
             api_keys: components["schemas"]["AdminAPIKeyView"][];
             usage?: components["schemas"]["AdminCustomerUsageRow"][];
             ledger?: components["schemas"]["AdminCustomerLedgerLine"][];
+        };
+        AdminCustomerCreditReport: {
+            /** Format: date-time */
+            generated_at: string;
+            account: components["schemas"]["AdminCustomerAccountView"];
+            credits: components["schemas"]["AdminCustomerCreditSummary"][];
+            usage: components["schemas"]["AdminCustomerUsageRow"][];
+            ledger: components["schemas"]["AdminCustomerLedgerLine"][];
+            active_holds: components["schemas"]["AdminHoldAgingView"][];
+            failed_settlements: components["schemas"]["AdminCustomerFailedSettlementLink"][];
+            exports: components["schemas"]["AdminCustomerExportLink"][];
+        };
+        AdminCustomerFailedSettlementLink: {
+            id: string;
+            request_id: string;
+            status: string;
+            retry_count: number;
+            last_error?: string;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        AdminCustomerExportLink: {
+            /** @enum {string} */
+            kind: "usage" | "ledger";
+            path: string;
+            /** @enum {string} */
+            format: "json";
+            safe_fields: string[];
+        };
+        AdminHoldAgingView: {
+            status: string;
+            count: number;
+        };
+        AdminCustomerReportExport: {
+            /** Format: date-time */
+            generated_at: string;
+            /** @enum {string} */
+            kind: "usage" | "ledger";
+            /** @enum {string} */
+            format: "json";
+            filename: string;
+            customer_account_id: string;
+            tenant_id: string;
+            project_id: string;
+            currency?: string;
+            usage?: components["schemas"]["AdminCustomerUsageRow"][];
+            ledger?: components["schemas"]["AdminCustomerLedgerLine"][];
+            totals: components["schemas"]["AdminCustomerUsageSummary"];
+            safe_fields: string[];
+            metadata?: {
+                [key: string]: string;
+            };
         };
         AdminAPIKeyListResponse: {
             data: components["schemas"]["AdminAPIKeyView"][];
@@ -2008,6 +2108,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminCustomerAccountDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminCustomerCreditReport: {
+        parameters: {
+            query?: {
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Minimal credit operations report */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerCreditReport"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    exportAdminCustomerUsage: {
+        parameters: {
+            query?: {
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe customer usage export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerReportExport"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    exportAdminCustomerLedger: {
+        parameters: {
+            query?: {
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                customer_account_id: components["parameters"]["CustomerAccountID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe customer ledger export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminCustomerReportExport"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

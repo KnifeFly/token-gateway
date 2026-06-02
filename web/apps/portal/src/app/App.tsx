@@ -18,6 +18,7 @@ import type {
   APIKey,
   APIKeyCreateResponse,
   APIKeyRotateResponse,
+  CreditLedgerResponse,
   CreditsResponse,
   Dashboard,
   ModelDetail,
@@ -28,6 +29,7 @@ import type {
   ProjectSettings,
   Session,
   TaskList,
+  UsageExportResponse,
   UsageResponse
 } from "../shared/types";
 import { navItems, type ViewID } from "./routes";
@@ -89,6 +91,8 @@ export function App() {
   const [modelDetail, setModelDetail] = useState<ModelDetail>();
   const [modelSchema, setModelSchema] = useState<ModelSchema>();
   const [credits, setCredits] = useState<CreditsResponse>();
+  const [creditLedger, setCreditLedger] = useState<CreditLedgerResponse>();
+  const [usageExport, setUsageExport] = useState<UsageExportResponse>();
   const [usage, setUsage] = useState<UsageResponse>();
   const [apiKeys, setAPIKeys] = useState<APIKey[]>([]);
   const [tasks, setTasks] = useState<TaskList>();
@@ -129,6 +133,8 @@ export function App() {
       nextDashboard,
       nextModels,
       nextCredits,
+      nextCreditLedger,
+      nextUsageExport,
       nextUsage,
       nextKeys,
       nextTasks,
@@ -137,6 +143,8 @@ export function App() {
       portalRequest<Dashboard>("/api/portal/v1/dashboard", {}, csrfOverride),
       portalRequest<ModelList>("/api/portal/v1/models", {}, csrfOverride),
       portalRequest<CreditsResponse>("/api/portal/v1/credits", {}, csrfOverride),
+      portalRequest<CreditLedgerResponse>("/api/portal/v1/credits/ledger?limit=20", {}, csrfOverride),
+      portalRequest<UsageExportResponse>("/api/portal/v1/usage/export?limit=20", {}, csrfOverride),
       portalRequest<UsageResponse>(
         activityQueryPath("/api/portal/v1/usage", usageFilters),
         {},
@@ -158,6 +166,8 @@ export function App() {
     setDashboard(nextDashboard);
     setModels(nextModels);
     setCredits(nextCredits);
+    setCreditLedger(nextCreditLedger);
+    setUsageExport(nextUsageExport);
     setUsage(nextUsage);
     setAPIKeys(nextKeys.data);
     setTasks(nextTasks);
@@ -282,6 +292,8 @@ export function App() {
       setModelDetail(undefined);
       setModelSchema(undefined);
       setCredits(undefined);
+      setCreditLedger(undefined);
+      setUsageExport(undefined);
       setUsage(undefined);
       setAPIKeys([]);
       setTasks(undefined);
@@ -548,7 +560,9 @@ export function App() {
             tasks={tasks?.data ?? []}
           />
         ) : null}
-        {activeView === "credits" ? <CreditsView credits={credits} /> : null}
+        {activeView === "credits" ? (
+          <CreditsView credits={credits} ledger={creditLedger} usageExport={usageExport} />
+        ) : null}
         {activeView === "settings" ? <SettingsView settings={settings} session={session} /> : null}
       </section>
     </main>

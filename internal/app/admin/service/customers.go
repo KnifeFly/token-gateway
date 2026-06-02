@@ -143,6 +143,90 @@ func (s *Service) AdjustCustomerCredits(ctx context.Context, actor adminapp.Acto
 	})
 }
 
+// GetCustomerCreditReport returns the minimal commercial operations view for one customer account.
+func (s *Service) GetCustomerCreditReport(ctx context.Context, actor adminapp.Actor, accountID string, filter adminapp.UsageLogFilter) (adminapp.CustomerCreditReport, error) {
+	if err := s.Authorize(actor, "read", "customer_account"); err != nil {
+		return adminapp.CustomerCreditReport{}, err
+	}
+	tenantID, projectID, err := parseCustomerAccountID(accountID)
+	if err != nil {
+		return adminapp.CustomerCreditReport{}, err
+	}
+	detail, report, err := s.customerCommercialReport(ctx, tenantID, projectID, filter)
+	if err != nil {
+		return adminapp.CustomerCreditReport{}, err
+	}
+	credits := customerCredits(report)
+	return adminapp.CustomerCreditReport{
+		GeneratedAt:       report.GeneratedAt,
+		Account:           detail.Account,
+		Credits:           credits,
+		Usage:             customerUsageRows(report),
+		Ledger:            customerLedgerLines(report),
+		ActiveHolds:       customerHoldSummaries(credits),
+		FailedSettlements: s.customerFailedSettlementLinks(ctx, tenantID, projectID),
+		Exports:           customerExportLinks(accountID),
+	}, nil
+}
+
+// ExportCustomerUsage returns a safe JSON usage export for one customer account.
+func (s *Service) ExportCustomerUsage(ctx context.Context, actor adminapp.Actor, accountID string, filter adminapp.UsageLogFilter) (adminapp.CustomerReportExport, error) {
+	if err := s.Authorize(actor, "read", "customer_account"); err != nil {
+		return adminapp.CustomerReportExport{}, err
+	}
+	tenantID, projectID, err := parseCustomerAccountID(accountID)
+	if err != nil {
+		return adminapp.CustomerReportExport{}, err
+	}
+	_, report, err := s.customerCommercialReport(ctx, tenantID, projectID, filter)
+	if err != nil {
+		return adminapp.CustomerReportExport{}, err
+	}
+	return adminapp.CustomerReportExport{
+		GeneratedAt: report.GeneratedAt,
+		Kind:        "usage",
+		Format:      "json",
+		Filename:    safeExportFilename(accountID, "usage"),
+		AccountID:   accountID,
+		TenantID:    tenantID,
+		ProjectID:   projectID,
+		Currency:    report.Totals.Currency,
+		Usage:       customerUsageRows(report),
+		Totals:      customerUsageSummary(report),
+		SafeFields:  []string{"model", "provider_type", "channel_id", "requests", "tokens", "amount_micros"},
+		Metadata:    map[string]string{"scope": "admin_customer_account"},
+	}, nil
+}
+
+// ExportCustomerLedger returns a safe JSON ledger export for one customer account.
+func (s *Service) ExportCustomerLedger(ctx context.Context, actor adminapp.Actor, accountID string, filter adminapp.UsageLogFilter) (adminapp.CustomerReportExport, error) {
+	if err := s.Authorize(actor, "read", "customer_account"); err != nil {
+		return adminapp.CustomerReportExport{}, err
+	}
+	tenantID, projectID, err := parseCustomerAccountID(accountID)
+	if err != nil {
+		return adminapp.CustomerReportExport{}, err
+	}
+	_, report, err := s.customerCommercialReport(ctx, tenantID, projectID, filter)
+	if err != nil {
+		return adminapp.CustomerReportExport{}, err
+	}
+	return adminapp.CustomerReportExport{
+		GeneratedAt: report.GeneratedAt,
+		Kind:        "ledger",
+		Format:      "json",
+		Filename:    safeExportFilename(accountID, "ledger"),
+		AccountID:   accountID,
+		TenantID:    tenantID,
+		ProjectID:   projectID,
+		Currency:    report.Totals.Currency,
+		Ledger:      customerLedgerLines(report),
+		Totals:      customerUsageSummary(report),
+		SafeFields:  []string{"request_id", "settlement_kind", "currency", "amount_micros", "balance_after_micros", "reason"},
+		Metadata:    map[string]string{"scope": "admin_customer_account"},
+	}, nil
+}
+
 // ResetCustomerPortalSessions revokes Portal browser sessions for one account.
 func (s *Service) ResetCustomerPortalSessions(ctx context.Context, actor adminapp.Actor, accountID string, apiKeyID string, opts adminapp.MutationOptions) (adminapp.CustomerSessionResetResult, error) {
 	request := map[string]string{"id": accountID, "api_key_id": apiKeyID}
@@ -315,6 +399,59 @@ func (s *Service) createInitialCustomerCredit(ctx context.Context, actor adminap
 	return err
 }
 
+func (s *Service) customerCommercialReport(ctx context.Context, tenantID string, projectID string, filter adminapp.UsageLogFilter) (adminapp.CustomerAccountDetail, *reporting.TenantUsageReport, error) {
+	detail, err := s.customerAccountDetail(ctx, tenantID, projectID)
+	if err != nil {
+		return adminapp.CustomerAccountDetail{}, nil, err
+	}
+	if s.commercial == nil {
+		return detail, &reporting.TenantUsageReport{GeneratedAt: s.now()}, nil
+	}
+	report, err := s.commercial.TenantUsageReport(ctx, reporting.TenantUsageFilter{
+		TenantID:     tenantID,
+		ProjectID:    projectID,
+		APIKeyID:     filter.APIKeyID,
+		RequestID:    filter.RequestID,
+		Model:        filter.Model,
+		ProviderType: filter.ProviderType,
+		ChannelID:    filter.ChannelID,
+		Status:       filter.Status,
+		Currency:     filter.Currency,
+		From:         filter.From,
+		To:           filter.To,
+		Limit:        filter.Limit,
+	})
+	if err != nil {
+		return adminapp.CustomerAccountDetail{}, nil, err
+	}
+	return detail, report, nil
+}
+
+func (s *Service) customerFailedSettlementLinks(ctx context.Context, tenantID string, projectID string) []adminapp.CustomerFailedSettlementLink {
+	if s.commercial == nil {
+		return nil
+	}
+	report, err := s.commercial.ReconciliationReport(ctx)
+	if err != nil {
+		return nil
+	}
+	links := make([]adminapp.CustomerFailedSettlementLink, 0)
+	for _, failed := range report.FailedSettlements {
+		if failed.TenantID != tenantID || failed.ProjectID != projectID {
+			continue
+		}
+		links = append(links, adminapp.CustomerFailedSettlementLink{
+			ID:         failed.ID,
+			RequestID:  failed.RequestID,
+			Status:     failed.Status,
+			RetryCount: failed.RetryCount,
+			LastError:  safeShort(failed.LastError),
+			UpdatedAt:  failed.UpdatedAt,
+		})
+	}
+	return links
+}
+
 func customerAccountID(tenantID string, projectID string) string {
 	return strings.TrimSpace(tenantID) + ":" + strings.TrimSpace(projectID)
 }
@@ -442,6 +579,42 @@ func customerLedgerLines(report *reporting.TenantUsageReport) []adminapp.Custome
 		})
 	}
 	return out
+}
+
+func customerHoldSummaries(credits []adminapp.CustomerCreditSummary) []adminapp.HoldAgingView {
+	var active int
+	for _, credit := range credits {
+		if credit.HeldMicros > 0 {
+			active++
+		}
+	}
+	return []adminapp.HoldAgingView{
+		{Status: "active", Count: active},
+		{Status: "protected_task_holds", Count: 0},
+	}
+}
+
+func customerExportLinks(accountID string) []adminapp.CustomerExportLink {
+	return []adminapp.CustomerExportLink{
+		{
+			Kind:       "usage",
+			Path:       "/api/admin/v1/customer-accounts/" + accountID + "/usage/export",
+			Format:     "json",
+			SafeFields: []string{"model", "provider_type", "channel_id", "requests", "tokens", "amount_micros"},
+		},
+		{
+			Kind:       "ledger",
+			Path:       "/api/admin/v1/customer-accounts/" + accountID + "/ledger/export",
+			Format:     "json",
+			SafeFields: []string{"request_id", "settlement_kind", "currency", "amount_micros", "balance_after_micros", "reason"},
+		},
+	}
+}
+
+func safeExportFilename(accountID string, kind string) string {
+	filename := strings.ReplaceAll(accountID, ":", "_")
+	filename = strings.ReplaceAll(filename, "/", "_")
+	return "customer_" + filename + "_" + kind + ".json"
 }
 
 func customerAccountFilterMatches(view adminapp.CustomerAccountView, filter adminapp.CustomerAccountFilter) bool {

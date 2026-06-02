@@ -18,6 +18,15 @@ func (h *Handler) usage(w http.ResponseWriter, r *http.Request, sr sessionReques
 	writeResult(w, sr.requestID, response, err)
 }
 
+func (h *Handler) usageExport(w http.ResponseWriter, r *http.Request, sr sessionRequest) {
+	filter, ok := parseUsageFilter(w, sr.requestID, r)
+	if !ok {
+		return
+	}
+	response, err := h.portal.UsageExport(r.Context(), sr.principal, filter)
+	writeResult(w, sr.requestID, response, err)
+}
+
 func parseUsageFilter(w http.ResponseWriter, requestID string, r *http.Request) (portalapp.UsageFilter, bool) {
 	var filter portalapp.UsageFilter
 	filter.APIKeyID = strings.TrimSpace(r.URL.Query().Get("api_key_id"))

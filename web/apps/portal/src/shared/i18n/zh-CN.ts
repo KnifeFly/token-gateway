@@ -104,7 +104,19 @@ export const portalCopy = {
     bucketColumn: "账户",
     remainingColumn: "剩余额度",
     usedColumn: "已用额度",
-    heldColumn: "冻结额度"
+    heldColumn: "冻结额度",
+    ledgerTitle: "账本记录",
+    exportTitle: "安全导出",
+    emptyLedger: "暂无账本记录",
+    exportFileColumn: "文件名",
+    exportFormatColumn: "格式",
+    exportRowsColumn: "行数",
+    kindLabel: {
+      manual_adjustment: "人工调整",
+      usage_debit: "用量扣减",
+      usage_settlement: "用量结算"
+    },
+    guardrails: ["不包含密钥", "不包含原始提示词或响应", "不包含回调地址"]
   },
   tasks: {
     title: "任务",

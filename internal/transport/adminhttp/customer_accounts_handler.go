@@ -32,12 +32,38 @@ func (h *Handler) createCustomerAccount(w http.ResponseWriter, r *http.Request, 
 
 func (h *Handler) customerAccountRead(w http.ResponseWriter, r *http.Request, sr sessionRequest) {
 	accountID, action := customerAccountIDAndAction(r.URL.Path)
-	if accountID == "" || action != "" {
+	if accountID == "" {
 		writeError(w, sr.requestID, apperr.NotFound("admin customer account route not found"))
 		return
 	}
-	response, err := h.admin.GetCustomerAccount(r.Context(), sr.actor, accountID)
-	writeResult(w, sr.requestID, response, err)
+	switch action {
+	case "":
+		response, err := h.admin.GetCustomerAccount(r.Context(), sr.actor, accountID)
+		writeResult(w, sr.requestID, response, err)
+	case "credit-report":
+		filter, ok := parseUsageLogFilter(w, sr.requestID, r)
+		if !ok {
+			return
+		}
+		response, err := h.admin.GetCustomerCreditReport(r.Context(), sr.actor, accountID, filter)
+		writeResult(w, sr.requestID, response, err)
+	case "usage/export":
+		filter, ok := parseUsageLogFilter(w, sr.requestID, r)
+		if !ok {
+			return
+		}
+		response, err := h.admin.ExportCustomerUsage(r.Context(), sr.actor, accountID, filter)
+		writeResult(w, sr.requestID, response, err)
+	case "ledger/export":
+		filter, ok := parseUsageLogFilter(w, sr.requestID, r)
+		if !ok {
+			return
+		}
+		response, err := h.admin.ExportCustomerLedger(r.Context(), sr.actor, accountID, filter)
+		writeResult(w, sr.requestID, response, err)
+	default:
+		writeError(w, sr.requestID, apperr.NotFound("admin customer account route not found"))
+	}
 }
 
 func (h *Handler) customerAccountAction(w http.ResponseWriter, r *http.Request, sr sessionRequest) {

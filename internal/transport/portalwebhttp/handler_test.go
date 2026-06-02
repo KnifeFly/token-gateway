@@ -86,6 +86,28 @@ func TestPortalWebLoginDashboardAPIKeyAndLogout(t *testing.T) {
 		t.Fatalf("empty usage filter fell back to ledger rows: %s", emptyUsageRec.Body.String())
 	}
 
+	ledgerReq := httptest.NewRequest(http.MethodGet, "/api/portal/v1/credits/ledger?currency=CNY", nil)
+	ledgerReq.AddCookie(cookie)
+	ledgerRec := httptest.NewRecorder()
+	handler.ServeHTTP(ledgerRec, ledgerReq)
+	if ledgerRec.Code != http.StatusOK || !strings.Contains(ledgerRec.Body.String(), `"items"`) || !strings.Contains(ledgerRec.Body.String(), `"manual_adjustment"`) {
+		t.Fatalf("ledger status = %d, body = %s", ledgerRec.Code, ledgerRec.Body.String())
+	}
+	if strings.Contains(ledgerRec.Body.String(), "test-key") || strings.Contains(ledgerRec.Body.String(), "key_hash") || strings.Contains(ledgerRec.Body.String(), "prompt") {
+		t.Fatalf("ledger leaked unsafe data: %s", ledgerRec.Body.String())
+	}
+
+	exportReq := httptest.NewRequest(http.MethodGet, "/api/portal/v1/usage/export?currency=CNY", nil)
+	exportReq.AddCookie(cookie)
+	exportRec := httptest.NewRecorder()
+	handler.ServeHTTP(exportRec, exportReq)
+	if exportRec.Code != http.StatusOK || !strings.Contains(exportRec.Body.String(), `"format":"json"`) || !strings.Contains(exportRec.Body.String(), `"safe_fields"`) {
+		t.Fatalf("usage export status = %d, body = %s", exportRec.Code, exportRec.Body.String())
+	}
+	if strings.Contains(exportRec.Body.String(), "test-key") || strings.Contains(exportRec.Body.String(), "sk_should_not_return") || strings.Contains(exportRec.Body.String(), "callback_url") {
+		t.Fatalf("usage export leaked unsafe data: %s", exportRec.Body.String())
+	}
+
 	taskReq := httptest.NewRequest(http.MethodGet, "/api/portal/v1/tasks?request_id=req_1&api_key_id=key_current&model=gpt-public", nil)
 	taskReq.AddCookie(cookie)
 	taskRec := httptest.NewRecorder()

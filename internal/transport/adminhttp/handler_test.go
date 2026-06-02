@@ -329,6 +329,30 @@ func TestAdminCustomerAccountWorkflows(t *testing.T) {
 		t.Fatalf("adjust status=%d body=%s", adjust.Code, adjust.Body.String())
 	}
 
+	creditReport := request(t, mux, http.MethodGet, "/api/admin/v1/customer-accounts/"+accountID+"/credit-report?currency=CNY", "", cookie, "")
+	if creditReport.Code != http.StatusOK || !strings.Contains(creditReport.Body.String(), `"active_holds"`) || !strings.Contains(creditReport.Body.String(), `"failed_settlements"`) || !strings.Contains(creditReport.Body.String(), `"exports"`) {
+		t.Fatalf("credit report status=%d body=%s", creditReport.Code, creditReport.Body.String())
+	}
+	if strings.Contains(creditReport.Body.String(), "plaintext_key") || strings.Contains(creditReport.Body.String(), "key_hash") || strings.Contains(creditReport.Body.String(), "payment") {
+		t.Fatalf("credit report exposed unsafe or cut-scope data: %s", creditReport.Body.String())
+	}
+
+	usageExport := request(t, mux, http.MethodGet, "/api/admin/v1/customer-accounts/"+accountID+"/usage/export?currency=CNY", "", cookie, "")
+	if usageExport.Code != http.StatusOK || !strings.Contains(usageExport.Body.String(), `"kind":"usage"`) || !strings.Contains(usageExport.Body.String(), `"safe_fields"`) {
+		t.Fatalf("usage export status=%d body=%s", usageExport.Code, usageExport.Body.String())
+	}
+	if strings.Contains(usageExport.Body.String(), "plaintext_key") || strings.Contains(usageExport.Body.String(), "raw_prompt") || strings.Contains(usageExport.Body.String(), "callback_url") {
+		t.Fatalf("usage export exposed unsafe data: %s", usageExport.Body.String())
+	}
+
+	ledgerExport := request(t, mux, http.MethodGet, "/api/admin/v1/customer-accounts/"+accountID+"/ledger/export?currency=CNY", "", cookie, "")
+	if ledgerExport.Code != http.StatusOK || !strings.Contains(ledgerExport.Body.String(), `"kind":"ledger"`) || !strings.Contains(ledgerExport.Body.String(), `"manual_adjustment"`) {
+		t.Fatalf("ledger export status=%d body=%s", ledgerExport.Code, ledgerExport.Body.String())
+	}
+	if strings.Contains(ledgerExport.Body.String(), "key_hash") || strings.Contains(ledgerExport.Body.String(), "subscription") || strings.Contains(ledgerExport.Body.String(), "redemption") {
+		t.Fatalf("ledger export exposed unsafe or cut-scope data: %s", ledgerExport.Body.String())
+	}
+
 	reset := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/customer-accounts/"+accountID+"/reset-session", `{}`, cookie, csrf, "customer_reset")
 	if reset.Code != http.StatusOK || !strings.Contains(reset.Body.String(), `"revoked_sessions":1`) {
 		t.Fatalf("reset status=%d body=%s", reset.Code, reset.Body.String())

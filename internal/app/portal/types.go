@@ -272,6 +272,26 @@ type CreditsBucket struct {
 	Currency         string  `json:"currency"`
 }
 
+// CreditLedgerResponse returns safe customer ledger rows.
+type CreditLedgerResponse struct {
+	GeneratedAt time.Time          `json:"generated_at"`
+	Currency    string             `json:"currency"`
+	Items       []CreditLedgerItem `json:"items"`
+	NextCursor  *string            `json:"next_cursor"`
+}
+
+// CreditLedgerItem is one customer-visible ledger movement.
+type CreditLedgerItem struct {
+	ID                  string    `json:"id"`
+	RequestID           string    `json:"request_id,omitempty"`
+	SettlementKind      string    `json:"settlement_kind"`
+	Currency            string    `json:"currency"`
+	AmountCredits       float64   `json:"amount_credits"`
+	BalanceAfterCredits float64   `json:"balance_after_credits"`
+	Reason              string    `json:"reason,omitempty"`
+	CreatedAt           time.Time `json:"created_at,omitempty"`
+}
+
 // UsageResponse is the Portal usage report shape.
 type UsageResponse struct {
 	GeneratedAt time.Time   `json:"generated_at"`
@@ -303,6 +323,18 @@ type UsageItem struct {
 	TotalTokens  int64     `json:"total_tokens,omitempty"`
 	CreditsUsed  float64   `json:"credits_used"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
+}
+
+// UsageExportResponse returns safe Portal usage and ledger export rows.
+type UsageExportResponse struct {
+	GeneratedAt time.Time          `json:"generated_at"`
+	Format      string             `json:"format"`
+	Filename    string             `json:"filename"`
+	Currency    string             `json:"currency"`
+	Totals      UsageTotals        `json:"totals"`
+	Usage       []UsageItem        `json:"usage"`
+	Ledger      []CreditLedgerItem `json:"ledger"`
+	SafeFields  []string           `json:"safe_fields"`
 }
 
 // APIKey is safe Portal API key metadata.

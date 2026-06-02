@@ -2,6 +2,7 @@ import { CustomerAccountsPanel } from "../features/accounts/CustomerAccountsPane
 import { ActivityLogsPanel } from "../features/activity/ActivityLogsPanel";
 import { APIKeyManagementPanel } from "../features/api-keys/APIKeyManagementPanel";
 import { ChannelManagementPanel } from "../features/channels/ChannelManagementPanel";
+import { CreditOperationsPanel } from "../features/credits/CreditOperationsPanel";
 import { ModelManagementPanel } from "../features/models/ModelManagementPanel";
 import { RoutePlanPanel } from "../features/route-plan/RoutePlanPanel";
 import { ToolsPlaygroundPanel } from "../features/tools/ToolsPlaygroundPanel";
@@ -20,6 +21,7 @@ export function App() {
         <ModelManagementPanel />
         <ChannelManagementPanel />
         <CustomerAccountsPanel />
+        <CreditOperationsPanel />
         <APIKeyManagementPanel />
         <ActivityLogsPanel />
         <ToolsPlaygroundPanel />

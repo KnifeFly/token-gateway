@@ -462,6 +462,53 @@ type CustomerCreditAdjustmentResult struct {
 	Account    CustomerAccountDetail `json:"account"`
 }
 
+// CustomerCreditReport is the minimal Admin commercial operations view for one account.
+type CustomerCreditReport struct {
+	GeneratedAt       time.Time                      `json:"generated_at"`
+	Account           CustomerAccountView            `json:"account"`
+	Credits           []CustomerCreditSummary        `json:"credits"`
+	Usage             []CustomerUsageRow             `json:"usage"`
+	Ledger            []CustomerLedgerLine           `json:"ledger"`
+	ActiveHolds       []HoldAgingView                `json:"active_holds"`
+	FailedSettlements []CustomerFailedSettlementLink `json:"failed_settlements"`
+	Exports           []CustomerExportLink           `json:"exports"`
+}
+
+// CustomerFailedSettlementLink is a safe repair link shown in credit operations.
+type CustomerFailedSettlementLink struct {
+	ID         string    `json:"id"`
+	RequestID  string    `json:"request_id"`
+	Status     string    `json:"status"`
+	RetryCount int       `json:"retry_count"`
+	LastError  string    `json:"last_error,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at,omitempty"`
+}
+
+// CustomerExportLink describes a safe report export endpoint.
+type CustomerExportLink struct {
+	Kind       string   `json:"kind"`
+	Path       string   `json:"path"`
+	Format     string   `json:"format"`
+	SafeFields []string `json:"safe_fields"`
+}
+
+// CustomerReportExport returns a safe JSON export for ledger or usage rows.
+type CustomerReportExport struct {
+	GeneratedAt time.Time            `json:"generated_at"`
+	Kind        string               `json:"kind"`
+	Format      string               `json:"format"`
+	Filename    string               `json:"filename"`
+	AccountID   string               `json:"customer_account_id"`
+	TenantID    string               `json:"tenant_id"`
+	ProjectID   string               `json:"project_id"`
+	Currency    string               `json:"currency,omitempty"`
+	Usage       []CustomerUsageRow   `json:"usage,omitempty"`
+	Ledger      []CustomerLedgerLine `json:"ledger,omitempty"`
+	Totals      CustomerUsageSummary `json:"totals"`
+	SafeFields  []string             `json:"safe_fields"`
+	Metadata    map[string]string    `json:"metadata,omitempty"`
+}
+
 // CustomerSessionResetResult summarizes forced Portal session revocation.
 type CustomerSessionResetResult struct {
 	CustomerAccountID string    `json:"customer_account_id"`

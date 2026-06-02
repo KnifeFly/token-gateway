@@ -174,6 +174,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portal/v1/credits/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get safe customer ledger rows */
+        get: operations["getPortalCreditLedger"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/v1/usage": {
         parameters: {
             query?: never;
@@ -198,7 +215,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Reserved usage export endpoint */
+        /** Export safe customer usage and ledger rows */
         get: operations["exportPortalUsage"];
         put?: never;
         post?: never;
@@ -500,6 +517,24 @@ export interface components {
             unlimited_credits: boolean;
             currency: string;
         };
+        CreditLedgerResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            currency: string;
+            items: components["schemas"]["CreditLedgerItem"][];
+            next_cursor?: string | null;
+        };
+        CreditLedgerItem: {
+            id: string;
+            request_id?: string;
+            settlement_kind: string;
+            currency: string;
+            amount_credits: number;
+            balance_after_credits: number;
+            reason?: string;
+            /** Format: date-time */
+            created_at?: string;
+        };
         UsageResponse: {
             /** Format: date-time */
             generated_at: string;
@@ -534,6 +569,18 @@ export interface components {
             credits_used: number;
             /** Format: date-time */
             created_at?: string;
+        };
+        UsageExportResponse: {
+            /** Format: date-time */
+            generated_at: string;
+            /** @enum {string} */
+            format: "json";
+            filename: string;
+            currency: string;
+            totals: components["schemas"]["UsageTotals"];
+            usage: components["schemas"]["UsageItem"][];
+            ledger: components["schemas"]["CreditLedgerItem"][];
+            safe_fields: string[];
         };
         APIKeyListResponse: {
             data: components["schemas"]["APIKey"][];
@@ -846,6 +893,33 @@ export interface operations {
             401: components["responses"]["ErrorResponse"];
         };
     };
+    getPortalCreditLedger: {
+        parameters: {
+            query?: {
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe customer ledger rows */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreditLedgerResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
+        };
+    };
     getPortalUsage: {
         parameters: {
             query?: {
@@ -881,14 +955,35 @@ export interface operations {
     };
     exportPortalUsage: {
         parameters: {
-            query?: never;
+            query?: {
+                api_key_id?: string;
+                request_id?: string;
+                model?: string;
+                provider_type?: string;
+                channel_id?: string;
+                status?: string;
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            501: components["responses"]["ErrorResponse"];
+            /** @description Safe customer usage export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UsageExportResponse"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
         };
     };
     listPortalAPIKeys: {
