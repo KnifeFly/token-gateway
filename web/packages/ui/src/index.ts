@@ -1,2 +1,2 @@
-export { Button, type ButtonProps } from "./primitives/Button";
-export { StatusBadge, type StatusBadgeProps } from "./primitives/StatusBadge";
+export { Button, type ButtonProps } from "./button";
+export { StatusBadge, type StatusBadgeProps } from "./status-badge";

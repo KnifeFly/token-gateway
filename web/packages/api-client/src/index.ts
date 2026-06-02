@@ -11,9 +11,9 @@ export type {
   components as AdminBFFComponents,
   operations as AdminBFFOperations,
   paths as AdminBFFPaths
-} from "./generated/admin-bff";
+} from "./admin-bff";
 export type {
   components as PortalBFFComponents,
   operations as PortalBFFOperations,
   paths as PortalBFFPaths
-} from "./generated/portal-bff";
+} from "./portal-bff";

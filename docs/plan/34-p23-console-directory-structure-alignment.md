@@ -42,7 +42,7 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
 
 ## 当前实施记录
 
-2026-06-02 已完成 P23 后端结构治理核心项：
+2026-06-02 已完成 P23 结构治理：
 
 - `internal/controlplane/admin` 已 rename-only 到 `internal/controlplane/configadmin`，Go package name 使用 `configadmin`，`cmd/internal/tests/tools` 运行代码不再引用旧路径。
 - `internal/portal` 已全量迁移到 `internal/app/portal`，`internal/transport/portalhttp` 直接依赖 `internal/app/portal/service`，旧 runtime package 已删除。
@@ -52,12 +52,11 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
 - `internal/controlplane/configadmin` repository 已按 `tenants/projects/api_keys/models/channels/routes/pricing/limits/plugins/marketplace/snapshots/helpers` 聚合拆分，文件名不使用 `mysql_` 前缀。
 - `internal/transport/adminhttp`、`internal/transport/portalhttp`、`internal/transport/portalwebhttp` 已按 resource handler、auth/request/response helper 拆分。
 - 已新增 `api/examples/*`、`api/scripts/*` 和 `scripts/check_import_boundaries.sh`，并接入 Makefile/CI。
-
-仍待执行：
-
-- `web/apps/portal`、`web/apps/admin` 的 app/routes/features/shared 拆分。
-- `web/packages/api-client/auth/format/ui` 的更细 public exports 拆分。
-- P23 结束前的最终 tasks 状态收口和必要 runbook/ARCHITECTURE 快照。
+- `web/apps/portal/src` 已按 `app`、`features`、`shared` 拆分；root `App.tsx` 保留兼容 re-export，`main.tsx` 只负责挂载 `app/providers`。
+- `web/apps/admin/src` 已按 `app`、`features/console-boundary`、`shared` 拆分；Admin scaffold 行为保持不变。
+- `web/packages/api-client` 已拆为 generated contract exports、`fetcher/*` 和 `errors`；`client.ts` 与 package root 继续保留原 public exports。
+- `web/packages/auth` 已拆为 `session`、`csrf`、`permissions`；`web/packages/format` 已拆为 `date`、`number`、`money`、`tokens`、`status`；`web/packages/ui` 已拆为 `button`、`status-badge` 和现有 primitives。
+- P23 最终验证已覆盖 Go focused/full checks、web lint/typecheck/test/build、OpenAPI diff、import boundary、Portal web smoke 和 Browser Portal/Admin desktop/mobile smoke。
 
 ## 交付物
 
@@ -88,18 +87,24 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
   - `internal/transport/portalwebhttp/{handler,auth_handler,dashboard_handler,models_handler,credits_handler,usage_handler,api_keys_handler,tasks_handler,onboarding_handler,response}.go`
   - `internal/transport/adminhttp/{handler,auth_handler,dashboard_handler,tenants_handler,projects_handler,api_keys_handler,models_handler,channels_handler,routes_handler,pricing_handler,limits_handler,snapshots_handler,operations_handler,audit_handler,response}.go`
 - Frontend apps 拆分：
-  - `web/apps/portal/src/app/{main,routes,providers}.tsx`
+  - `web/apps/portal/src/main.tsx`
+  - `web/apps/portal/src/App.tsx`
+  - `web/apps/portal/src/app/{App,routes,providers}.{ts,tsx}`
   - `web/apps/portal/src/features/*`
   - `web/apps/portal/src/shared/*`
-  - `web/apps/admin/src/app/{main,routes,providers}.tsx`
+  - `web/apps/admin/src/main.tsx`
+  - `web/apps/admin/src/App.tsx`
+  - `web/apps/admin/src/app/{App,routes,providers}.{ts,tsx}`
   - `web/apps/admin/src/features/*`
   - `web/apps/admin/src/shared/*`
 - Frontend packages 拆分：
-  - `web/packages/api-client/src/{portal-public,portal-bff,admin-bff,control,fetcher,errors}.ts`
+  - `web/packages/api-client/src/{portal-bff,admin-bff,client,errors}.ts`
+  - `web/packages/api-client/src/fetcher/*`
   - `web/packages/auth/src/{session,csrf,permissions}.ts`
-  - `web/packages/format/src/{money,tokens,date,status}.ts`
-  - `web/packages/ui/src/{button,form,table,dialog,chart,toast,empty-state}`
-  - optional `web/packages/config` and `web/packages/test-utils`
+  - `web/packages/format/src/{date,number,money,tokens,status}.ts`
+  - `web/packages/ui/src/{button,status-badge}.ts`
+  - `web/packages/ui/src/primitives/*`
+  - `portal-public`、`control`、form/table/dialog/chart/toast/empty-state、`web/packages/config` 和 `web/packages/test-utils` 未创建，因为当前没有对应实际 contract 或复用组件；P23 不落空包。
 - 文档和 import 边界同步：设计文档、plan、tasks、runbook、README 或 ARCHITECTURE 只记录实际存在且可维护的目标结构。
 
 ## 核心实现顺序

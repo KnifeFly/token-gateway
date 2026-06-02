@@ -60,4 +60,48 @@ pnpm build
 make api-check
 ```
 
-P19 BFF handlers intentionally return `501 not_implemented` until P20/P21 attach session services and use-case handlers.
+## P23 Frontend Structure
+
+Portal/Admin frontend apps keep the Vite root entrypoints, but app logic is split by role:
+
+```text
+web/apps/portal/src/main.tsx
+web/apps/portal/src/App.tsx
+web/apps/portal/src/app/
+web/apps/portal/src/features/
+web/apps/portal/src/shared/
+
+web/apps/admin/src/main.tsx
+web/apps/admin/src/App.tsx
+web/apps/admin/src/app/
+web/apps/admin/src/features/
+web/apps/admin/src/shared/
+```
+
+Shared packages keep their root public exports stable while implementations are split:
+
+```text
+web/packages/api-client/src/fetcher/
+web/packages/api-client/src/{admin-bff,portal-bff,client,errors}.ts
+web/packages/auth/src/{session,csrf,permissions}.ts
+web/packages/format/src/{date,number,money,tokens,status}.ts
+web/packages/ui/src/{button,status-badge}.ts
+web/packages/ui/src/primitives/
+```
+
+Do not move Portal/Admin business feature components into `web/packages/ui`, and do not add shared package imports back into `web/apps/*`.
+
+For a local no-DB/no-Redis console render smoke:
+
+```bash
+TOKEN_GATEWAY_DATABASE_ENABLED=false \
+TOKEN_GATEWAY_REDIS_ENABLED=false \
+TOKEN_GATEWAY_LIMITS_ENABLED=false \
+TOKEN_GATEWAY_BILLING_ENABLED=false \
+go run ./cmd/console -config configs/local.yaml
+
+go run ./tools/portal-web-smoke \
+  -console-url http://127.0.0.1:9505 \
+  -api-key tg-local-dev-key \
+  -create-derived-key
+```
