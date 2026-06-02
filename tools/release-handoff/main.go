@@ -170,7 +170,8 @@ func releaseChecks() []checkSpec {
 		{Name: "unit and integration tests", Args: []string{"go", "test", "./..."}},
 		{Name: "go vet", Args: []string{"go", "vet", "./..."}},
 		{Name: "command build", Args: []string{"go", "build", "./cmd/..."}},
-		{Name: "portal and OpenAPI contracts", Args: []string{"go", "test", "./tools/portal-smoke", "./tools/release-handoff", "./tests/contract"}},
+		{Name: "portal and OpenAPI contracts", Args: []string{"go", "test", "./tools/portal-smoke", "./tools/portal-web-smoke", "./tools/p24-console-smoke", "./tools/release-handoff", "./tests/contract"}},
+		{Name: "P24 cut-scope check", Args: []string{"make", "p24-cut-scope-check"}},
 		{Name: "RC smoke syntax", Args: []string{"bash", "-n", "tests/rc/clean_env_smoke.sh"}},
 		{Name: "release gate", Args: []string{"tests/failure/release_gate.sh"}},
 	}
@@ -244,6 +245,7 @@ func renderMarkdown(data handoffData) string {
 	fmt.Fprintf(&b, "- Run `tests/rc/clean_env_smoke.sh` in a disposable RC environment.\n")
 	fmt.Fprintf(&b, "- Confirm `rc_smoke=portal_customer_acceptance` and `portal_smoke=passed` are present.\n")
 	fmt.Fprintf(&b, "- For staging, run `go run ./tools/portal-smoke -gateway-url ${GATEWAY_URL} -api-key ${API_KEY} -model ${MODEL}`.\n")
+	fmt.Fprintf(&b, "- For P24 console, run `go run ./tools/p24-console-smoke -console-url ${CONSOLE_URL} -api-key ${API_KEY} -admin-email ${ADMIN_EMAIL} -admin-password ${ADMIN_PASSWORD} -model ${MODEL}`.\n")
 
 	fmt.Fprintf(&b, "\n## Release Fields\n\n")
 	fmt.Fprintf(&b, "| Field | Value |\n")
@@ -256,6 +258,8 @@ func renderMarkdown(data handoffData) string {
 	fmt.Fprintf(&b, "| Redis key prefix |  |\n")
 	fmt.Fprintf(&b, "| Release gate result |  |\n")
 	fmt.Fprintf(&b, "| Portal smoke result |  |\n")
+	fmt.Fprintf(&b, "| P24 console smoke result |  |\n")
+	fmt.Fprintf(&b, "| P24 cut-scope result |  |\n")
 	fmt.Fprintf(&b, "| Rollback tested |  |\n")
 	fmt.Fprintf(&b, "| Reconciliation result |  |\n")
 	fmt.Fprintf(&b, "| Known risks |  |\n")

@@ -104,8 +104,11 @@ TOKEN_GATEWAY_LIMITS_ENABLED=false \
 TOKEN_GATEWAY_BILLING_ENABLED=false \
 go run ./cmd/console -config configs/local.yaml
 
-go run ./tools/portal-web-smoke \
+go run ./tools/p24-console-smoke \
   -console-url http://127.0.0.1:9505 \
   -api-key tg-local-dev-key \
+  -admin-email admin@example.com \
+  -admin-password admin-local \
+  -model gpt-4o-mini \
   -create-derived-key
 ```
