@@ -166,7 +166,7 @@ web/
     test-utils/
 ```
 
-`internal/portal` 可以作为兼容 shim 过渡到 `internal/app/portal`，但新增 Portal Web 能力应落在 `internal/app/portal`。新增 Admin 应使用 `internal/app/admin`，避免与已有 `internal/controlplane/admin` 混淆。
+`internal/portal` 可以作为兼容 shim 过渡到 `internal/app/portal`，但新增 Portal Web 能力应落在 `internal/app/portal`。新增 Admin 应使用 `internal/app/admin`，避免与已有 `internal/controlplane/admin` 混淆；P23 目标是把该 control/config owner rename-only 调整为 `internal/controlplane/configadmin`。
 
 ## 5. Repository 与 Service 拆分规则
 
@@ -184,11 +184,11 @@ internal/app/admin/repository
 - service port 按 use case 拆，不按数据库表机械拆。
 - repository SQL 文件按页面/read model/操作族拆，避免巨大 `mysql_repository.go`。
 - HTTP handler 按 resource 拆，transport 只做 decode、auth/session、route/query param、service call、response write 和 error mapping。
-- owner service 不变：billing owns settlement/ledger/holds；task owns task lifecycle/callback；controlplane admin owns config writes；snapshot owns build/validate/publish/rollback。
+- owner service 不变：billing owns settlement/ledger/holds；task owns task lifecycle/callback；controlplane configadmin owns config writes；snapshot owns build/validate/publish/rollback。
 
 Portal repository 可以做 dashboard、usage、credits、task list/detail、safe API key metadata、session store 和 onboarding read model。不得写 ledger、推进 task 状态机、发布 snapshot、修改 provider/channel/route/price/limit，或返回 raw prompt/raw response/provider secret。
 
-Admin repository 可以做 dashboard、config safe read model、operations views、operator/session/RBAC 和 audit store。不得绕过 `controlplane/admin.Service` 写配置，不得绕过 billing/task owner service 做 repair/retry，不得返回 plaintext credential、ciphertext、API key hash、raw prompt、raw response、raw repair payload 或 DB/Redis internal error。
+Admin repository 可以做 dashboard、config safe read model、operations views、operator/session/RBAC 和 audit store。不得绕过 controlplane configadmin owner service 写配置，不得绕过 billing/task owner service 做 repair/retry，不得返回 plaintext credential、ciphertext、API key hash、raw prompt、raw response、raw repair payload 或 DB/Redis internal error。
 
 ## 6. Portal Web BFF
 
@@ -277,7 +277,7 @@ read_only
 adminhttp
   -> adminservice authorize/validate/audit intent
   -> owner domain service
-       config write       -> controlplane/admin.Service
+       config write       -> controlplane/configadmin.Service
        snapshot publish   -> controlplane/snapshot.Publisher
        settlement replay  -> billing repair service or worker trigger
        callback retry     -> task/callback service
@@ -440,6 +440,9 @@ P21 Admin Web BFF
 
 P22 Console Frontend Production
   Admin UI, static asset strategy, E2E, CSP/security headers, deployment and rollback runbook
+
+P23 Console Directory Structure Alignment
+  configadmin rename, behavior-preserving split of handlers, services, repositories, frontend apps/packages, API scripts and examples
 ```
 
-P19-P22 是后续新增产品面，不改变 P8 作为“Portal Public API 第一版”的历史完成范围。
+P19-P22 是后续新增产品面，不改变 P8 作为“Portal Public API 第一版”的历史完成范围。P23 是结构治理阶段，不新增产品能力，只把 P19-P22 已有或待扩展能力对齐到目标目录树。

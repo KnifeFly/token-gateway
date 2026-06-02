@@ -41,7 +41,7 @@ Before implementing architecture or domain behavior, use the docs in this order:
 - Keep browser-facing BFF APIs separate from machine APIs. `/api/portal/v1/*` and `/api/admin/v1/*` belong to `cmd/console`; `/v1/*` and `/v1/portal/*` remain customer/programmatic APIs; `/admin/*` remains the machine Control API.
 - Admin Web must not call `/admin/*` directly from the browser and must not reuse the control-plane admin token as browser auth. Use operator sessions, RBAC, CSRF, idempotency for mutations, durable audit, and redacted responses.
 - Portal Web may use API key login for MVP, but the API key must be exchanged for an HttpOnly browser session and must not be stored in localStorage/sessionStorage.
-- Use `internal/app/portal` and `internal/app/admin` for human Portal/Admin application services and repositories. Keep `internal/controlplane/admin` as the machine control/config domain.
+- Use `internal/app/portal` and `internal/app/admin` for human Portal/Admin application services and repositories. Keep the control/config owner separate from `internal/app/admin`: the current path is `internal/controlplane/admin`, and P23 targets a rename-only move to `internal/controlplane/configadmin`.
 - Do not create a global repository or service package. Split Portal/Admin service and repository files by use case/read model once a single file starts collecting unrelated methods.
 - Frontend code lives under `web/apps/portal`, `web/apps/admin`, and shared `web/packages/*`. Frontend API clients must be generated from OpenAPI contracts or kept contract-checked against them.
 - `internal/bootstrap` wires dependencies only. Do not put business logic there.
@@ -128,6 +128,7 @@ Prefer the staged path from `docs/plan/00-roadmap.md`:
 12. P20: Portal Web BFF and Portal frontend, keeping `/v1/portal/*` backward-compatible and browser auth session-based.
 13. P21: Admin Web BFF with operator sessions, RBAC, audit, safe read models, and write workflows delegated to owner services.
 14. P22: Admin frontend, console static/deployment hardening, E2E smoke, security headers, rollback, and operations handoff.
+15. P23: console directory structure alignment, rename `internal/controlplane/admin` to `internal/controlplane/configadmin`, split large handlers, services, repositories, frontend apps, shared packages, API scripts, and examples without behavior changes.
 
 When a task is broad, narrow it to the next milestone unless the user explicitly asks for a later capability.
 
@@ -142,6 +143,8 @@ cmd/console
 cmd/worker
 cmd/configd
 api/openapi
+api/examples
+api/scripts
 configs
 migrations
 internal/bootstrap

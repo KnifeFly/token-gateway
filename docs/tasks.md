@@ -9,10 +9,10 @@
 - P20 进展：Portal Web BFF 已落地，覆盖 `internal/app/portal` session/use case wrapper、`/api/portal/v1/*` browser BFF、HttpOnly session + CSRF、dashboard/onboarding 聚合、Portal UI、OpenAPI/generated client、focused Go tests 和 `tools/portal-web-smoke`。
 - P21 进展：Admin Web BFF 已落地，覆盖 `internal/app/admin` operator/session/RBAC/audit、`/api/admin/v1/*` browser BFF、CSRF/idempotency/reason guard、owner-service config writes、snapshot/operations read models、migration、OpenAPI/generated client 和 focused Go tests。
 - P11 进展：模型价格目录增强已落地，覆盖 `internal/domain/pricing` category/template/component quoter、control-plane price/model/channel metadata、runtime snapshot/index、admission/settlement/async task customer quote、provider cost components、OpenAPI 和 focused tests。
-- 待执行：P22 Admin frontend、Console E2E smoke、静态资产/security headers、发布/回滚 runbook 和 console 生产化仍待执行。复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
+- 待执行：P22 Admin frontend、Console E2E smoke、静态资产/security headers、发布/回滚 runbook 和 console 生产化仍待执行；P23 Console 目录结构对齐、`internal/controlplane/admin` 到 `internal/controlplane/configadmin` 的 rename-only 调整、handler/service/repository/frontend packages 拆分、api scripts/examples 和 import 边界检查仍待执行。复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
 - 阻塞：无。
-- 下一步建议：进入 P22 Console Frontend Production；对象存储能力仍需另立独立阶段。
-- 本次规划验证：2026-06-01 Portal/Admin Console 设计与 P19-P22 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试。
+- 下一步建议：如目标是补齐完整 Admin UI 和生产发布闭环，进入 P22 Console Frontend Production；如目标是先把当前 P19-P21 实现对齐到目标目录树，进入 P23 Console Directory Structure Alignment。对象存储能力仍需另立独立阶段。
+- 本次规划验证：2026-06-02 P23 Console Directory Structure Alignment 计划文档落库并接入 roadmap/tasks/design/CLAUDE 后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试。2026-06-01 Portal/Admin Console 设计与 P19-P22 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；当次为 docs-only 变更，未运行代码测试。
 - 本次开发验证：2026-06-01 P19 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`pnpm install --frozen-lockfile`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`make api-check`、`git diff --check` 通过；`cmd/console` 在关闭本地 DB/Redis 依赖后完成 health/ready/BFF skeleton smoke，Portal/Admin Vite 页面经 Playwright 打开并截图检查。
 - 本次开发验证：2026-06-01 P20 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`pnpm generate:api`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过；`cmd/console` 在关闭本地 DB/Redis/Billing/Limit 依赖后用 `tg-local-dev-key` 跑通 `go run ./tools/portal-web-smoke -console-url http://127.0.0.1:9505 -api-key tg-local-dev-key -create-derived-key`；Portal 生产构建页面经 Browser 验证 desktop/mobile 登录 dashboard 渲染且无 console error。
 - 本次开发验证：2026-06-01 P11/P12 `go test ./...`、`go vet ./...`、`go build ./cmd/...`、`pnpm generate:api`、`pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`make api-check`、`git diff --check` 通过；focused slice `go test ./internal/domain/pricing ./internal/controlplane/admin ./internal/controlplane/snapshot ./internal/dataplane/admission ./internal/dataplane/snapshot ./internal/billing ./internal/billing/reporting ./internal/task ./internal/portal ./internal/transport/controlhttp` 通过；P12 stream/async/zero-price correctness 在全量 Go 测试中复验通过。
@@ -26,14 +26,15 @@
 - P5-P11 剩余产品能力、验收、发布交接和模型价格目录增强任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，执行顺序固定为 P5、P6、P7、P8、P9、P10、P11。
 - P12-P14 review remediation 任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，来源于 2026-05-31 静态 review 的 P0/P1/P2 风险分层，执行顺序固定为 P12、P13、P14。
 - P15-P18 follow-up review remediation 任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，来源于 P12-P14 后续静态 review 暴露的生产生命周期、身份边界、账务审计、worker/callback 和文件资产边界问题，执行顺序固定为 P15、P16、P17、P18。
-- P19-P22 console full-stack 任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，执行顺序固定为 P19、P20、P21、P22。
+- P19-P23 console full-stack 与结构治理任务 ID 采用 `P{phase}/E{epic}-T{number}/P{priority}` 格式，P19-P22 是产品/生产化阶段，P23 是行为保持型目录结构对齐阶段。
 - 第一轮优先完成 M0-M3 的 P0 任务，形成最小商用内核。
 - M4-M9 只拆到可执行粒度，避免早期过度展开控制面、插件和运营后台。
 - P0-P4 是 M0-M9 之后的设计差距补齐、商用硬化和发布候选验收阶段，执行顺序固定为 P0、P1、P2、P3、P4。
 - P16-P18 未验收前，暂停继续新增 P11 这类功能扩展，优先保证账务审计、worker/callback、文件资产边界和 outbound 安全不变量成立。
 - P19-P22 只在 P15-P18 可靠性收敛完成后进入；它们新增完整 Portal/Admin 前后端，但不允许改变 `/v1/*`、`/v1/portal/*` 和 `/admin/*` 的既有职责。
 - Browser Portal/Admin 固定走 `/api/portal/v1/*` 和 `/api/admin/v1/*`；Admin UI 不直接调用 `/admin/*`，也不使用 control admin token 作为 browser auth。
-- Portal/Admin 后端新增能力按 `internal/app/portal` 和 `internal/app/admin` 拆分，service/repository 继续按 use case/read model 拆文件，不新增全局 service/repository 目录。
+- Portal/Admin 后端新增能力按 `internal/app/portal` 和 `internal/app/admin` 拆分，service/repository 继续按 use case/read model 拆文件，不新增全局 service/repository 目录；control/config owner 当前为 `internal/controlplane/admin`，P23 目标路径为 `internal/controlplane/configadmin`。
+- P23 只做结构治理和模块拆分，不新增产品能力、不改变 API 行为、不移动 core domain ownership；`configadmin` rename 是去歧义的 rename-only 调整，不代表把 control owner 合并进 `app/admin`；如果 P22 实施前单文件继续膨胀，可以先执行 P23 的拆分子集。
 - 完整 Realtime 不进入当前路线；M8/P2 只维护 disabled contract、session 预留和 WebSocket stub。
 - 文件能力按非存储输入资产处理；gateway 不做对象存储，不承诺媒体对象持久化、下载、生命周期或存储 SLA。
 - 每个任务完成时必须按影响范围更新代码、测试、迁移、OpenAPI、ADR、metrics、trace、日志、审计、配置、计划和故障说明。
@@ -463,6 +464,20 @@
 | [ ] | P22/E32-T06/P1 | P1 | 更新 Docker/deploy/release gate | Dockerfile, deployments, Makefile, docs/runbook, release handoff | Go checks、OpenAPI checks、web checks、E2E smoke、rollback/cache purge 进入发布证据 |
 | [ ] | P22/E32-T07/P1 | P1 | 补齐 console production runbook | `docs/runbook`, `docs/tasks.md`, `docs/plan/33-p22-console-frontend-production.md` | 本地、staging、production、operator bootstrap、session secret rotation、rollback 流程清晰 |
 
+## P23 Console Directory Structure Alignment
+
+| 状态 | ID | 优先级 | 任务 | 目标位置 | 验收标准 |
+|---|---|---|---|---|---|
+| [ ] | P23/E33-T01/P0 | P0 | 锁定 Admin/Portal owner 决策和结构差异清单 | `docs/plan/34-p23-console-directory-structure-alignment.md`, docs/runbook or ARCHITECTURE | 明确 `internal/controlplane/admin -> internal/controlplane/configadmin` rename-only、`internal/portal` 兼容 shim、必须拆、可延后和不应该拆的文件目录，避免空包式重构 |
+| [ ] | P23/E33-T02/P0 | P0 | 拆分 Admin/Portal transport handlers | `internal/transport/adminhttp`, `internal/transport/portalwebhttp`, `internal/transport/consolehttp` | routes、auth、dashboard、resource handlers、response/session/csrf/static helpers 分文件，路径和响应行为不变 |
+| [ ] | P23/E33-T03/P0 | P0 | 迁移 Portal public use case 并拆分 service/repository | `internal/app/portal/service`, `internal/app/portal/repository`, `internal/portal` | `internal/portal` 保留 compatibility shim，auth、dashboard、models、credits、usage、api_keys、tasks、onboarding、sessions 和 mysql read model 分文件，`/v1/portal/*` 与 P20 tests 继续通过 |
+| [ ] | P23/E33-T04/P0 | P0 | Rename control config owner 并拆分 Admin app service/repository | `internal/controlplane/configadmin`, `internal/app/admin/service`, `internal/app/admin/repository` | `internal/controlplane/admin` rename-only 到 `configadmin`，auth、config、pricing、operations、audit、sessions 和 mysql read model 分文件，RBAC/audit/owner service flow 不变 |
+| [ ] | P23/E33-T05/P0 | P0 | 拆分 Portal/Admin frontend apps | `web/apps/portal/src`, `web/apps/admin/src` | `App.tsx` 拆为 app/routes/providers/features/shared，现有 UI 行为和 generated client 调用不变 |
+| [ ] | P23/E33-T06/P1 | P1 | 拆分 frontend shared packages | `web/packages/api-client`, `web/packages/ui`, `web/packages/auth`, `web/packages/format`, optional `config/test-utils` | api-client、auth、format、ui 按职责分文件，保留 public exports，不放业务 feature 组件 |
+| [ ] | P23/E33-T07/P1 | P1 | 补齐 API examples/scripts 和 OpenAPI bundle 入口 | `api/examples`, `api/scripts`, `api/openapi` | lint、generate TS client、api diff check 脚本可被 Makefile/CI 调用，examples 不含 secret |
+| [ ] | P23/E33-T08/P1 | P1 | 增加 import 边界和结构回归检查 | scripts, Makefile/CI, docs/runbook | 防止 app 互相依赖、packages 反向依赖 apps、Admin browser 调 `/admin/*`、`controlplane/configadmin -> app/admin`、新增全局 store/repository |
+| [ ] | P23/E33-T09/P1 | P1 | 完成结构重构验证和文档同步 | docs/tasks.md, docs/runbook, ARCHITECTURE or README | `go test ./internal/controlplane/configadmin ./internal/app/admin/... ./internal/app/portal/... ./internal/portal ./internal/transport/adminhttp ./internal/transport/portalhttp ./internal/transport/portalwebhttp`、`go test ./...`、`go vet ./...`、`go build ./cmd/...`、`pnpm generate:api`、`pnpm lint/typecheck/test/build`、`make api-check`、`git diff --check` 通过 |
+
 ## 阶段验收总览
 
 | 阶段 | 验收标准 |
@@ -500,3 +515,4 @@
 | P20 | Portal Web BFF 和 Portal UI 可验证，session login、dashboard、API key、usage、tasks、smoke 和 `/v1/portal/*` 兼容性稳定 |
 | P21 | Admin Web BFF 可验证，operator session、RBAC、audit、safe read/write workflow、operations views 和 `/admin/*` 兼容性稳定 |
 | P22 | Console frontend production 可验证，Admin UI、Portal/Admin 前端收口、static asset、安全头、E2E smoke、deployment/rollback runbook 完成 |
+| P23 | Console 目录结构对齐可验证，`internal/controlplane/admin` 已 rename-only 到 `internal/controlplane/configadmin`，handler/service/repository/frontend packages 按目标树拆分且 API 行为、session、RBAC、audit 和 frontend public exports 保持兼容 |

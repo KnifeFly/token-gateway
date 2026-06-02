@@ -2,7 +2,7 @@
 
 ## 阶段目标
 
-把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 已根据 2026-05-31 review 结果作为第一轮可靠性收敛阶段；P15-P18 根据后续 review 暴露的生产生命周期、身份边界、worker/callback 和文件资产边界问题作为第二轮收敛阶段。P19-P22 在核心网关和可靠性收敛完成后，解除“只做后端 API”的阶段性限制，新增完整 Portal/Admin 前后端、browser BFF、frontend monorepo、RBAC、audit 和 console 生产化路线。
+把最终设计包整理成可执行路线图。推进顺序遵循“先数据面、后控制面；先账务闭环、后商业扩展；先内置插件、后动态扩展；Realtime 只预留 disabled contract，不进入当前完整实现路线”的原则。P5 之后只推进当前明确要做的剩余能力，并把不做或先不做的能力从路线中剥离。P12-P14 已根据 2026-05-31 review 结果作为第一轮可靠性收敛阶段；P15-P18 根据后续 review 暴露的生产生命周期、身份边界、worker/callback 和文件资产边界问题作为第二轮收敛阶段。P19-P22 在核心网关和可靠性收敛完成后，解除“只做后端 API”的阶段性限制，新增完整 Portal/Admin 前后端、browser BFF、frontend monorepo、RBAC、audit 和 console 生产化路线。P23 单独承载 Console 目录结构对齐和模块拆分，避免把结构治理混进 P22 的生产化前端任务。
 
 ## 版本节奏
 
@@ -40,6 +40,7 @@
 | v1.21 portal web bff | P20 | 建立 Portal Web BFF、Portal session、Portal UI、dashboard/onboarding 和 Portal smoke |
 | v1.22 admin web bff | P21 | 建立 Admin Web BFF、operator session、RBAC、audit、safe read/write workflow 和 operations views |
 | v1.23 console frontend production | P22 | 完成 Admin UI、Portal/Admin 前端收口、静态资源部署、安全头、E2E smoke 和 console 发布交接 |
+| v1.24 console directory alignment | P23 | 对齐 Portal/Admin Console 目标目录树，rename `internal/controlplane/admin` 到 `internal/controlplane/configadmin`，拆分 handler/service/repository/frontend packages，补齐 api scripts/examples 和 import 边界检查 |
 
 ## 交付物
 
@@ -52,6 +53,7 @@
 - `docs/plan/23-p12-review-p0-correctness.md` 到 `docs/plan/25-p14-review-p2-engineering-readiness.md` 作为 2026-05-31 第一轮 review 后的可靠性收敛规划。
 - `docs/plan/26-p15-review-followup-p0-production-blockers.md` 到 `docs/plan/29-p18-review-followup-file-asset-boundary.md` 作为后续 review 暴露的生产生命周期、账务审计、worker/callback 和文件资产边界收敛规划。
 - `docs/plan/30-p19-console-monorepo-foundation.md` 到 `docs/plan/33-p22-console-frontend-production.md` 作为 Portal/Admin full console、BFF、frontend monorepo 和生产化收敛规划。
+- `docs/plan/34-p23-console-directory-structure-alignment.md` 作为 Console 目标目录树对齐、模块拆分和结构治理规划。
 - `docs/tasks.md` 作为任务看板和执行入口。
 - 阶段文档只沉淀执行化摘要，设计真相以 `docs/design` 中不带版本号的最终版为准。
 
@@ -90,6 +92,7 @@
 31. P20 建立 Portal Web BFF：迁移 `internal/app/portal`、新增 `/api/portal/v1/*`、Portal session、Portal UI 和 Portal smoke。
 32. P21 建立 Admin Web BFF：新增 `internal/app/admin`、operator session、RBAC、audit、Admin read model 和 owner service 写 workflow。
 33. P22 完成 console frontend production：Admin UI、Portal/Admin UI 收口、static asset strategy、安全头、E2E smoke、deployment/rollback runbook。
+34. P23 完成 console directory alignment：rename control config owner 为 `internal/controlplane/configadmin`，按目标树拆分 API scripts/examples、transport handler、app service/repository、frontend apps/packages，并保持行为不变。
 
 ## 关键设计约束
 
@@ -115,8 +118,9 @@
 - `/api/portal/v1/*` 与 `/api/admin/v1/*` 只能由 `cmd/console` 承载；`/admin/*` 继续是 machine Control API，不作为 Admin SPA 浏览器接口。
 - Admin Web 必须使用 operator session、RBAC、CSRF、Idempotency-Key、durable audit 和 redacted safe DTO；不得把 control admin token 放入浏览器。
 - Portal Web API key login 只用于交换 HttpOnly session；不得把 customer API key 长期保存到 browser storage。
-- Portal/Admin 后端按 `internal/app/portal`、`internal/app/admin` 拆分 service/repository；不要新增全局 service/repository 目录。
+- Portal/Admin 后端按 `internal/app/portal`、`internal/app/admin` 拆分 service/repository；control/config owner 在 P23 rename 为 `internal/controlplane/configadmin`；不要新增全局 service/repository 目录。
 - Frontend monorepo 使用 `web/apps/portal`、`web/apps/admin` 和 `web/packages/*`，API 类型由 OpenAPI 生成或接受 contract check。
+- P23 是行为保持型结构治理阶段，不新增产品能力、不改 API 行为、不改变 core domain ownership。`configadmin` 是 rename-only 去歧义，不代表 control owner 合并进 `app/admin`。若 P22 开始前 Admin UI 或 handler/service 单文件继续膨胀，可先执行 P23 的结构拆分子集。
 - 价格展示币种和存储精度分离：展示使用 USD、CNY 等真实币种和人可读单位，存储使用 currency + micros 整数。
 - 模型 category 驱动可配置价格单位、默认展示方式和模型目录筛选；category 不等于 provider type、route strategy 或 New API group。
 - 客户售价和 provider 成本可以同构，但必须分表、分用途、分权限；settlement 只能使用客户售价。
@@ -130,9 +134,9 @@
 ## 验收标准
 
 - 每个阶段都有明确目标、交付物、实现顺序、设计约束、验收标准和风险处理。
-- `docs/tasks.md` 能直接指导 P5-P22 后续开发、验收、发布交接、模型价格目录增强、review remediation 和 console full-stack 实现。
+- `docs/tasks.md` 能直接指导 P5-P23 后续开发、验收、发布交接、模型价格目录增强、review remediation、console full-stack 实现和目录结构治理。
 - M0-M9 的先后关系与最终设计包一致。
-- P0-P22 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强、review remediation 和 Portal/Admin console 建设，且每个阶段都有可验证的完成标准。
+- P0-P23 能直接指导设计差距补齐、商用硬化、发布候选验收、剩余产品能力建设、客户验收、发布交接、模型价格目录增强、review remediation、Portal/Admin console 建设和目录结构治理，且每个阶段都有可验证的完成标准。
 - 所有 public API 变更都回到 OpenAPI 合同维护。
 
 ## 风险与处理
@@ -169,6 +173,7 @@
 | Customer API key 长期暴露在浏览器 | Portal API key login 只换取 HttpOnly session，禁止 localStorage/sessionStorage 保存 key |
 | OpenAPI 与前端类型漂移 | API contract split、generated client 和 CI diff check |
 | Console 静态资源影响 gateway 热路径 | `cmd/console` 独立部署，静态资源优先 CDN/Nginx，gateway 不服务 Portal/Admin SPA |
+| 目录结构治理变成大范围行为重写 | P23 只做行为保持型拆分，每一步跑 focused tests，API/schema/session/RBAC/audit 语义不变 |
 
 ## 设计来源
 

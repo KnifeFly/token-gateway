@@ -6,6 +6,8 @@ P22 的目标是把 P20/P21 的 Portal/Admin BFF 能力交付成可用的完整 
 
 P22 不新增对象存储、支付/发票、完整 Realtime、WASM/动态插件或多地域能力。该阶段专注 human console 的生产可交付性。
 
+目录结构对齐、`internal/controlplane/admin -> internal/controlplane/configadmin` rename-only、handler/service/repository/frontend packages 的行为保持型拆分不放在 P22，由 P23 Console Directory Structure Alignment 单独承载。
+
 ## 交付物
 
 - Admin UI：dashboard、tenants、projects、API keys、models、channels、routes、pricing、limits、snapshots、operations、audit、operators。
