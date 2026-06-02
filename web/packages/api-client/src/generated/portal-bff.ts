@@ -621,7 +621,60 @@ export interface components {
             next_cursor?: string | null;
         };
         TaskObject: {
-            [key: string]: unknown;
+            id: string;
+            /** @enum {string} */
+            object: "image.generation.task" | "image.edit.task" | "video.generation.task" | "audio.generation.task" | "music.generation.task";
+            /** Format: int64 */
+            created: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            request_id?: string;
+            api_key_id?: string;
+            model?: string;
+            /** @enum {string} */
+            status: "pending" | "queued" | "processing" | "completed" | "failed" | "cancelled" | "expired";
+            progress: number;
+            type: string;
+            provider_task_id?: string;
+            provider_type?: string;
+            channel_id?: string;
+            results?: string[];
+            assets?: {
+                url?: string;
+                type?: string;
+                mime_type?: string;
+                provider?: string;
+                /** Format: date-time */
+                expires_at?: string;
+                metadata?: {
+                    [key: string]: string;
+                };
+            }[];
+            provider_metadata?: {
+                [key: string]: string;
+            };
+            error?: {
+                code?: string;
+                message?: string;
+                type?: string;
+                retryable?: boolean;
+            };
+            task_info?: {
+                can_cancel?: boolean;
+                estimated_time?: number;
+                video_duration?: number;
+            };
+            usage?: {
+                billing_rule?: string;
+                input_tokens?: number;
+                output_tokens?: number;
+                total_tokens?: number;
+            };
+            metadata?: {
+                [key: string]: string;
+            };
         };
         ProjectSettings: {
             tenant_id: string;

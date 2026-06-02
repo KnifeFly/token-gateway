@@ -29,7 +29,7 @@ export function splitModels(value: string): string[] {
     .filter(Boolean);
 }
 
-export function taskString(task: TaskObject, key: string): string {
+export function taskString(task: TaskObject, key: keyof TaskObject): string {
   const value = task[key];
   if (typeof value === "string") {
     return value;

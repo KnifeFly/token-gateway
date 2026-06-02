@@ -23,7 +23,7 @@ export function TaskListRows({ tasks }: { tasks: TaskObject[] }) {
           <span role="cell">{taskString(task, "id") || portalCopy.tasks.fallbackTask}</span>
           <span role="cell">{taskString(task, "request_id") || portalCopy.tasks.fallbackTask}</span>
           <span role="cell">{displayStatusLabel(taskString(task, "status"))}</span>
-          <span role="cell">{taskString(task, "model") || taskString(task, "endpoint")}</span>
+          <span role="cell">{taskString(task, "model")}</span>
           <span role="cell">
             {taskString(task, "provider_type") || taskString(task, "channel_id")
               ? `${taskString(task, "provider_type")} / ${taskString(task, "channel_id")}`

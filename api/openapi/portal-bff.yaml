@@ -1349,7 +1349,124 @@ components:
           nullable: true
     TaskObject:
       type: object
-      additionalProperties: true
+      required:
+        - id
+        - object
+        - status
+        - type
+        - created
+        - progress
+      properties:
+        id:
+          type: string
+        object:
+          type: string
+          enum:
+            - image.generation.task
+            - image.edit.task
+            - video.generation.task
+            - audio.generation.task
+            - music.generation.task
+        created:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        request_id:
+          type: string
+        api_key_id:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - queued
+            - processing
+            - completed
+            - failed
+            - cancelled
+            - expired
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        type:
+          type: string
+        provider_task_id:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        results:
+          type: array
+          items:
+            type: string
+        assets:
+          type: array
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              type:
+                type: string
+              mime_type:
+                type: string
+              provider:
+                type: string
+              expires_at:
+                type: string
+                format: date-time
+              metadata:
+                type: object
+                additionalProperties:
+                  type: string
+        provider_metadata:
+          type: object
+          additionalProperties:
+            type: string
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            type:
+              type: string
+            retryable:
+              type: boolean
+        task_info:
+          type: object
+          properties:
+            can_cancel:
+              type: boolean
+            estimated_time:
+              type: integer
+            video_duration:
+              type: integer
+        usage:
+          type: object
+          properties:
+            billing_rule:
+              type: string
+            input_tokens:
+              type: integer
+            output_tokens:
+              type: integer
+            total_tokens:
+              type: integer
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
     ProjectSettings:
       type: object
       required:
