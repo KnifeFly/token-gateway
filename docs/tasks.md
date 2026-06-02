@@ -9,8 +9,8 @@
 - P20 进展：Portal Web BFF 已落地，覆盖 `internal/app/portal` session/use case wrapper、`/api/portal/v1/*` browser BFF、HttpOnly session + CSRF、dashboard/onboarding 聚合、Portal UI、OpenAPI/generated client、focused Go tests 和 `tools/portal-web-smoke`。
 - P21 进展：Admin Web BFF 已落地，覆盖 `internal/app/admin` operator/session/RBAC/audit、`/api/admin/v1/*` browser BFF、CSRF/idempotency/reason guard、owner-service config writes、snapshot/operations read models、migration、OpenAPI/generated client 和 focused Go tests。
 - P11 进展：模型价格目录增强已落地，覆盖 `internal/domain/pricing` category/template/component quoter、control-plane price/model/channel metadata、runtime snapshot/index、admission/settlement/async task customer quote、provider cost components、OpenAPI 和 focused tests。
-- P23 进展：Console 后端结构治理已启动并落地核心前置项，覆盖 `internal/controlplane/configadmin` rename、`internal/portal` 全量迁移到 `internal/app/portal`、Admin/Portal service 拆分、Admin/Portal transport handler 拆分、API scripts/examples 和 import boundary check；尚未完成 frontend app/shared package 拆分和 Admin repository 更细粒度拆分。
-- 待执行：P22 Admin frontend、Console E2E smoke、静态资产/security headers、发布/回滚 runbook 和 console 生产化仍待执行；P23 剩余 frontend apps、shared packages、Admin repository 细分和最终全量验收仍待执行。复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
+- P23 进展：Console 后端结构治理已启动并落地核心前置项，覆盖 `internal/controlplane/configadmin` rename、`internal/portal` 全量迁移到 `internal/app/portal`、Admin/Portal service 拆分、Admin/Portal transport handler 拆分、Admin app repository 拆分、configadmin repository 聚合拆分、API scripts/examples 和 import boundary check；尚未完成 frontend app/shared package 拆分。
+- 待执行：P22 Admin frontend、Console E2E smoke、静态资产/security headers、发布/回滚 runbook 和 console 生产化仍待执行；P23 剩余 frontend apps、shared packages 和最终全量验收仍待执行。复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件、New API 分组不进入当前路线，semantic routing/cache 和多地域 active-active 先不做。
 - 阻塞：无。
 - 下一步建议：如目标是补齐完整 Admin UI 和生产发布闭环，进入 P22 Console Frontend Production；如目标是先把当前 P19-P21 实现对齐到目标目录树，进入 P23 Console Directory Structure Alignment。对象存储能力仍需另立独立阶段。
 - 本次规划验证：2026-06-02 P23 Console Directory Structure Alignment 计划文档落库并接入 roadmap/tasks/design/CLAUDE 后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试。2026-06-02 P23 Portal 迁移目标调整为全量迁移并删除 `internal/portal` 运行包后，`git diff --check` 与 markdown trailing-whitespace scan 通过；本次为 docs-only 变更，未运行代码测试。2026-06-01 Portal/Admin Console 设计与 P19-P22 计划文档落库后，`git diff --check` 与 markdown trailing-whitespace scan 通过；当次为 docs-only 变更，未运行代码测试。
@@ -479,7 +479,7 @@
 | [x] | P23/E33-T07/P1 | P1 | 补齐 API examples/scripts 和 OpenAPI bundle 入口 | `api/examples`, `api/scripts`, `api/openapi` | lint、generate TS client、api diff check 脚本可被 Makefile/CI 调用，examples 不含 secret |
 | [x] | P23/E33-T08/P1 | P1 | 增加 import 边界和结构回归检查 | scripts, Makefile/CI, docs/runbook | 防止 app 互相依赖、packages 反向依赖 apps、Admin browser 调 `/admin/*`、`controlplane/configadmin -> app/admin`、新增全局 store/repository |
 | [ ] | P23/E33-T09/P1 | P1 | 完成结构重构验证和文档同步 | docs/tasks.md, docs/runbook, ARCHITECTURE or README | `go test ./internal/controlplane/configadmin ./internal/app/admin/... ./internal/app/portal/... ./internal/transport/adminhttp ./internal/transport/portalhttp ./internal/transport/portalwebhttp`、运行代码无 `internal/portal` import、`go test ./...`、`go vet ./...`、`go build ./cmd/...`、`pnpm generate:api`、`pnpm lint/typecheck/test/build`、`make api-check`、`git diff --check` 通过 |
-| [ ] | P23/E33-T10/P1 | P1 | 拆分 Admin app repository | `internal/app/admin/repository` | operators、sessions、audit 和 mysql helpers 按职责分文件，repository contract 不变 |
+| [x] | P23/E33-T10/P1 | P1 | 拆分 Admin app 和 configadmin repository | `internal/app/admin/repository`, `internal/controlplane/configadmin` | 按业务聚合拆为 operators、sessions、audit、tenants、projects、api_keys、models、channels、routes、pricing、limits、plugins、marketplace、snapshots 等文件，文件名不使用 `mysql_` 前缀，repository contract 不变 |
 
 ## 阶段验收总览
 

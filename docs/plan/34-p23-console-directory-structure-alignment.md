@@ -48,6 +48,8 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
 - `internal/portal` 已全量迁移到 `internal/app/portal`，`internal/transport/portalhttp` 直接依赖 `internal/app/portal/service`，旧 runtime package 已删除。
 - `internal/app/portal/service` 已按 `ports/auth/dashboard/models/credits/usage/api_keys/tasks` 拆分。
 - `internal/app/admin/service` 已按 `auth/dashboard/config/snapshots/operations/audit/operators/helpers` 拆分，Admin mutation 继续委托 `configadmin.Service` 或对应 owner service。
+- `internal/app/admin/repository` 已按 `operators/sessions/audit/helpers` 拆分，`mysql.go` 和 `memory.go` 只保留 repository 类型与 constructor。
+- `internal/controlplane/configadmin` repository 已按 `tenants/projects/api_keys/models/channels/routes/pricing/limits/plugins/marketplace/snapshots/helpers` 聚合拆分，文件名不使用 `mysql_` 前缀。
 - `internal/transport/adminhttp`、`internal/transport/portalhttp`、`internal/transport/portalwebhttp` 已按 resource handler、auth/request/response helper 拆分。
 - 已新增 `api/examples/*`、`api/scripts/*` 和 `scripts/check_import_boundaries.sh`，并接入 Makefile/CI。
 
@@ -55,7 +57,6 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
 
 - `web/apps/portal`、`web/apps/admin` 的 app/routes/features/shared 拆分。
 - `web/packages/api-client/auth/format/ui` 的更细 public exports 拆分。
-- `internal/app/admin/repository` 的 operators/sessions/audit/mysql helper 细分。
 - P23 结束前的最终 tasks 状态收口和必要 runbook/ARCHITECTURE 快照。
 
 ## 交付物
@@ -70,12 +71,12 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
   - optional generated `api/openapi/bundle.yaml`
 - Portal public API 迁移与 app backend 拆分：
   - `internal/app/portal/service/{ports,public_api,web_bff,auth,dashboard,models,credits,usage,api_keys,tasks,onboarding,sessions,helpers}.go`
-  - `internal/app/portal/repository/{repository,memory,mysql,mysql_models,mysql_credits,mysql_usage,mysql_api_keys,mysql_tasks,mysql_dashboard,mysql_sessions}.go`
+  - `internal/app/portal/repository/{memory,redis,sessions}.go`
   - `internal/transport/portalhttp` 改为直接依赖 `internal/app/portal/service` 的 public API entrypoint。
   - 删除 `internal/portal` package，确保所有 `/v1/portal/*` imports 和 contract tests 已切换到 `internal/app/portal`。
 - Admin app backend 拆分：
   - `internal/app/admin/service/{ports,auth,tenants,projects,api_keys,models,channels,routes,pricing,limits,snapshots,emergency,workers,settlements,callbacks,audit,dashboard,sessions,helpers}.go`
-  - `internal/app/admin/repository/{repository,memory,mysql,mysql_sessions,mysql_operators,mysql_dashboard,mysql_tenants,mysql_projects,mysql_models,mysql_channels,mysql_routes,mysql_pricing,mysql_limits,mysql_operations,mysql_audit}.go`
+  - `internal/app/admin/repository/{memory,mysql,operators,sessions,audit,helpers}.go`
   - 保留 `internal/app/admin -> internal/controlplane/configadmin` 的 owner-service 调用方向；不得把 `configadmin` 配置写方法移动到 `app/admin`。
 - Control/Admin 命名防混淆：
   - `internal/controlplane/admin` rename 为 `internal/controlplane/configadmin`，package name 使用 `configadmin`。
