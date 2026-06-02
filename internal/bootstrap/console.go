@@ -18,7 +18,6 @@ import (
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/internal/infra/telemetry"
-	legacyportal "github.com/KnifeFly/token-gateway/internal/portal"
 	"github.com/KnifeFly/token-gateway/internal/transport/adminhttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/consolehttp"
 	"github.com/KnifeFly/token-gateway/internal/transport/httpserver"
@@ -71,8 +70,11 @@ func NewConsoleApp(ctx context.Context, cfg Config) (*ConsoleApp, error) {
 	portalWeb := portalservice.New(
 		runtime.snapshotProvider,
 		runtime.authenticator,
-		legacyportal.NewService(runtime.adminService, commercial, runtime.taskRepo, runtime.portalOptions()...),
+		runtime.adminService,
+		commercial,
+		runtime.taskRepo,
 		sessionStore,
+		runtime.portalOptions()...,
 	)
 	adminRepo := adminapp.Repository(adminrepo.NewMemoryRepository())
 	if cfg.Database.Enabled && database.DB() != nil {

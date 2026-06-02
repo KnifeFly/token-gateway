@@ -32,7 +32,7 @@ Portal is not a second control plane. It does not expose provider channels, rout
 Run these focused checks after touching Portal behavior:
 
 ```bash
-go test ./internal/portal ./internal/transport/portalhttp ./internal/task ./internal/bootstrap
+go test ./internal/app/portal/... ./internal/transport/portalhttp ./internal/task ./internal/bootstrap
 go test ./tools/portal-smoke ./tests/contract
 GATEWAY_URL=http://127.0.0.1:9501 API_KEY=tg-rc-key make portal-smoke
 go test ./...

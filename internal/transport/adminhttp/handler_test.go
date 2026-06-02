@@ -13,7 +13,7 @@ import (
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
 	adminrepo "github.com/KnifeFly/token-gateway/internal/app/admin/repository"
 	adminservice "github.com/KnifeFly/token-gateway/internal/app/admin/service"
-	cpadmin "github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 )
 
 func TestAdminAuthSessionAndCSRF(t *testing.T) {
@@ -79,7 +79,7 @@ func TestAdminRBACDenyAndAuditQuery(t *testing.T) {
 func testMux(t *testing.T) (*http.ServeMux, *adminservice.Service) {
 	t.Helper()
 	repo := adminrepo.NewMemoryRepository()
-	owner := cpadmin.NewService(cpadmin.NewMemoryRepository(), cpadmin.NewCredentialCodec("test-secret"), nil)
+	owner := configadmin.NewService(configadmin.NewMemoryRepository(), configadmin.NewCredentialCodec("test-secret"), nil)
 	svc := adminservice.New(repo, owner)
 	if _, err := svc.EnsureBootstrapOperator(context.Background(), "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
 		t.Fatalf("EnsureBootstrapOperator() error = %v", err)

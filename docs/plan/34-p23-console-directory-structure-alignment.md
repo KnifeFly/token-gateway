@@ -40,6 +40,24 @@ P22 关注 Admin UI、E2E、static asset、安全头和生产发布闭环；P23 
 - 当前实现仍有部分文件偏集中，例如 `portalwebhttp/handler.go`、`adminhttp/handler.go`、`internal/app/*/service/service.go`、frontend `App.tsx` 和 shared package `index.ts`。
 - 当前命名容易让人误以为 `internal/controlplane/admin` 可以被 `internal/app/admin` 吸收；P23 必须先完成 `configadmin` rename 和边界检查，再做大规模文件拆分。
 
+## 当前实施记录
+
+2026-06-02 已完成 P23 后端结构治理核心项：
+
+- `internal/controlplane/admin` 已 rename-only 到 `internal/controlplane/configadmin`，Go package name 使用 `configadmin`，`cmd/internal/tests/tools` 运行代码不再引用旧路径。
+- `internal/portal` 已全量迁移到 `internal/app/portal`，`internal/transport/portalhttp` 直接依赖 `internal/app/portal/service`，旧 runtime package 已删除。
+- `internal/app/portal/service` 已按 `ports/auth/dashboard/models/credits/usage/api_keys/tasks` 拆分。
+- `internal/app/admin/service` 已按 `auth/dashboard/config/snapshots/operations/audit/operators/helpers` 拆分，Admin mutation 继续委托 `configadmin.Service` 或对应 owner service。
+- `internal/transport/adminhttp`、`internal/transport/portalhttp`、`internal/transport/portalwebhttp` 已按 resource handler、auth/request/response helper 拆分。
+- 已新增 `api/examples/*`、`api/scripts/*` 和 `scripts/check_import_boundaries.sh`，并接入 Makefile/CI。
+
+仍待执行：
+
+- `web/apps/portal`、`web/apps/admin` 的 app/routes/features/shared 拆分。
+- `web/packages/api-client/auth/format/ui` 的更细 public exports 拆分。
+- `internal/app/admin/repository` 的 operators/sessions/audit/mysql helper 细分。
+- P23 结束前的最终 tasks 状态收口和必要 runbook/ARCHITECTURE 快照。
+
 ## 交付物
 
 - API 目录补齐：

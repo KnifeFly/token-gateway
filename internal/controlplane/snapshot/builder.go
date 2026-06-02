@@ -8,18 +8,18 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
 // ConfigRepository loads normalized admin config for snapshot builds.
 type ConfigRepository interface {
-	LoadSnapshotConfig(ctx context.Context) (*admin.SnapshotConfig, error)
-	SaveSnapshot(ctx context.Context, record admin.SnapshotRecord) (*admin.SnapshotRecord, error)
-	ActiveSnapshot(ctx context.Context) (*admin.SnapshotRecord, bool, error)
-	PreviousSnapshot(ctx context.Context) (*admin.SnapshotRecord, bool, error)
-	ActivateSnapshot(ctx context.Context, version string) (*admin.SnapshotRecord, error)
+	LoadSnapshotConfig(ctx context.Context) (*configadmin.SnapshotConfig, error)
+	SaveSnapshot(ctx context.Context, record configadmin.SnapshotRecord) (*configadmin.SnapshotRecord, error)
+	ActiveSnapshot(ctx context.Context) (*configadmin.SnapshotRecord, bool, error)
+	PreviousSnapshot(ctx context.Context) (*configadmin.SnapshotRecord, bool, error)
+	ActivateSnapshot(ctx context.Context, version string) (*configadmin.SnapshotRecord, error)
 }
 
 // Builder builds runtime snapshots from admin config.
@@ -329,7 +329,7 @@ func Validate(runtime RuntimeSnapshot) error {
 	return nil
 }
 
-func providerMappingsByModel(channels []admin.ChannelConfig) map[string][]ProviderModelMappingRuntime {
+func providerMappingsByModel(channels []configadmin.ChannelConfig) map[string][]ProviderModelMappingRuntime {
 	out := map[string][]ProviderModelMappingRuntime{}
 	for _, channel := range channels {
 		for _, model := range channel.Models {

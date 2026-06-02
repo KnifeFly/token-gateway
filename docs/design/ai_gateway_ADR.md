@@ -354,7 +354,7 @@ P8 已经提供 `/v1/portal/*` programmatic Portal API，P9/P10 完成客户验�
 - Admin token 暴露到浏览器。
 - 浏览器缺少 operator session、RBAC、CSRF、audit、diff preview 和 redaction。
 - `/admin/*` machine API 被 UI 需求污染。
-- `internal/controlplane/admin` 与 human Admin app 容易混淆。
+- 历史 `internal/controlplane/admin` 命名与 human Admin app 容易混淆。
 - Portal/Admin service 和 repository 单文件持续膨胀。
 
 ## Decision
@@ -384,7 +384,7 @@ internal/app/portal
 internal/app/admin
 ```
 
-其中 `internal/app/admin` 表达 human Admin UI workflow，`internal/controlplane/admin` 继续表达 machine control/config domain。
+其中 `internal/app/admin` 表达 human Admin UI workflow，`internal/controlplane/configadmin` 表达 machine control/config domain。
 
 前端使用：
 
@@ -419,4 +419,4 @@ API 合同逐步拆到 `api/openapi/*`，前端类型从 OpenAPI 生成。Admin 
 
 让 Admin SPA 直接调用 `/admin/*`：短期简单，但会把 machine API 变成 browser API，安全和审计边界不成立。
 
-将 Portal/Admin 都放入现有 `internal/portal` 或新增全局 `internal/admin`：目录更短，但长期与 `internal/controlplane/admin` 混淆，且 service/repository 容易继续单文件膨胀。
+将 Portal/Admin 都放入历史 `internal/portal` 或新增全局 `internal/admin`：目录更短，但长期与 `internal/controlplane/configadmin` 混淆，且 service/repository 容易继续单文件膨胀。

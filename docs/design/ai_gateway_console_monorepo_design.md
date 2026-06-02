@@ -166,7 +166,7 @@ web/
     test-utils/
 ```
 
-`internal/portal` 在 P23 全量迁移到 `internal/app/portal`，完成态删除 Portal runtime package；新增 Portal Web 能力应落在 `internal/app/portal`。新增 Admin 应使用 `internal/app/admin`，避免与已有 `internal/controlplane/admin` 混淆；P23 目标是把该 control/config owner rename-only 调整为 `internal/controlplane/configadmin`。
+`internal/portal` 已在 P23 全量迁移到 `internal/app/portal`，Portal runtime package 退出运行代码树；新增 Portal Web 能力应落在 `internal/app/portal`。新增 Admin 应使用 `internal/app/admin`，避免与 `internal/controlplane/configadmin` 混淆；该 control/config owner 负责 machine control/config domain，不合并进 browser Admin BFF。
 
 ## 5. Repository 与 Service 拆分规则
 

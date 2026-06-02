@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
@@ -56,11 +56,11 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 		return nil, err
 	}
 	taskRepo := tasksvc.Repository(tasksvc.NewMemoryRepository())
-	adminRepo := admin.Repository(admin.NewMemoryRepository())
+	adminRepo := configadmin.Repository(configadmin.NewMemoryRepository())
 	billingRepo := billing.Repository(billing.NewMemoryRepository())
 	if cfg.Database.Enabled && database.DB() != nil {
 		taskRepo = tasksvc.NewMySQLRepository(database.DB())
-		adminRepo = admin.NewMySQLRepository(database.DB())
+		adminRepo = configadmin.NewMySQLRepository(database.DB())
 		billingRepo = billing.NewMySQLRepository(database.DB())
 	}
 	egressGuard, err := newEgressGuard(cfg.Gateway.Egress)
@@ -83,12 +83,12 @@ func NewWorkerApp(ctx context.Context, cfg Config) (*WorkerApp, error) {
 	providerHTTPClient := outboundHTTPClient(cfg.Worker.JobTimeout.Duration, egressGuard)
 	dispatcher := tasksvc.NewHTTPProviderTaskDispatcher(
 		providerHTTPClient,
-		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
+		providerCredentialResolver{codec: configadmin.NewCredentialCodec(cfg.Control.CredentialKey)},
 		adminChannelResolver{repo: adminRepo},
 	).WithEgressGuard(egressGuard)
 	dispatcher.RegisterAdapter("replicate", replicate.NewTaskAdapter(
 		providerHTTPClient,
-		providerCredentialResolver{codec: admin.NewCredentialCodec(cfg.Control.CredentialKey)},
+		providerCredentialResolver{codec: configadmin.NewCredentialCodec(cfg.Control.CredentialKey)},
 	).WithEgressGuard(egressGuard))
 	price := pricing.TokenPrice{
 		Currency:             cfg.Gateway.Billing.Currency,
@@ -196,7 +196,7 @@ func workerServerConfig(cfg Config) httpserver.Config {
 }
 
 type adminChannelResolver struct {
-	repo admin.Repository
+	repo configadmin.Repository
 }
 
 func (r adminChannelResolver) ResolveProviderChannel(ctx context.Context, channelID string) (engine.ChannelView, bool, error) {

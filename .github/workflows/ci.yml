@@ -23,6 +23,8 @@ jobs:
         run: |
           unformatted="$(gofmt -l $(find . -name '*.go' -not -path './.git/*'))"
           test -z "$unformatted" || (echo "$unformatted" && exit 1)
+      - name: Import boundaries
+        run: make boundary-check
       - name: Race
         run: go test -race ./...
       - name: Build
@@ -41,7 +43,7 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       - name: Generate API clients
-        run: pnpm api:check
+        run: make api-check
       - name: Lint
         run: pnpm lint
       - name: Typecheck

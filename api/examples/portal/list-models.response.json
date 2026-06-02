@@ -1,0 +1,17 @@
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "gpt-public",
+      "object": "model",
+      "type": "text",
+      "display_name": "GPT Public",
+      "owner": "platform",
+      "capabilities": ["chat"],
+      "input_modalities": ["text"],
+      "output_modalities": ["text"],
+      "async": false,
+      "deprecated": false
+    }
+  ]
+}

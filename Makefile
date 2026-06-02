@@ -2,7 +2,7 @@ SHELL := /bin/sh
 
 CONFIG ?= configs/local.yaml
 
-.PHONY: help test lint fmt fmt-check vet race build run-gateway run-console run-worker loadtest portal-smoke portal-web-smoke release-handoff release-handoff-check failure-drills api-generate api-check web-install web-lint web-typecheck web-test web-build migrate-up migrate-down compose-up compose-down
+.PHONY: help test lint fmt fmt-check vet race build run-gateway run-console run-worker loadtest portal-smoke portal-web-smoke release-handoff release-handoff-check failure-drills api-generate api-check boundary-check web-install web-lint web-typecheck web-test web-build migrate-up migrate-down compose-up compose-down
 
 help: ## Show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -42,11 +42,13 @@ run-worker: ## Run local worker
 	go run ./cmd/worker -config $(CONFIG)
 
 api-generate: ## Generate frontend API types from split OpenAPI
-	pnpm generate:api
+	api/scripts/generate_ts_client.sh
 
 api-check: ## Check split OpenAPI generated client drift
-	pnpm api:check
-	go test ./tests/contract
+	api/scripts/check_api_diff.sh
+
+boundary-check: ## Check P23 import and app/package boundaries
+	scripts/check_import_boundaries.sh
 
 web-install: ## Install frontend workspace dependencies
 	pnpm install --frozen-lockfile

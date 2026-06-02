@@ -8,7 +8,7 @@ import (
 
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
 	adminrepo "github.com/KnifeFly/token-gateway/internal/app/admin/repository"
-	cpadmin "github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 )
 
 func TestLoginSessionAndCSRF(t *testing.T) {
@@ -48,7 +48,7 @@ func TestRBACDenyWritesFailedAudit(t *testing.T) {
 		t.Fatalf("Session(viewer) error = %v", err)
 	}
 
-	_, err = svc.UpsertTenant(ctx, actor, cpadmin.Tenant{Name: "Denied"}, adminapp.MutationOptions{
+	_, err = svc.UpsertTenant(ctx, actor, configadmin.Tenant{Name: "Denied"}, adminapp.MutationOptions{
 		RequestID:      "req_rbac",
 		IdempotencyKey: "idem_rbac",
 		Reason:         "rbac test",
@@ -76,7 +76,7 @@ func TestMutationAuditRedactsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Session() error = %v", err)
 	}
-	_, err = svc.CreateAPIKey(ctx, actor, cpadmin.APIKey{
+	_, err = svc.CreateAPIKey(ctx, actor, configadmin.APIKey{
 		TenantID:     "tenant_1",
 		ProjectID:    "project_1",
 		Name:         "secret key",
@@ -107,8 +107,8 @@ func testService(t *testing.T) (*Service, *adminrepo.MemoryRepository) {
 	t.Helper()
 	now := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
 	repo := adminrepo.NewMemoryRepository()
-	ownerRepo := cpadmin.NewMemoryRepository()
-	owner := cpadmin.NewService(ownerRepo, cpadmin.NewCredentialCodec("test-secret"), nil)
+	ownerRepo := configadmin.NewMemoryRepository()
+	owner := configadmin.NewService(ownerRepo, configadmin.NewCredentialCodec("test-secret"), nil)
 	svc := New(repo, owner, WithClock(func() time.Time { return now }))
 	if _, err := svc.EnsureBootstrapOperator(context.Background(), "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
 		t.Fatalf("EnsureBootstrapOperator() error = %v", err)

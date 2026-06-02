@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
+	portalservice "github.com/KnifeFly/token-gateway/internal/app/portal/service"
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
-	"github.com/KnifeFly/token-gateway/internal/portal"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 )
 
@@ -169,9 +169,9 @@ type portalTestIDs struct {
 func testPortalHandler(t *testing.T) (http.Handler, portalTestIDs) {
 	t.Helper()
 	ctx := context.Background()
-	adminRepo := admin.NewMemoryRepository()
-	adminService := admin.NewService(adminRepo, nil, nil)
-	if _, err := adminService.CreateAPIKey(ctx, admin.APIKey{
+	adminRepo := configadmin.NewMemoryRepository()
+	adminService := configadmin.NewService(adminRepo, nil, nil)
+	if _, err := adminService.CreateAPIKey(ctx, configadmin.APIKey{
 		ID:            "key_current",
 		TenantID:      "tenant_1",
 		ProjectID:     "project_1",
@@ -181,7 +181,7 @@ func testPortalHandler(t *testing.T) (http.Handler, portalTestIDs) {
 	}); err != nil {
 		t.Fatalf("CreateAPIKey(current) error = %v", err)
 	}
-	if _, err := adminService.CreateAPIKey(ctx, admin.APIKey{
+	if _, err := adminService.CreateAPIKey(ctx, configadmin.APIKey{
 		ID:            "key_other_project",
 		TenantID:      "tenant_1",
 		ProjectID:     "project_2",
@@ -272,7 +272,7 @@ func testPortalHandler(t *testing.T) (http.Handler, portalTestIDs) {
 	registrar := NewHandler(
 		dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed)),
 		auth.NewSnapshotAuthenticator(),
-		portal.NewService(adminService, reportService, taskRepo),
+		portalservice.New(dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed)), auth.NewSnapshotAuthenticator(), adminService, reportService, taskRepo, nil),
 		nil,
 	)
 	mux := http.NewServeMux()

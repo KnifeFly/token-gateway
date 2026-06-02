@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
 	loginfra "github.com/KnifeFly/token-gateway/internal/infra/log"
@@ -49,9 +49,9 @@ func NewConfigdApp(ctx context.Context, cfg Config) (*ConfigdApp, error) {
 		return nil, err
 	}
 
-	repo := admin.Repository(admin.NewMemoryRepository())
+	repo := configadmin.Repository(configadmin.NewMemoryRepository())
 	if cfg.Database.Enabled && database.DB() != nil {
-		repo = admin.NewMySQLRepository(database.DB())
+		repo = configadmin.NewMySQLRepository(database.DB())
 	}
 	publisherOpts := []cpsnapshot.PublisherOption{}
 	if redisClient.Raw() != nil {

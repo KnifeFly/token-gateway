@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 )
 
 func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) {
 	ctx := context.Background()
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("test-secret"), nil)
-	key, err := service.CreateAPIKey(ctx, admin.APIKey{
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("test-secret"), nil)
+	key, err := service.CreateAPIKey(ctx, configadmin.APIKey{
 		TenantID:      "tenant_1",
 		ProjectID:     "project_1",
 		Name:          "test",
@@ -26,7 +26,7 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	if key.KeyHash == "" || key.PlaintextKey == "" {
 		t.Fatalf("key = %#v", key)
 	}
-	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
+	if _, err := service.UpsertModel(ctx, configadmin.ModelConfig{
 		PublicModel:     "gpt-4o-mini",
 		Aliases:         []string{"gpt-4o-mini-alias"},
 		DisplayName:     "GPT 4o Mini",
@@ -44,13 +44,13 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("UpsertModel() error = %v", err)
 	}
-	channel, err := service.UpsertChannel(ctx, admin.ChannelConfig{
+	channel, err := service.UpsertChannel(ctx, configadmin.ChannelConfig{
 		ID:           "channel_1",
 		ProviderType: "openai_compatible",
 		BaseURL:      "https://provider.example",
 		APIKey:       "provider-secret",
 		Enabled:      true,
-		Models: []admin.ChannelModel{{
+		Models: []configadmin.ChannelModel{{
 			PublicModel:         "gpt-4o-mini",
 			UpstreamModel:       "gpt-4o-mini",
 			SupportedParameters: []string{"temperature"},
@@ -64,13 +64,13 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	if channel.APIKey != "" || channel.EncryptedAPIKey == "" {
 		t.Fatalf("channel credential leaked or missing: %#v", channel)
 	}
-	if _, err := service.UpsertRoute(ctx, admin.RoutePolicyConfig{
+	if _, err := service.UpsertRoute(ctx, configadmin.RoutePolicyConfig{
 		PublicModel: "gpt-4o-mini",
-		Candidates:  []admin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}},
+		Candidates:  []configadmin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}},
 	}); err != nil {
 		t.Fatalf("UpsertRoute() error = %v", err)
 	}
-	if _, err := service.UpsertPrice(ctx, admin.PriceRuleConfig{
+	if _, err := service.UpsertPrice(ctx, configadmin.PriceRuleConfig{
 		PublicModel:           "gpt-4o-mini",
 		Currency:              "USD",
 		InputMicrosPerToken:   10,
@@ -80,7 +80,7 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("UpsertPrice() error = %v", err)
 	}
-	if _, err := service.UpsertLimit(ctx, admin.LimitRuleConfig{
+	if _, err := service.UpsertLimit(ctx, configadmin.LimitRuleConfig{
 		TenantID:            "tenant_1",
 		ProjectID:           "project_1",
 		APIKeyID:            key.ID,
@@ -97,7 +97,7 @@ func TestBuilderBuildsValidatedSnapshotWithoutPlaintextCredential(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("UpsertLimit() error = %v", err)
 	}
-	if _, err := service.UpsertPluginBinding(ctx, admin.PluginBindingConfig{
+	if _, err := service.UpsertPluginBinding(ctx, configadmin.PluginBindingConfig{
 		Name:          "prompt_guard",
 		Phase:         "pre_prompt",
 		Model:         "gpt-4o-mini",
@@ -157,8 +157,8 @@ func TestValidateRejectsBadRoute(t *testing.T) {
 
 func TestPublisherPublishesAndRollsBack(t *testing.T) {
 	ctx := context.Background()
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("test-secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("test-secret"), nil)
 	seedSnapshotConfig(t, ctx, service, "gpt-4o-mini")
 	distributor := &fakeRuntimeDistributor{}
 	publisher := NewPublisher(repo, nil, WithDistributor(distributor))
@@ -169,7 +169,7 @@ func TestPublisherPublishesAndRollsBack(t *testing.T) {
 	if distributor.versions[len(distributor.versions)-1] != first.Version {
 		t.Fatalf("distributed first versions = %#v", distributor.versions)
 	}
-	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
+	if _, err := service.UpsertModel(ctx, configadmin.ModelConfig{
 		PublicModel: "gpt-4.1-mini",
 		Protocol:    string(engine.ProtocolNativeOpenAI),
 		Capability:  "chat",
@@ -212,24 +212,24 @@ func (d *fakeRuntimeDistributor) PublishActiveRuntimeSnapshot(_ context.Context,
 	return nil
 }
 
-func seedSnapshotConfig(t *testing.T, ctx context.Context, service *admin.Service, model string) {
+func seedSnapshotConfig(t *testing.T, ctx context.Context, service *configadmin.Service, model string) {
 	t.Helper()
-	if _, err := service.CreateAPIKey(ctx, admin.APIKey{TenantID: "tenant", ProjectID: "project", PlaintextKey: "tg-test"}); err != nil {
+	if _, err := service.CreateAPIKey(ctx, configadmin.APIKey{TenantID: "tenant", ProjectID: "project", PlaintextKey: "tg-test"}); err != nil {
 		t.Fatalf("CreateAPIKey() error = %v", err)
 	}
-	if _, err := service.UpsertModel(ctx, admin.ModelConfig{PublicModel: model, Protocol: string(engine.ProtocolNativeOpenAI), Capability: "chat", Enabled: true}); err != nil {
+	if _, err := service.UpsertModel(ctx, configadmin.ModelConfig{PublicModel: model, Protocol: string(engine.ProtocolNativeOpenAI), Capability: "chat", Enabled: true}); err != nil {
 		t.Fatalf("UpsertModel() error = %v", err)
 	}
-	if _, err := service.UpsertChannel(ctx, admin.ChannelConfig{
+	if _, err := service.UpsertChannel(ctx, configadmin.ChannelConfig{
 		ID:           "channel_1",
 		ProviderType: "openai_compatible",
 		BaseURL:      "mock://openai",
 		Enabled:      true,
-		Models:       []admin.ChannelModel{{PublicModel: model, UpstreamModel: model}},
+		Models:       []configadmin.ChannelModel{{PublicModel: model, UpstreamModel: model}},
 	}); err != nil {
 		t.Fatalf("UpsertChannel() error = %v", err)
 	}
-	if _, err := service.UpsertRoute(ctx, admin.RoutePolicyConfig{PublicModel: model, Candidates: []admin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}}}); err != nil {
+	if _, err := service.UpsertRoute(ctx, configadmin.RoutePolicyConfig{PublicModel: model, Candidates: []configadmin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}}}); err != nil {
 		t.Fatalf("UpsertRoute() error = %v", err)
 	}
 }

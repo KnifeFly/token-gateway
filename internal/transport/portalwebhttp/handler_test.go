@@ -12,12 +12,11 @@ import (
 	portalrepo "github.com/KnifeFly/token-gateway/internal/app/portal/repository"
 	portalservice "github.com/KnifeFly/token-gateway/internal/app/portal/service"
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
-	"github.com/KnifeFly/token-gateway/internal/portal"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 )
 
@@ -149,9 +148,9 @@ func testPortalWebHandler(t *testing.T) (http.Handler, portalWebTestIDs) {
 	t.Helper()
 
 	ctx := context.Background()
-	adminRepo := admin.NewMemoryRepository()
-	adminService := admin.NewService(adminRepo, nil, nil)
-	if _, err := adminService.CreateAPIKey(ctx, admin.APIKey{
+	adminRepo := configadmin.NewMemoryRepository()
+	adminService := configadmin.NewService(adminRepo, nil, nil)
+	if _, err := adminService.CreateAPIKey(ctx, configadmin.APIKey{
 		ID:            "key_current",
 		TenantID:      "tenant_1",
 		ProjectID:     "project_1",
@@ -161,7 +160,7 @@ func testPortalWebHandler(t *testing.T) (http.Handler, portalWebTestIDs) {
 	}); err != nil {
 		t.Fatalf("CreateAPIKey(current) error = %v", err)
 	}
-	if _, err := adminService.CreateAPIKey(ctx, admin.APIKey{
+	if _, err := adminService.CreateAPIKey(ctx, configadmin.APIKey{
 		ID:            "key_other_project",
 		TenantID:      "tenant_1",
 		ProjectID:     "project_2",
@@ -252,7 +251,9 @@ func testPortalWebHandler(t *testing.T) (http.Handler, portalWebTestIDs) {
 	webService := portalservice.New(
 		dpsnapshot.NewProvider(dpsnapshot.NewStore(indexed)),
 		auth.NewSnapshotAuthenticator(),
-		portal.NewService(adminService, reportService, taskRepo),
+		adminService,
+		reportService,
+		taskRepo,
 		portalrepo.NewMemorySessionStore(),
 	)
 	registrar := NewHandler(webService, nil)
