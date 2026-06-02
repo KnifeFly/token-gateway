@@ -184,6 +184,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminChannel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchAdminChannel"];
+        trace?: never;
+    };
     "/api/admin/v1/channels/{channel_id}/test": {
         parameters: {
             query?: never;
@@ -194,6 +210,70 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["testAdminChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/rotate-credential": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rotateAdminChannelCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/sync-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewAdminChannelSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/sync-apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["applyAdminChannelSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/channels/{channel_id}/health-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminChannelHealthEvents"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -531,6 +611,122 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        AdminChannelListResponse: {
+            data: components["schemas"]["AdminChannelView"][];
+        };
+        AdminChannelView: {
+            id: string;
+            provider_type: string;
+            base_url: string;
+            credential_configured: boolean;
+            enabled: boolean;
+            /** Format: int64 */
+            timeout_millis?: number;
+            model_count: number;
+            health_status?: string;
+            test_status?: string;
+            cost_config_status?: string;
+            route_policy_hints?: components["schemas"]["AdminRoutePolicyHint"][];
+            models?: components["schemas"]["AdminChannelModelView"][];
+        };
+        AdminChannelModelView: {
+            public_model: string;
+            upstream_model: string;
+            capabilities?: string[];
+            supported_parameters?: string[];
+            health_status?: string;
+            test_status?: string;
+            cost_config_status?: string;
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        AdminRoutePolicyHint: {
+            route_id: string;
+            public_model: string;
+            strategy?: string;
+            enabled: boolean;
+            priority: number;
+            weight: number;
+        };
+        AdminChannelUpsertRequest: {
+            id?: string;
+            provider_type?: string;
+            base_url?: string;
+            api_key?: string;
+            credential_ref?: string;
+            enabled?: boolean;
+            /** Format: int64 */
+            timeout_millis?: number;
+            models?: components["schemas"]["AdminChannelModelInput"][];
+        };
+        AdminChannelCredentialRotationRequest: {
+            api_key: string;
+        };
+        AdminChannelModelInput: {
+            public_model: string;
+            upstream_model: string;
+            capabilities?: string[];
+            supported_parameters?: string[];
+            health_status?: string;
+            test_status?: string;
+            cost_config_status?: string;
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        AdminChannelTestResult: {
+            channel_id: string;
+            status: string;
+            message: string;
+            credential_configured: boolean;
+            model_count: number;
+            /** Format: date-time */
+            tested_at: string;
+        };
+        AdminChannelSyncRequest: {
+            channel_id?: string;
+            provider_type?: string;
+            upstream_models: components["schemas"]["AdminChannelModelInput"][];
+        };
+        AdminChannelSyncPreview: {
+            channel_id: string;
+            provider_type?: string;
+            added?: components["schemas"]["AdminChannelModelPreviewItem"][];
+            removed?: components["schemas"]["AdminChannelModelPreviewItem"][];
+            changed?: components["schemas"]["AdminChannelModelPreviewItem"][];
+            unchanged: number;
+            warnings?: string[];
+        };
+        AdminChannelModelPreviewItem: {
+            public_model: string;
+            upstream_model?: string;
+            current_upstream_model?: string;
+            health_status?: string;
+            test_status?: string;
+            cost_config_status?: string;
+            known_catalog_model: boolean;
+            customer_price_configured: boolean;
+        };
+        AdminChannelSyncApplyResult: {
+            channel_id: string;
+            /** Format: date-time */
+            applied_at: string;
+            preview: components["schemas"]["AdminChannelSyncPreview"];
+            channel: components["schemas"]["AdminChannelView"];
+        };
+        AdminChannelHealthEventListResponse: {
+            data: components["schemas"]["AdminChannelHealthEvent"][];
+        };
+        AdminChannelHealthEvent: {
+            id: string;
+            channel_id: string;
+            status: string;
+            source: string;
+            message: string;
+            /** Format: date-time */
+            observed_at: string;
+        };
         ErrorEnvelope: {
             error: components["schemas"]["ErrorBody"];
         };
@@ -835,7 +1031,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["ListResponse"];
+            /** @description Safe channel list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelListResponse"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -846,9 +1050,71 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: components["requestBodies"]["JSONBody"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChannelUpsertRequest"];
+            };
+        };
         responses: {
-            200: components["responses"]["ObjectResponse"];
+            /** @description Safe channel read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe channel read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    patchAdminChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChannelUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe channel read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelView"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -863,6 +1129,119 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Safe channel test result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelTestResult"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    rotateAdminChannelCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChannelCredentialRotationRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe channel read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    previewAdminChannelSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChannelSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Non-persistent channel model sync preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelSyncPreview"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    applyAdminChannelSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminChannelSyncRequest"];
+            };
+        };
+        responses: {
+            /** @description Persisted channel model sync result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelSyncApplyResult"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminChannelHealthEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                channel_id: components["parameters"]["ChannelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe synthetic channel health events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelHealthEventListResponse"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -877,7 +1256,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["ObjectResponse"];
+            /** @description Safe channel read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelView"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -892,7 +1279,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["ObjectResponse"];
+            /** @description Safe channel read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminChannelView"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };

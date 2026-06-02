@@ -1,3 +1,4 @@
+import { ChannelManagementPanel } from "../features/channels/ChannelManagementPanel";
 import { RoutePlanPanel } from "../features/route-plan/RoutePlanPanel";
 import { AdminNavigation } from "../shared/layout/AdminNavigation";
 import { AdminTopbar } from "../shared/layout/AdminTopbar";
@@ -11,6 +12,7 @@ export function App() {
       <section className="workspace" aria-label={adminCopy.workspaceLabel}>
         <AdminTopbar />
         <RoutePlanPanel />
+        <ChannelManagementPanel />
       </section>
     </main>
   );

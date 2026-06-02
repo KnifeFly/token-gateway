@@ -232,7 +232,11 @@ paths:
         - adminSession: []
       responses:
         "200":
-          $ref: "#/components/responses/ListResponse"
+          description: Safe channel list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelListResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
@@ -244,10 +248,60 @@ paths:
           idempotencyKey: []
           reasonHeader: []
       requestBody:
-        $ref: "#/components/requestBodies/JSONBody"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelUpsertRequest"
       responses:
         "200":
-          $ref: "#/components/responses/ObjectResponse"
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminChannel
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      tags: [Admin Web Config]
+      operationId: patchAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelUpsertRequest"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/channels/{channel_id}/test:
@@ -262,6 +316,107 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ChannelID"
       responses:
+        "200":
+          description: Safe channel test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelTestResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/rotate-credential:
+    post:
+      tags: [Admin Web Config]
+      operationId: rotateAdminChannelCredential
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelCredentialRotationRequest"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/sync-preview:
+    post:
+      tags: [Admin Web Config]
+      operationId: previewAdminChannelSync
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelSyncRequest"
+      responses:
+        "200":
+          description: Non-persistent channel model sync preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelSyncPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/sync-apply:
+    post:
+      tags: [Admin Web Config]
+      operationId: applyAdminChannelSync
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelSyncRequest"
+      responses:
+        "200":
+          description: Persisted channel model sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelSyncApplyResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/health-events:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminChannelHealthEvents
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe synthetic channel health events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelHealthEventListResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/channels/{channel_id}/disable:
@@ -277,7 +432,11 @@ paths:
         - $ref: "#/components/parameters/ChannelID"
       responses:
         "200":
-          $ref: "#/components/responses/ObjectResponse"
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/channels/{channel_id}/enable:
@@ -293,7 +452,11 @@ paths:
         - $ref: "#/components/parameters/ChannelID"
       responses:
         "200":
-          $ref: "#/components/responses/ObjectResponse"
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/routes:
@@ -735,6 +898,256 @@ components:
           items:
             type: object
             additionalProperties: true
+    AdminChannelListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelView"
+    AdminChannelView:
+      type: object
+      required: [id, provider_type, base_url, credential_configured, enabled, model_count]
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+        credential_configured:
+          type: boolean
+        enabled:
+          type: boolean
+        timeout_millis:
+          type: integer
+          format: int64
+        model_count:
+          type: integer
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        route_policy_hints:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRoutePolicyHint"
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelView"
+    AdminChannelModelView:
+      type: object
+      required: [public_model, upstream_model]
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminRoutePolicyHint:
+      type: object
+      required: [route_id, public_model, enabled, priority, weight]
+      properties:
+        route_id:
+          type: string
+        public_model:
+          type: string
+        strategy:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        weight:
+          type: integer
+    AdminChannelUpsertRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+        credential_ref:
+          type: string
+        enabled:
+          type: boolean
+        timeout_millis:
+          type: integer
+          format: int64
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelInput"
+    AdminChannelCredentialRotationRequest:
+      type: object
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+          writeOnly: true
+    AdminChannelModelInput:
+      type: object
+      required: [public_model, upstream_model]
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminChannelTestResult:
+      type: object
+      required: [channel_id, status, message, credential_configured, model_count, tested_at]
+      properties:
+        channel_id:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        credential_configured:
+          type: boolean
+        model_count:
+          type: integer
+        tested_at:
+          type: string
+          format: date-time
+    AdminChannelSyncRequest:
+      type: object
+      required: [upstream_models]
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        upstream_models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelInput"
+    AdminChannelSyncPreview:
+      type: object
+      required: [channel_id, unchanged]
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        added:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelPreviewItem"
+        removed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelPreviewItem"
+        changed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelPreviewItem"
+        unchanged:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+    AdminChannelModelPreviewItem:
+      type: object
+      required: [public_model, known_catalog_model, customer_price_configured]
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        current_upstream_model:
+          type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        known_catalog_model:
+          type: boolean
+        customer_price_configured:
+          type: boolean
+    AdminChannelSyncApplyResult:
+      type: object
+      required: [channel_id, applied_at, preview, channel]
+      properties:
+        channel_id:
+          type: string
+        applied_at:
+          type: string
+          format: date-time
+        preview:
+          $ref: "#/components/schemas/AdminChannelSyncPreview"
+        channel:
+          $ref: "#/components/schemas/AdminChannelView"
+    AdminChannelHealthEventListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelHealthEvent"
+    AdminChannelHealthEvent:
+      type: object
+      required: [id, channel_id, status, source, message, observed_at]
+      properties:
+        id:
+          type: string
+        channel_id:
+          type: string
+        status:
+          type: string
+        source:
+          type: string
+        message:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
     ErrorEnvelope:
       type: object
       required: [error]

@@ -235,6 +235,112 @@ nav a:hover {
   padding: 18px;
 }
 
+.channel-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.channel-layout {
+  display: grid;
+  gap: 16px;
+}
+
+.channel-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.channel-section h3 {
+  margin: 0;
+  color: #101828;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.channel-table {
+  margin-top: 0;
+}
+
+.channel-row {
+  grid-template-columns: 1.3fr 0.8fr 0.6fr 0.7fr 0.5fr 1.8fr;
+}
+
+.coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.coverage-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.coverage-item {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid #e1e7f0;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 14px;
+}
+
+.coverage-item strong,
+.coverage-item span,
+.coverage-item small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.coverage-item strong {
+  color: #101828;
+  font-size: 14px;
+}
+
+.coverage-item span,
+.coverage-item small {
+  color: #667085;
+  font-size: 13px;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inline-actions span {
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.endpoint-list {
+  display: grid;
+  gap: 8px;
+}
+
+.endpoint-list code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border: 1px solid #d7e4ff;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344054;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+}
+
+.channel-guardrail {
+  background: #f8fbff;
+  border-color: #cfe0ff;
+}
+
 .table {
   display: grid;
   margin-top: 18px;
@@ -334,7 +440,9 @@ nav a:hover {
   }
 
   .route-grid,
-  .route-meta {
+  .route-meta,
+  .coverage-grid,
+  .coverage-grid.compact {
     grid-template-columns: 1fr;
   }
 
@@ -363,5 +471,9 @@ nav a:hover {
 
   .table-row {
     min-width: 620px;
+  }
+
+  .channel-row {
+    min-width: 900px;
   }
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
@@ -111,35 +113,200 @@ func (s *Service) ListChannels(ctx context.Context, actor adminapp.Actor) (admin
 	}
 	views := make([]adminapp.ChannelView, 0, len(cfg.Channels))
 	for _, channel := range cfg.Channels {
-		views = append(views, safeChannel(channel))
+		views = append(views, safeChannel(channel, cfg.Routes))
 	}
 	return adminapp.ListResponse[adminapp.ChannelView]{Data: views}, nil
 }
 
+// GetChannel returns one safe channel read model without credential material.
+func (s *Service) GetChannel(ctx context.Context, actor adminapp.Actor, channelID string) (adminapp.ChannelView, error) {
+	if err := s.Authorize(actor, "read", "channel"); err != nil {
+		return adminapp.ChannelView{}, err
+	}
+	cfg, err := s.snapshotConfig(ctx)
+	if err != nil {
+		return adminapp.ChannelView{}, err
+	}
+	channel, ok := findChannel(cfg.Channels, channelID)
+	if !ok {
+		return adminapp.ChannelView{}, apperr.NotFound("channel not found")
+	}
+	return safeChannel(channel, cfg.Routes), nil
+}
+
 // UpsertChannel writes channel configuration through the control-plane owner service.
-func (s *Service) UpsertChannel(ctx context.Context, actor adminapp.Actor, request configadmin.ChannelConfig, opts adminapp.MutationOptions) (*configadmin.ChannelConfig, error) {
-	return mutate(ctx, s, actor, opts, "write", "channel", request.ID, request, func() (*configadmin.ChannelConfig, error) {
-		return s.owner.UpsertChannel(ctx, request)
+func (s *Service) UpsertChannel(ctx context.Context, actor adminapp.Actor, request configadmin.ChannelConfig, opts adminapp.MutationOptions) (adminapp.ChannelView, error) {
+	return mutate(ctx, s, actor, opts, "write", "channel", request.ID, request, func() (adminapp.ChannelView, error) {
+		cfg, err := s.snapshotConfig(ctx)
+		if err != nil {
+			return adminapp.ChannelView{}, err
+		}
+		updated, err := s.owner.UpsertChannel(ctx, request)
+		if err != nil {
+			return adminapp.ChannelView{}, err
+		}
+		return safeChannel(*updated, cfg.Routes), nil
+	})
+}
+
+// PatchChannel updates selected channel fields while preserving credential material.
+func (s *Service) PatchChannel(ctx context.Context, actor adminapp.Actor, channelID string, request configadmin.ChannelConfig, opts adminapp.MutationOptions) (adminapp.ChannelView, error) {
+	request.ID = channelID
+	return mutate(ctx, s, actor, opts, "write", "channel", channelID, request, func() (adminapp.ChannelView, error) {
+		cfg, err := s.snapshotConfig(ctx)
+		if err != nil {
+			return adminapp.ChannelView{}, err
+		}
+		current, ok := findChannel(cfg.Channels, channelID)
+		if !ok {
+			return adminapp.ChannelView{}, apperr.NotFound("channel not found")
+		}
+
+		merged := mergeChannel(current, request)
+		updated, err := s.owner.UpsertChannel(ctx, merged)
+		if err != nil {
+			return adminapp.ChannelView{}, err
+		}
+		return safeChannel(*updated, cfg.Routes), nil
 	})
 }
 
 // SetChannelEnabled updates a channel enabled flag through the control-plane owner service.
-func (s *Service) SetChannelEnabled(ctx context.Context, actor adminapp.Actor, channelID string, enabled bool, opts adminapp.MutationOptions) (*configadmin.ChannelConfig, error) {
+func (s *Service) SetChannelEnabled(ctx context.Context, actor adminapp.Actor, channelID string, enabled bool, opts adminapp.MutationOptions) (adminapp.ChannelView, error) {
 	request := map[string]any{"id": channelID, "enabled": enabled}
-	return mutate(ctx, s, actor, opts, "write", "channel", channelID, request, func() (*configadmin.ChannelConfig, error) {
+	return mutate(ctx, s, actor, opts, "write", "channel", channelID, request, func() (adminapp.ChannelView, error) {
 		cfg, err := s.snapshotConfig(ctx)
 		if err != nil {
-			return nil, err
+			return adminapp.ChannelView{}, err
 		}
 		for _, channel := range cfg.Channels {
 			if channel.ID == channelID {
 				channel.Enabled = enabled
 				channel.EnabledSet = true
-				return s.owner.UpsertChannel(ctx, channel)
+				updated, err := s.owner.UpsertChannel(ctx, channel)
+				if err != nil {
+					return adminapp.ChannelView{}, err
+				}
+				return safeChannel(*updated, cfg.Routes), nil
 			}
 		}
-		return nil, apperr.NotFound("channel not found")
+		return adminapp.ChannelView{}, apperr.NotFound("channel not found")
 	})
+}
+
+// RotateChannelCredential rotates provider credential material without returning it.
+func (s *Service) RotateChannelCredential(ctx context.Context, actor adminapp.Actor, channelID string, apiKey string, opts adminapp.MutationOptions) (adminapp.ChannelView, error) {
+	request := map[string]string{"id": channelID, "api_key": apiKey}
+	return mutate(ctx, s, actor, opts, "write", "channel", channelID, request, func() (adminapp.ChannelView, error) {
+		if strings.TrimSpace(apiKey) == "" {
+			return adminapp.ChannelView{}, apperr.InvalidArgument("api_key is required")
+		}
+		cfg, err := s.snapshotConfig(ctx)
+		if err != nil {
+			return adminapp.ChannelView{}, err
+		}
+		current, ok := findChannel(cfg.Channels, channelID)
+		if !ok {
+			return adminapp.ChannelView{}, apperr.NotFound("channel not found")
+		}
+		current.APIKey = apiKey
+		current.EnabledSet = true
+		updated, err := s.owner.UpsertChannel(ctx, current)
+		if err != nil {
+			return adminapp.ChannelView{}, err
+		}
+		return safeChannel(*updated, cfg.Routes), nil
+	})
+}
+
+// TestChannel returns a safe readiness check for channel configuration.
+func (s *Service) TestChannel(ctx context.Context, actor adminapp.Actor, channelID string, opts adminapp.MutationOptions) (adminapp.ChannelTestResult, error) {
+	request := map[string]string{"id": channelID}
+	return mutate(ctx, s, actor, opts, "write", "channel", channelID, request, func() (adminapp.ChannelTestResult, error) {
+		cfg, err := s.snapshotConfig(ctx)
+		if err != nil {
+			return adminapp.ChannelTestResult{}, err
+		}
+		channel, ok := findChannel(cfg.Channels, channelID)
+		if !ok {
+			return adminapp.ChannelTestResult{}, apperr.NotFound("channel not found")
+		}
+		status := "ready"
+		message := "channel configuration is ready for provider test execution"
+		if !channel.Enabled {
+			status = "disabled"
+			message = "channel is disabled"
+		} else if !credentialConfigured(channel) {
+			status = "warning"
+			message = "provider credential is not configured"
+		} else if len(channel.Models) == 0 {
+			status = "warning"
+			message = "channel has no model coverage"
+		}
+		return adminapp.ChannelTestResult{
+			ChannelID:            channel.ID,
+			Status:               status,
+			Message:              message,
+			CredentialConfigured: credentialConfigured(channel),
+			ModelCount:           len(channel.Models),
+			TestedAt:             s.now(),
+		}, nil
+	})
+}
+
+// PreviewChannelModelSync returns a non-persistent upstream model diff for one channel.
+func (s *Service) PreviewChannelModelSync(ctx context.Context, actor adminapp.Actor, request configadmin.ChannelModelSyncPreviewRequest, opts adminapp.MutationOptions) (*configadmin.ChannelModelSyncPreview, error) {
+	return mutate(ctx, s, actor, opts, "write", "channel", request.ChannelID, request, func() (*configadmin.ChannelModelSyncPreview, error) {
+		return s.owner.PreviewChannelModelSync(ctx, request)
+	})
+}
+
+// ApplyChannelModelSync persists upstream model sync results for one channel.
+func (s *Service) ApplyChannelModelSync(ctx context.Context, actor adminapp.Actor, request configadmin.ChannelModelSyncPreviewRequest, opts adminapp.MutationOptions) (adminapp.ChannelSyncApplyResult, error) {
+	return mutate(ctx, s, actor, opts, "write", "channel", request.ChannelID, request, func() (adminapp.ChannelSyncApplyResult, error) {
+		preview, err := s.owner.PreviewChannelModelSync(ctx, request)
+		if err != nil {
+			return adminapp.ChannelSyncApplyResult{}, err
+		}
+		cfg, err := s.snapshotConfig(ctx)
+		if err != nil {
+			return adminapp.ChannelSyncApplyResult{}, err
+		}
+		current, ok := findChannel(cfg.Channels, request.ChannelID)
+		if !ok {
+			return adminapp.ChannelSyncApplyResult{}, apperr.NotFound("channel not found")
+		}
+		current.Models = request.UpstreamModels
+		current.EnabledSet = true
+		updated, err := s.owner.UpsertChannel(ctx, current)
+		if err != nil {
+			return adminapp.ChannelSyncApplyResult{}, err
+		}
+		return adminapp.ChannelSyncApplyResult{
+			ChannelID: updated.ID,
+			AppliedAt: s.now(),
+			Preview:   preview,
+			Channel:   safeChannel(*updated, cfg.Routes),
+		}, nil
+	})
+}
+
+// ListChannelHealthEvents returns safe synthetic health events for one channel.
+func (s *Service) ListChannelHealthEvents(ctx context.Context, actor adminapp.Actor, channelID string) (adminapp.ListResponse[adminapp.ChannelHealthEvent], error) {
+	if err := s.Authorize(actor, "read", "channel"); err != nil {
+		return adminapp.ListResponse[adminapp.ChannelHealthEvent]{}, err
+	}
+	cfg, err := s.snapshotConfig(ctx)
+	if err != nil {
+		return adminapp.ListResponse[adminapp.ChannelHealthEvent]{}, err
+	}
+	channel, ok := findChannel(cfg.Channels, channelID)
+	if !ok {
+		return adminapp.ListResponse[adminapp.ChannelHealthEvent]{}, apperr.NotFound("channel not found")
+	}
+	return adminapp.ListResponse[adminapp.ChannelHealthEvent]{
+		Data: channelHealthEvents(channel, s.now()),
+	}, nil
 }
 
 // ListRoutes returns route policy read models.
@@ -204,14 +371,19 @@ func safeAPIKey(key configadmin.APIKey) adminapp.APIKeyView {
 	}
 }
 
-func safeChannel(channel configadmin.ChannelConfig) adminapp.ChannelView {
+func safeChannel(channel configadmin.ChannelConfig, routes []configadmin.RoutePolicyConfig) adminapp.ChannelView {
 	view := adminapp.ChannelView{
 		ID:                   channel.ID,
 		ProviderType:         channel.ProviderType,
 		BaseURL:              channel.BaseURL,
-		CredentialConfigured: channel.CredentialRef != "" || channel.EncryptedAPIKey != "",
+		CredentialConfigured: credentialConfigured(channel),
 		Enabled:              channel.Enabled,
 		TimeoutMillis:        channel.TimeoutMillis,
+		ModelCount:           len(channel.Models),
+		HealthStatus:         aggregateHealthStatus(channel),
+		TestStatus:           aggregateTestStatus(channel),
+		CostConfigStatus:     aggregateCostConfigStatus(channel),
+		RoutePolicyHints:     routePolicyHints(channel.ID, routes),
 	}
 	if view.TimeoutMillis == 0 && channel.Timeout > 0 {
 		view.TimeoutMillis = channel.Timeout.Milliseconds()
@@ -229,4 +401,144 @@ func safeChannel(channel configadmin.ChannelConfig) adminapp.ChannelView {
 		})
 	}
 	return view
+}
+
+func findChannel(channels []configadmin.ChannelConfig, channelID string) (configadmin.ChannelConfig, bool) {
+	channelID = strings.TrimSpace(channelID)
+	for _, channel := range channels {
+		if channel.ID == channelID {
+			return channel, true
+		}
+	}
+	return configadmin.ChannelConfig{}, false
+}
+
+func mergeChannel(current configadmin.ChannelConfig, patch configadmin.ChannelConfig) configadmin.ChannelConfig {
+	if strings.TrimSpace(patch.ProviderType) != "" {
+		current.ProviderType = patch.ProviderType
+	}
+	if strings.TrimSpace(patch.BaseURL) != "" {
+		current.BaseURL = patch.BaseURL
+	}
+	if strings.TrimSpace(patch.CredentialRef) != "" {
+		current.CredentialRef = patch.CredentialRef
+	}
+	if strings.TrimSpace(patch.APIKey) != "" {
+		current.APIKey = patch.APIKey
+	}
+	if patch.TimeoutMillis > 0 {
+		current.TimeoutMillis = patch.TimeoutMillis
+	}
+	if patch.Timeout > 0 {
+		current.Timeout = patch.Timeout
+	}
+	if patch.Models != nil {
+		current.Models = patch.Models
+	}
+	if patch.EnabledSet {
+		current.Enabled = patch.Enabled
+	}
+	current.EnabledSet = true
+	return current
+}
+
+func credentialConfigured(channel configadmin.ChannelConfig) bool {
+	return strings.TrimSpace(channel.CredentialRef) != "" || strings.TrimSpace(channel.EncryptedAPIKey) != ""
+}
+
+func aggregateHealthStatus(channel configadmin.ChannelConfig) string {
+	if !channel.Enabled {
+		return "disabled"
+	}
+	if len(channel.Models) == 0 {
+		return "unmapped"
+	}
+	healthy := false
+	for _, model := range channel.Models {
+		status := strings.ToLower(strings.TrimSpace(model.HealthStatus))
+		switch status {
+		case "failed", "error", "unhealthy", "degraded":
+			return "degraded"
+		case "healthy", "ok", "passed":
+			healthy = true
+		}
+	}
+	if healthy {
+		return "healthy"
+	}
+	return "unknown"
+}
+
+func aggregateTestStatus(channel configadmin.ChannelConfig) string {
+	if len(channel.Models) == 0 {
+		return "untested"
+	}
+	tested := false
+	for _, model := range channel.Models {
+		status := strings.ToLower(strings.TrimSpace(model.TestStatus))
+		switch status {
+		case "failed", "error":
+			return "failed"
+		case "passed", "success", "ok":
+			tested = true
+		}
+	}
+	if tested {
+		return "passed"
+	}
+	return "untested"
+}
+
+func aggregateCostConfigStatus(channel configadmin.ChannelConfig) string {
+	if len(channel.Models) == 0 {
+		return "unknown"
+	}
+	for _, model := range channel.Models {
+		if strings.ToLower(strings.TrimSpace(model.CostConfigStatus)) != "configured" {
+			return "incomplete"
+		}
+	}
+	return "configured"
+}
+
+func routePolicyHints(channelID string, routes []configadmin.RoutePolicyConfig) []adminapp.RoutePolicyHint {
+	var hints []adminapp.RoutePolicyHint
+	for _, route := range routes {
+		for _, candidate := range route.Candidates {
+			if candidate.ChannelID != channelID {
+				continue
+			}
+			hints = append(hints, adminapp.RoutePolicyHint{
+				RouteID:     route.ID,
+				PublicModel: route.PublicModel,
+				Strategy:    route.Strategy,
+				Enabled:     route.Enabled,
+				Priority:    candidate.Priority,
+				Weight:      candidate.Weight,
+			})
+		}
+	}
+	return hints
+}
+
+func channelHealthEvents(channel configadmin.ChannelConfig, observedAt time.Time) []adminapp.ChannelHealthEvent {
+	events := []adminapp.ChannelHealthEvent{{
+		ID:         "health_" + channel.ID + "_summary",
+		ChannelID:  channel.ID,
+		Status:     aggregateHealthStatus(channel),
+		Source:     "channel_config",
+		Message:    "channel health summary from safe admin read model",
+		ObservedAt: observedAt,
+	}}
+	for _, model := range channel.Models {
+		events = append(events, adminapp.ChannelHealthEvent{
+			ID:         "health_" + channel.ID + "_" + model.PublicModel,
+			ChannelID:  channel.ID,
+			Status:     strings.TrimSpace(model.HealthStatus),
+			Source:     "channel_model",
+			Message:    "model " + model.PublicModel + " maps to upstream " + model.UpstreamModel,
+			ObservedAt: observedAt,
+		})
+	}
+	return events
 }

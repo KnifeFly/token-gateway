@@ -212,6 +212,11 @@ type ChannelView struct {
 	CredentialConfigured bool               `json:"credential_configured"`
 	Enabled              bool               `json:"enabled"`
 	TimeoutMillis        int64              `json:"timeout_millis,omitempty"`
+	ModelCount           int                `json:"model_count"`
+	HealthStatus         string             `json:"health_status,omitempty"`
+	TestStatus           string             `json:"test_status,omitempty"`
+	CostConfigStatus     string             `json:"cost_config_status,omitempty"`
+	RoutePolicyHints     []RoutePolicyHint  `json:"route_policy_hints,omitempty"`
 	Models               []ChannelModelView `json:"models,omitempty"`
 }
 
@@ -225,6 +230,44 @@ type ChannelModelView struct {
 	TestStatus          string          `json:"test_status,omitempty"`
 	CostConfigStatus    string          `json:"cost_config_status,omitempty"`
 	Metadata            json.RawMessage `json:"metadata,omitempty"`
+}
+
+// RoutePolicyHint is a safe read-only route candidate summary for one channel.
+type RoutePolicyHint struct {
+	RouteID     string `json:"route_id"`
+	PublicModel string `json:"public_model"`
+	Strategy    string `json:"strategy,omitempty"`
+	Enabled     bool   `json:"enabled"`
+	Priority    int    `json:"priority"`
+	Weight      int    `json:"weight"`
+}
+
+// ChannelHealthEvent is a synthetic safe channel health read model.
+type ChannelHealthEvent struct {
+	ID         string    `json:"id"`
+	ChannelID  string    `json:"channel_id"`
+	Status     string    `json:"status"`
+	Source     string    `json:"source"`
+	Message    string    `json:"message"`
+	ObservedAt time.Time `json:"observed_at"`
+}
+
+// ChannelTestResult is a safe result for Admin channel test workflow.
+type ChannelTestResult struct {
+	ChannelID            string    `json:"channel_id"`
+	Status               string    `json:"status"`
+	Message              string    `json:"message"`
+	CredentialConfigured bool      `json:"credential_configured"`
+	ModelCount           int       `json:"model_count"`
+	TestedAt             time.Time `json:"tested_at"`
+}
+
+// ChannelSyncApplyResult summarizes persisted channel model sync changes.
+type ChannelSyncApplyResult struct {
+	ChannelID string      `json:"channel_id"`
+	AppliedAt time.Time   `json:"applied_at"`
+	Preview   any         `json:"preview"`
+	Channel   ChannelView `json:"channel"`
 }
 
 // SnapshotSummary describes active and rollback runtime snapshot state.
