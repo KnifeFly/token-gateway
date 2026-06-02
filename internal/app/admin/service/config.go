@@ -282,26 +282,7 @@ func (s *Service) TestChannel(ctx context.Context, actor adminapp.Actor, channel
 		if !ok {
 			return adminapp.ChannelTestResult{}, apperr.NotFound("channel not found")
 		}
-		status := "ready"
-		message := "channel configuration is ready for provider test execution"
-		if !channel.Enabled {
-			status = "disabled"
-			message = "channel is disabled"
-		} else if !credentialConfigured(channel) {
-			status = "warning"
-			message = "provider credential is not configured"
-		} else if len(channel.Models) == 0 {
-			status = "warning"
-			message = "channel has no model coverage"
-		}
-		return adminapp.ChannelTestResult{
-			ChannelID:            channel.ID,
-			Status:               status,
-			Message:              message,
-			CredentialConfigured: credentialConfigured(channel),
-			ModelCount:           len(channel.Models),
-			TestedAt:             s.now(),
-		}, nil
+		return channelReadiness(channel, s.now()), nil
 	})
 }
 
@@ -534,7 +515,9 @@ func mergeChannel(current configadmin.ChannelConfig, patch configadmin.ChannelCo
 }
 
 func credentialConfigured(channel configadmin.ChannelConfig) bool {
-	return strings.TrimSpace(channel.CredentialRef) != "" || strings.TrimSpace(channel.EncryptedAPIKey) != ""
+	return strings.TrimSpace(channel.APIKey) != "" ||
+		strings.TrimSpace(channel.CredentialRef) != "" ||
+		strings.TrimSpace(channel.EncryptedAPIKey) != ""
 }
 
 func aggregateHealthStatus(channel configadmin.ChannelConfig) string {

@@ -59,6 +59,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/v1/task-logs", h.withSession(h.listTaskLogs))
 	mux.HandleFunc("GET /api/admin/v1/task-logs/", h.withSession(h.taskLogByTaskID))
 
+	mux.HandleFunc("POST /api/admin/v1/playground/run", h.withSession(h.runPlayground))
+	mux.HandleFunc("POST /api/admin/v1/playground/import-preview", h.withSession(h.previewPlaygroundImport))
+	mux.HandleFunc("POST /api/admin/v1/playground/export", h.withSession(h.exportPlayground))
+
 	mux.HandleFunc("GET /api/admin/v1/models", h.withSession(h.listModels))
 	mux.HandleFunc("POST /api/admin/v1/models", h.withSession(h.upsertModel))
 	mux.HandleFunc("POST /api/admin/v1/models/sync-preview", h.withSession(h.previewModelCatalogSync))

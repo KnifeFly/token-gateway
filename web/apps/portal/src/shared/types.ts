@@ -10,6 +10,7 @@ export type ModelDetail = PortalSchemas["ModelDetailResponse"];
 export type ModelList = PortalSchemas["ModelListResponse"];
 export type ModelSchema = PortalSchemas["ModelSchemaResponse"];
 export type Onboarding = PortalSchemas["OnboardingState"];
+export type PlaygroundRunResult = PortalSchemas["PlaygroundRunResult"];
 export type ProjectSettings = PortalSchemas["ProjectSettings"];
 export type Session = PortalSchemas["PortalSessionResponse"];
 export type TaskList = PortalSchemas["TaskListResponse"];

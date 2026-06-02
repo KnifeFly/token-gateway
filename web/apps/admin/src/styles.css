@@ -723,6 +723,126 @@ nav a:hover {
   font-size: 13px;
 }
 
+.tools-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.tools-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
+  gap: 16px;
+}
+
+.tools-section {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.tools-section h3 {
+  margin: 0;
+  color: #101828;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.tools-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid #e4e7ec;
+  border-radius: 8px;
+}
+
+.tools-row {
+  display: grid;
+  grid-template-columns: 0.8fr 1.5fr 0.8fr;
+  min-height: 46px;
+  align-items: center;
+  border-top: 1px solid #e4e7ec;
+  background: #ffffff;
+}
+
+.tools-row:first-child {
+  border-top: 0;
+}
+
+.tools-row.head {
+  background: #f8fafc;
+}
+
+.tools-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  color: #344054;
+  font-size: 13px;
+}
+
+.tools-row.head span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.debug-summary {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d7e4ff;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 14px;
+}
+
+.debug-summary strong {
+  color: #101828;
+  font-size: 14px;
+}
+
+.debug-summary dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.debug-summary dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #dfe7f5;
+  padding-top: 8px;
+}
+
+.debug-summary dt {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.debug-summary dd {
+  margin: 0;
+  color: #344054;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.tools-hint-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.tools-hint-grid span {
+  border: 1px solid #d7e4ff;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #344054;
+  font-size: 13px;
+  padding: 12px;
+}
+
 .table {
   display: grid;
   margin-top: 18px;
@@ -850,6 +970,8 @@ nav a:hover {
   .account-detail-grid,
   .api-key-detail-grid,
   .activity-detail-grid,
+  .tools-layout,
+  .tools-hint-grid,
   .account-summary-grid {
     grid-template-columns: 1fr;
   }
@@ -900,5 +1022,13 @@ nav a:hover {
   .activity-usage-row,
   .activity-task-row {
     min-width: 1160px;
+  }
+
+  .tools-table {
+    overflow-x: auto;
+  }
+
+  .tools-row {
+    min-width: 760px;
   }
 }

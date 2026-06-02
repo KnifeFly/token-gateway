@@ -4,6 +4,7 @@ import { APIKeyManagementPanel } from "../features/api-keys/APIKeyManagementPane
 import { ChannelManagementPanel } from "../features/channels/ChannelManagementPanel";
 import { ModelManagementPanel } from "../features/models/ModelManagementPanel";
 import { RoutePlanPanel } from "../features/route-plan/RoutePlanPanel";
+import { ToolsPlaygroundPanel } from "../features/tools/ToolsPlaygroundPanel";
 import { AdminNavigation } from "../shared/layout/AdminNavigation";
 import { AdminTopbar } from "../shared/layout/AdminTopbar";
 import { adminCopy } from "../shared/i18n";
@@ -21,6 +22,7 @@ export function App() {
         <CustomerAccountsPanel />
         <APIKeyManagementPanel />
         <ActivityLogsPanel />
+        <ToolsPlaygroundPanel />
       </section>
     </main>
   );

@@ -183,6 +183,32 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/playground/run:
+    post:
+      tags:
+        - Portal Web Playground
+      summary: Run a customer-scoped playground dry-run
+      operationId: runPortalPlayground
+      security:
+        - portalSession: []
+          csrfHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaygroundRunRequest"
+      responses:
+        "200":
+          description: Safe playground dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaygroundRunResult"
+        "400":
+          $ref: "#/components/responses/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
   /api/portal/v1/credits:
     get:
       tags:
@@ -803,6 +829,127 @@ components:
         schema:
           type: object
           additionalProperties: true
+    PlaygroundRunRequest:
+      type: object
+      required:
+        - model
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        stream:
+          type: boolean
+        debug:
+          type: boolean
+        payload:
+          type: object
+          additionalProperties: true
+    PlaygroundRunResult:
+      type: object
+      required:
+        - request_id
+        - scope
+        - status
+        - message
+        - model
+        - mode
+        - stream
+        - payload_fields
+        - schema
+        - debug
+        - result
+        - ran_at
+      properties:
+        request_id:
+          type: string
+        scope:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        model:
+          type: string
+        mode:
+          type: string
+        stream:
+          type: boolean
+        payload_fields:
+          type: array
+          items:
+            type: string
+        schema:
+          $ref: "#/components/schemas/PlaygroundSchemaSummary"
+        debug:
+          $ref: "#/components/schemas/PlaygroundDebug"
+        result:
+          $ref: "#/components/schemas/PlaygroundSafeResult"
+        ran_at:
+          type: string
+          format: date-time
+    PlaygroundSchemaSummary:
+      type: object
+      required:
+        - required
+        - accepted_fields
+      properties:
+        required:
+          type: array
+          items:
+            type: string
+        accepted_fields:
+          type: array
+          items:
+            type: string
+        missing_required:
+          type: array
+          items:
+            type: string
+    PlaygroundDebug:
+      type: object
+      required:
+        - latency_ms
+        - usage
+      properties:
+        route_id:
+          type: string
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        latency_ms:
+          type: integer
+          format: int64
+        usage:
+          $ref: "#/components/schemas/PlaygroundUsage"
+        safe_error_code:
+          type: string
+        safe_error_message:
+          type: string
+    PlaygroundUsage:
+      type: object
+      required:
+        - input_tokens
+        - output_tokens
+        - total_tokens
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+    PlaygroundSafeResult:
+      type: object
+      required:
+        - object
+        - summary
+      properties:
+        object:
+          type: string
+        summary:
+          type: string
     CreditsResponse:
       type: object
       required:

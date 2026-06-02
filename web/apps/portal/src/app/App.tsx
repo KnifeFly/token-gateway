@@ -23,6 +23,7 @@ import type {
   ModelDetail,
   ModelList,
   ModelSchema,
+  PlaygroundRunResult,
   PortalSchemas,
   ProjectSettings,
   Session,
@@ -93,6 +94,7 @@ export function App() {
   const [tasks, setTasks] = useState<TaskList>();
   const [usageFilters, setUsageFilters] = useState<ActivityFilters>(emptyActivityFilters);
   const [taskFilters, setTaskFilters] = useState<ActivityFilters>(emptyActivityFilters);
+  const [playgroundResult, setPlaygroundResult] = useState<PlaygroundRunResult>();
   const [settings, setSettings] = useState<ProjectSettings>();
   const [derivedName, setDerivedName] = useState("");
   const [derivedModels, setDerivedModels] = useState("");
@@ -285,6 +287,7 @@ export function App() {
       setTasks(undefined);
       setUsageFilters(emptyActivityFilters);
       setTaskFilters(emptyActivityFilters);
+      setPlaygroundResult(undefined);
       setSettings(undefined);
       setDerivedName("");
       setDerivedModels("");
@@ -364,6 +367,7 @@ export function App() {
   async function handleSelectModel(modelID: string) {
     setBusy(true);
     setMessage("");
+    setPlaygroundResult(undefined);
     try {
       await loadModelDetail(modelID);
     } catch (error) {
@@ -398,6 +402,23 @@ export function App() {
         activityQueryPath("/api/portal/v1/tasks", taskFilters)
       );
       setTasks(nextTasks);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRunPlayground(request: PortalSchemas["PlaygroundRunRequest"]) {
+    setBusy(true);
+    setMessage("");
+    setPlaygroundResult(undefined);
+    try {
+      const result = await portalRequest<PlaygroundRunResult>("/api/portal/v1/playground/run", {
+        method: "POST",
+        body: request
+      });
+      setPlaygroundResult(result);
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -482,7 +503,17 @@ export function App() {
             selectedModel={selectedModel}
           />
         ) : null}
-        {activeView === "playground" ? <PlaygroundView /> : null}
+        {activeView === "playground" ? (
+          <PlaygroundView
+            busy={busy}
+            modelSchema={modelSchema}
+            models={models}
+            onRun={handleRunPlayground}
+            onSelectModel={handleSelectModel}
+            result={playgroundResult}
+            selectedModel={selectedModel}
+          />
+        ) : null}
         {activeView === "api-keys" ? (
           <APIKeysView
             apiKeys={apiKeys}

@@ -97,6 +97,22 @@ func TestPortalWebLoginDashboardAPIKeyAndLogout(t *testing.T) {
 		t.Fatalf("task filter leaked unsafe data: %s", taskRec.Body.String())
 	}
 
+	playgroundReq := httptest.NewRequest(http.MethodPost, "/api/portal/v1/playground/run", strings.NewReader(`{
+		"model":"gpt-public",
+		"mode":"chat",
+		"payload":{"model":"gpt-public","input":"do not return prompt","api_key":"sk_leak"}
+	}`))
+	playgroundReq.Header.Set(csrfHeaderName, login.CSRFToken)
+	playgroundReq.AddCookie(cookie)
+	playgroundRec := httptest.NewRecorder()
+	handler.ServeHTTP(playgroundRec, playgroundReq)
+	if playgroundRec.Code != http.StatusOK || !strings.Contains(playgroundRec.Body.String(), `"scope":"portal"`) || !strings.Contains(playgroundRec.Body.String(), `"channel_id":"channel_primary"`) {
+		t.Fatalf("playground status = %d, body = %s", playgroundRec.Code, playgroundRec.Body.String())
+	}
+	if strings.Contains(playgroundRec.Body.String(), "do not return prompt") || strings.Contains(playgroundRec.Body.String(), "sk_leak") || strings.Contains(playgroundRec.Body.String(), "key_hash") {
+		t.Fatalf("playground leaked unsafe data: %s", playgroundRec.Body.String())
+	}
+
 	createReq := httptest.NewRequest(http.MethodPost, "/api/portal/v1/api-keys", strings.NewReader(`{"name":"derived","allowed_models":["gpt-public"]}`))
 	createReq.AddCookie(cookie)
 	createRec := httptest.NewRecorder()
@@ -341,6 +357,22 @@ func testPortalWebHandler(t *testing.T) (http.Handler, portalWebTestIDs) {
 			Capability:  "image",
 			Schema:      json.RawMessage(`{"type":"object"}`),
 			Enabled:     true,
+		}},
+		Channels: []cpsnapshot.ChannelRuntime{{
+			ID:           "channel_primary",
+			ProviderType: "openai",
+			APIKey:       "sk_should_not_return",
+			Enabled:      true,
+			Models: []cpsnapshot.ChannelModelRuntime{{
+				PublicModel:   "gpt-public",
+				UpstreamModel: "gpt-upstream",
+			}},
+		}},
+		RoutePolicies: []cpsnapshot.RoutePolicyRuntime{{
+			ID:          "route_gpt_public",
+			PublicModel: "gpt-public",
+			Strategy:    "priority",
+			Candidates:  []cpsnapshot.RouteCandidateRuntime{{ChannelID: "channel_primary", Priority: 1, Weight: 100}},
 		}},
 		PriceRules: []cpsnapshot.PriceRuleRuntime{{
 			PublicModel: "gpt-public",

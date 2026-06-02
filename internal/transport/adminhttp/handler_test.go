@@ -217,6 +217,71 @@ func TestAdminModelWorkflows(t *testing.T) {
 	}
 }
 
+func TestAdminPlaygroundWorkflows(t *testing.T) {
+	mux, _ := testMux(t)
+	cookie, csrf := loginOperator(t, mux, "admin@example.com", "admin-local")
+
+	model := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/models", `{
+		"public_model":"gpt-public",
+		"display_name":"GPT Public",
+		"protocol":"native_openai",
+		"capability":"chat",
+		"schema":{"type":"object","required":["model","input"],"properties":{"model":{"type":"string"},"input":{"type":"string"}}},
+		"enabled":true
+	}`, cookie, csrf, "playground_model")
+	if model.Code != http.StatusOK {
+		t.Fatalf("playground model status=%d body=%s", model.Code, model.Body.String())
+	}
+
+	channel := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/channels", `{
+		"id":"channel_primary",
+		"provider_type":"openai",
+		"base_url":"https://provider.example/v1",
+		"api_key":"sk_should_not_return",
+		"enabled":true,
+		"models":[{"public_model":"gpt-public","upstream_model":"gpt-upstream","health_status":"healthy","test_status":"passed","cost_config_status":"configured"}]
+	}`, cookie, csrf, "playground_channel")
+	if channel.Code != http.StatusOK {
+		t.Fatalf("playground channel status=%d body=%s", channel.Code, channel.Body.String())
+	}
+
+	run := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/playground/run", `{
+		"model":"gpt-public",
+		"channel_id":"channel_primary",
+		"mode":"chat",
+		"debug":true,
+		"payload":{"model":"gpt-public","input":"do not return prompt","api_key":"sk_leak"}
+	}`, cookie, csrf, "playground_run")
+	if run.Code != http.StatusOK || !strings.Contains(run.Body.String(), `"scope":"admin"`) || !strings.Contains(run.Body.String(), `"channel_id":"channel_primary"`) || !strings.Contains(run.Body.String(), `"status":"ready"`) {
+		t.Fatalf("playground run status=%d body=%s", run.Code, run.Body.String())
+	}
+	if strings.Contains(run.Body.String(), "do not return prompt") || strings.Contains(run.Body.String(), "sk_leak") || strings.Contains(run.Body.String(), "sk_should_not_return") {
+		t.Fatalf("playground run leaked unsafe content: %s", run.Body.String())
+	}
+
+	preview := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/playground/import-preview", `{
+		"payload":{"model":"gpt-public","input":"secret prompt","api_key":"sk_import"}
+	}`, cookie, csrf, "playground_import")
+	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), `"redacted_fields"`) {
+		t.Fatalf("playground import status=%d body=%s", preview.Code, preview.Body.String())
+	}
+	if strings.Contains(preview.Body.String(), "secret prompt") || strings.Contains(preview.Body.String(), "sk_import") {
+		t.Fatalf("playground import leaked unsafe content: %s", preview.Body.String())
+	}
+
+	exported := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/playground/export", `{
+		"model":"gpt-public",
+		"mode":"chat",
+		"payload":{"model":"gpt-public","input":"secret export","credential":"private"}
+	}`, cookie, csrf, "playground_export")
+	if exported.Code != http.StatusOK || !strings.Contains(exported.Body.String(), `"omitted_fields"`) {
+		t.Fatalf("playground export status=%d body=%s", exported.Code, exported.Body.String())
+	}
+	if strings.Contains(exported.Body.String(), "secret export") || strings.Contains(exported.Body.String(), "private") {
+		t.Fatalf("playground export leaked unsafe content: %s", exported.Body.String())
+	}
+}
+
 func TestAdminCustomerAccountWorkflows(t *testing.T) {
 	mux, _ := testMux(t)
 	cookie, csrf := loginOperator(t, mux, "admin@example.com", "admin-local")

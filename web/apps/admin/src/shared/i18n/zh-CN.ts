@@ -250,6 +250,41 @@ export const adminCopy = {
       exportReady: "导出只使用 safe DTO，后续接入审计留痕。"
     }
   },
+  tools: {
+    title: "调试工具",
+    subtitle: "T08 接入结构定义驱动操练场，并让渠道测试复用同一套安全执行器。",
+    status: "P24-T08",
+    sections: {
+      playground: "操练场",
+      channelTest: "渠道测试复用",
+      importExport: "导入导出",
+      safeDebug: "安全调试"
+    },
+    columns: {
+      item: "项目",
+      endpoint: "接口",
+      scope: "范围",
+      status: "状态"
+    },
+    actions: {
+      run: "运行校验",
+      importPreview: "导入预览",
+      export: "安全导出",
+      channelTest: "渠道测试"
+    },
+    state: {
+      ready: "就绪",
+      warning: "需处理",
+      dryRun: "安全校验",
+      shared: "复用执行器"
+    },
+    hints: {
+      schema: "请求字段来自模型结构定义，不提供任意原始请求代理。",
+      scope: "Admin 可指定渠道做受控测试；Portal 只能使用客户项目范围。",
+      debug: "调试只展示请求 ID、路由、渠道、耗时、用量和安全错误。",
+      export: "导入导出会移除密钥、凭证、提示词、响应和媒体原文。"
+    }
+  },
   session: {
     signedIn: "已登录",
     signedOut: "未登录"

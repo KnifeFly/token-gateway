@@ -360,6 +360,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/playground/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["runAdminPlayground"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/playground/import-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewAdminPlaygroundImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/playground/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["exportAdminPlayground"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/models": {
         parameters: {
             query?: never;
@@ -1385,6 +1433,91 @@ export interface components {
             /** Format: date-time */
             tested_at: string;
         };
+        AdminPlaygroundRunRequest: {
+            model: string;
+            channel_id?: string;
+            mode?: string;
+            stream?: boolean;
+            debug?: boolean;
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        AdminPlaygroundRunResult: {
+            request_id: string;
+            scope: string;
+            status: string;
+            message: string;
+            model: string;
+            mode: string;
+            stream: boolean;
+            payload_fields: string[];
+            schema: components["schemas"]["AdminPlaygroundSchemaSummary"];
+            debug: components["schemas"]["AdminPlaygroundDebug"];
+            result: components["schemas"]["AdminPlaygroundSafeResult"];
+            /** Format: date-time */
+            ran_at: string;
+        };
+        AdminPlaygroundSchemaSummary: {
+            required: string[];
+            accepted_fields: string[];
+            missing_required?: string[];
+        };
+        AdminPlaygroundDebug: {
+            route_id?: string;
+            channel_id?: string;
+            provider_type?: string;
+            /** Format: int64 */
+            latency_ms: number;
+            usage: components["schemas"]["AdminPlaygroundUsage"];
+            safe_error_code?: string;
+            safe_error_message?: string;
+            channel_test?: components["schemas"]["AdminChannelTestResult"];
+        };
+        AdminPlaygroundUsage: {
+            input_tokens: number;
+            output_tokens: number;
+            total_tokens: number;
+        };
+        AdminPlaygroundSafeResult: {
+            object: string;
+            summary: string;
+        };
+        AdminPlaygroundImportPreviewRequest: {
+            payload: {
+                [key: string]: unknown;
+            };
+        };
+        AdminPlaygroundImportPreview: {
+            model?: string;
+            mode?: string;
+            payload: {
+                [key: string]: unknown;
+            };
+            payload_fields: string[];
+            redacted_fields?: string[];
+            safe: boolean;
+            message: string;
+            /** Format: date-time */
+            previewed_at: string;
+        };
+        AdminPlaygroundExportRequest: {
+            model: string;
+            mode?: string;
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        AdminPlaygroundExport: {
+            model: string;
+            mode: string;
+            payload: {
+                [key: string]: unknown;
+            };
+            omitted_fields?: string[];
+            /** Format: date-time */
+            exported_at: string;
+        };
         AdminChannelSyncRequest: {
             channel_id?: string;
             provider_type?: string;
@@ -2092,6 +2225,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminTaskLogDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    runAdminPlayground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPlaygroundRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe Admin playground dry-run result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPlaygroundRunResult"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    previewAdminPlaygroundImport: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPlaygroundImportPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe Admin playground import preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPlaygroundImportPreview"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    exportAdminPlayground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminPlaygroundExportRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe Admin playground export */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminPlaygroundExport"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

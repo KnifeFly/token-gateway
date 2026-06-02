@@ -140,6 +140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portal/v1/playground/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run a customer-scoped playground dry-run */
+        post: operations["runPortalPlayground"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/v1/credits": {
         parameters: {
             query?: never;
@@ -420,6 +437,54 @@ export interface components {
             schema: {
                 [key: string]: unknown;
             };
+        };
+        PlaygroundRunRequest: {
+            model: string;
+            mode?: string;
+            stream?: boolean;
+            debug?: boolean;
+            payload?: {
+                [key: string]: unknown;
+            };
+        };
+        PlaygroundRunResult: {
+            request_id: string;
+            scope: string;
+            status: string;
+            message: string;
+            model: string;
+            mode: string;
+            stream: boolean;
+            payload_fields: string[];
+            schema: components["schemas"]["PlaygroundSchemaSummary"];
+            debug: components["schemas"]["PlaygroundDebug"];
+            result: components["schemas"]["PlaygroundSafeResult"];
+            /** Format: date-time */
+            ran_at: string;
+        };
+        PlaygroundSchemaSummary: {
+            required: string[];
+            accepted_fields: string[];
+            missing_required?: string[];
+        };
+        PlaygroundDebug: {
+            route_id?: string;
+            channel_id?: string;
+            provider_type?: string;
+            /** Format: int64 */
+            latency_ms: number;
+            usage: components["schemas"]["PlaygroundUsage"];
+            safe_error_code?: string;
+            safe_error_message?: string;
+        };
+        PlaygroundUsage: {
+            input_tokens: number;
+            output_tokens: number;
+            total_tokens: number;
+        };
+        PlaygroundSafeResult: {
+            object: string;
+            summary: string;
         };
         CreditsResponse: {
             success: boolean;
@@ -730,6 +795,32 @@ export interface operations {
             };
             401: components["responses"]["ErrorResponse"];
             404: components["responses"]["ErrorResponse"];
+        };
+    };
+    runPortalPlayground: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaygroundRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe playground dry-run result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaygroundRunResult"];
+                };
+            };
+            400: components["responses"]["ErrorResponse"];
+            401: components["responses"]["ErrorResponse"];
         };
     };
     getPortalCredits: {

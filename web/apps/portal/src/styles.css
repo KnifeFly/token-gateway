@@ -301,6 +301,102 @@ nav button:hover {
   margin-bottom: 14px;
 }
 
+.playground-form,
+.schema-fields,
+.playground-result {
+  display: grid;
+  gap: 12px;
+}
+
+.playground-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.playground-form label span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #344054;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.playground-form input,
+.playground-form select {
+  width: 100%;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.checkbox-line {
+  grid-template-columns: max-content max-content 1fr;
+  align-items: center;
+}
+
+.checkbox-line input {
+  width: 16px;
+  height: 16px;
+}
+
+.checkbox-line small,
+.schema-fields small {
+  color: #667085;
+  font-weight: 600;
+}
+
+.section-title {
+  color: #101828;
+  font-weight: 800;
+}
+
+.playground-result {
+  margin-bottom: 18px;
+}
+
+.result-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.result-line strong {
+  color: #101828;
+  font-size: 14px;
+}
+
+.playground-result dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.playground-result dl div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #e6ebf2;
+  padding-top: 8px;
+}
+
+.playground-result dt {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.playground-result dd {
+  margin: 0;
+  color: #344054;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .table {
   display: grid;
   overflow: hidden;

@@ -581,6 +581,78 @@ paths:
                 $ref: "#/components/schemas/AdminTaskLogDetail"
         default:
           $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/playground/run:
+    post:
+      tags: [Admin Web Operations]
+      operationId: runAdminPlayground
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlaygroundRunRequest"
+      responses:
+        "200":
+          description: Safe Admin playground dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlaygroundRunResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/playground/import-preview:
+    post:
+      tags: [Admin Web Operations]
+      operationId: previewAdminPlaygroundImport
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlaygroundImportPreviewRequest"
+      responses:
+        "200":
+          description: Safe Admin playground import preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlaygroundImportPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/playground/export:
+    post:
+      tags: [Admin Web Operations]
+      operationId: exportAdminPlayground
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlaygroundExportRequest"
+      responses:
+        "200":
+          description: Safe Admin playground export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlaygroundExport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/models:
     get:
       tags: [Admin Web Config]
@@ -2452,6 +2524,171 @@ components:
         model_count:
           type: integer
         tested_at:
+          type: string
+          format: date-time
+    AdminPlaygroundRunRequest:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+        channel_id:
+          type: string
+        mode:
+          type: string
+        stream:
+          type: boolean
+        debug:
+          type: boolean
+        payload:
+          type: object
+          additionalProperties: true
+    AdminPlaygroundRunResult:
+      type: object
+      required: [request_id, scope, status, message, model, mode, stream, payload_fields, schema, debug, result, ran_at]
+      properties:
+        request_id:
+          type: string
+        scope:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        model:
+          type: string
+        mode:
+          type: string
+        stream:
+          type: boolean
+        payload_fields:
+          type: array
+          items:
+            type: string
+        schema:
+          $ref: "#/components/schemas/AdminPlaygroundSchemaSummary"
+        debug:
+          $ref: "#/components/schemas/AdminPlaygroundDebug"
+        result:
+          $ref: "#/components/schemas/AdminPlaygroundSafeResult"
+        ran_at:
+          type: string
+          format: date-time
+    AdminPlaygroundSchemaSummary:
+      type: object
+      required: [required, accepted_fields]
+      properties:
+        required:
+          type: array
+          items:
+            type: string
+        accepted_fields:
+          type: array
+          items:
+            type: string
+        missing_required:
+          type: array
+          items:
+            type: string
+    AdminPlaygroundDebug:
+      type: object
+      required: [latency_ms, usage]
+      properties:
+        route_id:
+          type: string
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        latency_ms:
+          type: integer
+          format: int64
+        usage:
+          $ref: "#/components/schemas/AdminPlaygroundUsage"
+        safe_error_code:
+          type: string
+        safe_error_message:
+          type: string
+        channel_test:
+          $ref: "#/components/schemas/AdminChannelTestResult"
+    AdminPlaygroundUsage:
+      type: object
+      required: [input_tokens, output_tokens, total_tokens]
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+    AdminPlaygroundSafeResult:
+      type: object
+      required: [object, summary]
+      properties:
+        object:
+          type: string
+        summary:
+          type: string
+    AdminPlaygroundImportPreviewRequest:
+      type: object
+      required: [payload]
+      properties:
+        payload:
+          type: object
+          additionalProperties: true
+    AdminPlaygroundImportPreview:
+      type: object
+      required: [payload, payload_fields, safe, message, previewed_at]
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        payload_fields:
+          type: array
+          items:
+            type: string
+        redacted_fields:
+          type: array
+          items:
+            type: string
+        safe:
+          type: boolean
+        message:
+          type: string
+        previewed_at:
+          type: string
+          format: date-time
+    AdminPlaygroundExportRequest:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    AdminPlaygroundExport:
+      type: object
+      required: [model, mode, payload, exported_at]
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        omitted_fields:
+          type: array
+          items:
+            type: string
+        exported_at:
           type: string
           format: date-time
     AdminChannelSyncRequest:

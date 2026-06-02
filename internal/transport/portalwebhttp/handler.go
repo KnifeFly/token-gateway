@@ -35,6 +35,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/portal/v1/onboarding", h.withSession(h.onboarding))
 	mux.HandleFunc("GET /api/portal/v1/models", h.withSession(h.models))
 	mux.HandleFunc("GET /api/portal/v1/models/", h.withSession(h.modelSchema))
+	mux.HandleFunc("POST /api/portal/v1/playground/run", h.withSession(h.runPlayground))
 	mux.HandleFunc("GET /api/portal/v1/credits", h.withSession(h.credits))
 	mux.HandleFunc("GET /api/portal/v1/usage", h.withSession(h.usage))
 	mux.HandleFunc("GET /api/portal/v1/usage/export", h.notImplemented("usage export is reserved"))

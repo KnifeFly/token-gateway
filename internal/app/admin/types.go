@@ -530,6 +530,97 @@ type ChannelTestResult struct {
 	TestedAt             time.Time `json:"tested_at"`
 }
 
+// PlaygroundRunRequest asks Admin Playground to validate and dry-run one model payload.
+type PlaygroundRunRequest struct {
+	Model     string          `json:"model"`
+	ChannelID string          `json:"channel_id,omitempty"`
+	Mode      string          `json:"mode,omitempty"`
+	Stream    bool            `json:"stream,omitempty"`
+	Debug     bool            `json:"debug,omitempty"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
+}
+
+// PlaygroundRunResult returns safe debug metadata without raw prompt or response bodies.
+type PlaygroundRunResult struct {
+	RequestID     string                  `json:"request_id"`
+	Scope         string                  `json:"scope"`
+	Status        string                  `json:"status"`
+	Message       string                  `json:"message"`
+	Model         string                  `json:"model"`
+	Mode          string                  `json:"mode"`
+	Stream        bool                    `json:"stream"`
+	PayloadFields []string                `json:"payload_fields"`
+	Schema        PlaygroundSchemaSummary `json:"schema"`
+	Debug         PlaygroundDebug         `json:"debug"`
+	Result        PlaygroundSafeResult    `json:"result"`
+	RanAt         time.Time               `json:"ran_at"`
+}
+
+// PlaygroundSchemaSummary summarizes schema-driven validation.
+type PlaygroundSchemaSummary struct {
+	Required        []string `json:"required"`
+	AcceptedFields  []string `json:"accepted_fields"`
+	MissingRequired []string `json:"missing_required,omitempty"`
+}
+
+// PlaygroundDebug is a redacted route and execution summary.
+type PlaygroundDebug struct {
+	RouteID          string             `json:"route_id,omitempty"`
+	ChannelID        string             `json:"channel_id,omitempty"`
+	ProviderType     string             `json:"provider_type,omitempty"`
+	LatencyMillis    int64              `json:"latency_ms"`
+	Usage            PlaygroundUsage    `json:"usage"`
+	SafeErrorCode    string             `json:"safe_error_code,omitempty"`
+	SafeErrorMessage string             `json:"safe_error_message,omitempty"`
+	ChannelTest      *ChannelTestResult `json:"channel_test,omitempty"`
+}
+
+// PlaygroundUsage is a coarse safe token estimate for dry-run debug.
+type PlaygroundUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+// PlaygroundSafeResult is the sanitized execution result shown to operators.
+type PlaygroundSafeResult struct {
+	Object  string `json:"object"`
+	Summary string `json:"summary"`
+}
+
+// PlaygroundImportPreviewRequest previews a pasted playground payload without executing it.
+type PlaygroundImportPreviewRequest struct {
+	Payload json.RawMessage `json:"payload"`
+}
+
+// PlaygroundImportPreview returns safe import metadata and redaction decisions.
+type PlaygroundImportPreview struct {
+	Model          string          `json:"model,omitempty"`
+	Mode           string          `json:"mode,omitempty"`
+	Payload        json.RawMessage `json:"payload"`
+	PayloadFields  []string        `json:"payload_fields"`
+	RedactedFields []string        `json:"redacted_fields,omitempty"`
+	Safe           bool            `json:"safe"`
+	Message        string          `json:"message"`
+	PreviewedAt    time.Time       `json:"previewed_at"`
+}
+
+// PlaygroundExportRequest builds a safe portable playground payload.
+type PlaygroundExportRequest struct {
+	Model   string          `json:"model"`
+	Mode    string          `json:"mode,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// PlaygroundExport returns a sanitized payload export without secrets or raw debug output.
+type PlaygroundExport struct {
+	Model         string          `json:"model"`
+	Mode          string          `json:"mode"`
+	Payload       json.RawMessage `json:"payload"`
+	OmittedFields []string        `json:"omitted_fields,omitempty"`
+	ExportedAt    time.Time       `json:"exported_at"`
+}
+
 // ChannelSyncApplyResult summarizes persisted channel model sync changes.
 type ChannelSyncApplyResult struct {
 	ChannelID string      `json:"channel_id"`

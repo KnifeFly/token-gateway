@@ -256,6 +256,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "api_key"}, {Action: "write", Resource: "api_key"},
 		{Action: "read", Resource: "model"}, {Action: "write", Resource: "model"},
 		{Action: "read", Resource: "channel"}, {Action: "write", Resource: "channel"},
+		{Action: "read", Resource: "playground"}, {Action: "write", Resource: "playground"},
 		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
 		{Action: "read", Resource: "route"}, {Action: "write", Resource: "route"},
 		{Action: "read", Resource: "pricing"}, {Action: "write", Resource: "pricing"},
@@ -277,6 +278,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "tenant"}, {Action: "read", Resource: "project"},
 		{Action: "read", Resource: "customer_account"},
 		{Action: "read", Resource: "api_key"}, {Action: "read", Resource: "model"},
+		{Action: "read", Resource: "playground"}, {Action: "write", Resource: "playground"},
 		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
 		{Action: "read", Resource: "callback"},
 	},
@@ -287,6 +289,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "callback"}, {Action: "retry", Resource: "callback"},
 		{Action: "read", Resource: "worker"}, {Action: "read", Resource: "hold"},
 		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
+		{Action: "read", Resource: "playground"}, {Action: "write", Resource: "playground"},
 	},
 	adminapp.RoleReadOnly: {
 		{Action: "read", Resource: "dashboard"},
@@ -298,7 +301,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "snapshot"}, {Action: "read", Resource: "settlement"},
 		{Action: "read", Resource: "callback"}, {Action: "read", Resource: "worker"},
 		{Action: "read", Resource: "hold"}, {Action: "read", Resource: "usage"},
-		{Action: "read", Resource: "task"},
+		{Action: "read", Resource: "task"}, {Action: "read", Resource: "playground"},
 	},
 }
 

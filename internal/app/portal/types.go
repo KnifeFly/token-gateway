@@ -2,6 +2,7 @@ package portal
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -197,6 +198,62 @@ type ModelSchemaResponse struct {
 	Model   string         `json:"model"`
 	Version string         `json:"version"`
 	Schema  map[string]any `json:"schema"`
+}
+
+// PlaygroundRunRequest asks Portal Playground to validate and dry-run one customer-scoped payload.
+type PlaygroundRunRequest struct {
+	Model   string          `json:"model"`
+	Mode    string          `json:"mode,omitempty"`
+	Stream  bool            `json:"stream,omitempty"`
+	Debug   bool            `json:"debug,omitempty"`
+	Payload json.RawMessage `json:"payload,omitempty"`
+}
+
+// PlaygroundRunResult returns safe customer-visible debug metadata.
+type PlaygroundRunResult struct {
+	RequestID     string                  `json:"request_id"`
+	Scope         string                  `json:"scope"`
+	Status        string                  `json:"status"`
+	Message       string                  `json:"message"`
+	Model         string                  `json:"model"`
+	Mode          string                  `json:"mode"`
+	Stream        bool                    `json:"stream"`
+	PayloadFields []string                `json:"payload_fields"`
+	Schema        PlaygroundSchemaSummary `json:"schema"`
+	Debug         PlaygroundDebug         `json:"debug"`
+	Result        PlaygroundSafeResult    `json:"result"`
+	RanAt         time.Time               `json:"ran_at"`
+}
+
+// PlaygroundSchemaSummary summarizes schema-driven validation.
+type PlaygroundSchemaSummary struct {
+	Required        []string `json:"required"`
+	AcceptedFields  []string `json:"accepted_fields"`
+	MissingRequired []string `json:"missing_required,omitempty"`
+}
+
+// PlaygroundDebug is a redacted route and usage summary.
+type PlaygroundDebug struct {
+	RouteID          string          `json:"route_id,omitempty"`
+	ChannelID        string          `json:"channel_id,omitempty"`
+	ProviderType     string          `json:"provider_type,omitempty"`
+	LatencyMillis    int64           `json:"latency_ms"`
+	Usage            PlaygroundUsage `json:"usage"`
+	SafeErrorCode    string          `json:"safe_error_code,omitempty"`
+	SafeErrorMessage string          `json:"safe_error_message,omitempty"`
+}
+
+// PlaygroundUsage is a coarse safe token estimate for dry-run debug.
+type PlaygroundUsage struct {
+	InputTokens  int `json:"input_tokens"`
+	OutputTokens int `json:"output_tokens"`
+	TotalTokens  int `json:"total_tokens"`
+}
+
+// PlaygroundSafeResult is the sanitized dry-run result shown in Portal.
+type PlaygroundSafeResult struct {
+	Object  string `json:"object"`
+	Summary string `json:"summary"`
 }
 
 // CreditsResponse is the customer-facing credits shape.
