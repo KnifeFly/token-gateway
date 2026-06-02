@@ -168,7 +168,7 @@ func (s *Service) ensureAPIKeyActive(ctx context.Context, principal portalapp.Pr
 		return err
 	}
 	for _, key := range keys.Data {
-		if key.ID == principal.APIKeyID && key.Enabled && key.RevokedAt == nil {
+		if key.ID == principal.APIKeyID && key.Enabled && key.RevokedAt == nil && (key.ExpiresAt == nil || key.ExpiresAt.After(s.now())) {
 			return nil
 		}
 	}

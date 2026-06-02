@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net"
 	"regexp"
 	"strings"
 	"time"
@@ -96,6 +97,12 @@ func (s *Service) CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error)
 	if key.TenantID == "" || key.ProjectID == "" {
 		return nil, apperr.InvalidArgument("tenant_id and project_id are required")
 	}
+	key.Name = strings.TrimSpace(key.Name)
+	key.AllowedModels = cleanStrings(key.AllowedModels)
+	key.IPAllowlist = cleanIPAllowlist(key.IPAllowlist)
+	if err := validateIPAllowlist(key.IPAllowlist); err != nil {
+		return nil, err
+	}
 	plaintext := key.PlaintextKey
 	if plaintext == "" {
 		plaintext = newPlaintextKey()
@@ -122,6 +129,53 @@ func (s *Service) ListAPIKeys(ctx context.Context, tenantID, projectID string) (
 	return s.repo.ListAPIKeys(ctx, tenantID, projectID)
 }
 
+// UpdateAPIKey updates safe API key metadata without returning plaintext.
+func (s *Service) UpdateAPIKey(ctx context.Context, key APIKey) (*APIKey, error) {
+	current, err := s.findAPIKey(ctx, key.ID)
+	if err != nil {
+		return nil, err
+	}
+	key.TenantID = current.TenantID
+	key.ProjectID = current.ProjectID
+	key.KeyHash = current.KeyHash
+	key.PlaintextKey = ""
+	key.Enabled = current.Enabled
+	key.RevokedAt = current.RevokedAt
+	key.CreatedAt = current.CreatedAt
+	key.LastUsedAt = current.LastUsedAt
+	key.Name = strings.TrimSpace(key.Name)
+	if key.Name == "" {
+		key.Name = current.Name
+	}
+	key.AllowedModels = cleanStrings(key.AllowedModels)
+	if len(key.AllowedModels) == 0 {
+		key.AllowedModels = append([]string(nil), current.AllowedModels...)
+	}
+	key.IPAllowlist = cleanIPAllowlist(key.IPAllowlist)
+	if key.IPAllowlist == nil {
+		key.IPAllowlist = append([]string(nil), current.IPAllowlist...)
+	}
+	if key.ExpiresAt == nil {
+		key.ExpiresAt = current.ExpiresAt
+	}
+	if err := validateIPAllowlist(key.IPAllowlist); err != nil {
+		return nil, err
+	}
+	return s.repo.UpdateAPIKey(ctx, key)
+}
+
+// EnableAPIKey enables a stored API key and clears revocation metadata.
+func (s *Service) EnableAPIKey(ctx context.Context, keyID string) (*APIKey, error) {
+	key, err := s.findAPIKey(ctx, keyID)
+	if err != nil {
+		return nil, err
+	}
+	key.Enabled = true
+	key.RevokedAt = nil
+	key.PlaintextKey = ""
+	return s.repo.UpdateAPIKey(ctx, *key)
+}
+
 // DisableAPIKey disables an API key and writes fast revocation state.
 func (s *Service) DisableAPIKey(ctx context.Context, keyID string) (*APIKey, error) {
 	now := time.Now().UTC()
@@ -135,6 +189,51 @@ func (s *Service) DisableAPIKey(ctx context.Context, keyID string) (*APIKey, err
 		}
 	}
 	return key, nil
+}
+
+// RotateAPIKey replaces one API key hash and returns the new plaintext once.
+func (s *Service) RotateAPIKey(ctx context.Context, keyID string, plaintext string) (*APIKey, error) {
+	key, err := s.findAPIKey(ctx, keyID)
+	if err != nil {
+		return nil, err
+	}
+	oldHash := key.KeyHash
+	plaintext = strings.TrimSpace(plaintext)
+	if plaintext == "" {
+		plaintext = newPlaintextKey()
+	}
+	key.KeyHash = s.hasher.Hash(plaintext)
+	key.PlaintextKey = ""
+	key.Enabled = true
+	key.RevokedAt = nil
+	updated, err := s.repo.UpdateAPIKey(ctx, *key)
+	if err != nil {
+		return nil, err
+	}
+	if s.revocation != nil && oldHash != "" {
+		if err := s.revocation.Revoke(ctx, oldHash); err != nil {
+			return nil, err
+		}
+	}
+	updated.PlaintextKey = plaintext
+	return updated, nil
+}
+
+func (s *Service) findAPIKey(ctx context.Context, keyID string) (*APIKey, error) {
+	keyID = strings.TrimSpace(keyID)
+	if keyID == "" {
+		return nil, apperr.InvalidArgument("api key id is required")
+	}
+	keys, err := s.repo.ListAPIKeys(ctx, "", "")
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range keys {
+		if key.ID == keyID {
+			return &key, nil
+		}
+	}
+	return nil, apperr.NotFound("api key not found")
 }
 
 // UpsertModel creates or updates a model.
@@ -487,6 +586,23 @@ func cleanStrings(values []string) []string {
 		out = append(out, value)
 	}
 	return out
+}
+
+func cleanIPAllowlist(values []string) []string {
+	return cleanStrings(values)
+}
+
+func validateIPAllowlist(values []string) error {
+	for _, value := range values {
+		if _, _, err := net.ParseCIDR(value); err == nil {
+			continue
+		}
+		if net.ParseIP(value) != nil {
+			continue
+		}
+		return apperr.InvalidArgument("ip_allowlist must contain IP addresses or CIDR ranges")
+	}
+	return nil
 }
 
 func defaultStatus(value string, fallback string) string {

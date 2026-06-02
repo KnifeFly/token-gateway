@@ -3,6 +3,7 @@ import type { PortalBFFComponents } from "@token-gateway/api-client";
 export type PortalSchemas = PortalBFFComponents["schemas"];
 export type APIKey = PortalSchemas["APIKey"];
 export type APIKeyCreateResponse = PortalSchemas["APIKeyCreateResponse"];
+export type APIKeyRotateResponse = PortalSchemas["APIKeyRotateResponse"];
 export type CreditsResponse = PortalSchemas["CreditsResponse"];
 export type Dashboard = PortalSchemas["PortalDashboardResponse"];
 export type ModelDetail = PortalSchemas["ModelDetailResponse"];

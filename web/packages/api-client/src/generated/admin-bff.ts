@@ -136,6 +136,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/api-keys/{key_id}/update": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["updateAdminAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/api-keys/{key_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enableAdminAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/api-keys/{key_id}/disable": {
         parameters: {
             query?: never;
@@ -146,6 +178,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["disableAdminAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/api-keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["rotateAdminAPIKey"];
         delete?: never;
         options?: never;
         head?: never;
@@ -869,19 +917,57 @@ export interface components {
             usage?: components["schemas"]["AdminCustomerUsageRow"][];
             ledger?: components["schemas"]["AdminCustomerLedgerLine"][];
         };
+        AdminAPIKeyListResponse: {
+            data: components["schemas"]["AdminAPIKeyView"][];
+        };
         AdminAPIKeyView: {
             id: string;
             tenant_id: string;
             project_id: string;
             name: string;
+            fingerprint?: string;
             enabled: boolean;
             allowed_models?: string[];
+            ip_allowlist?: string[];
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            usage_summary: components["schemas"]["AdminCustomerUsageSummary"];
             /** Format: date-time */
             revoked_at?: string | null;
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
             updated_at?: string;
+        };
+        AdminAPIKeyCreateRequest: {
+            tenant_id: string;
+            project_id: string;
+            name?: string;
+            allowed_models?: string[];
+            ip_allowlist?: string[];
+            /** Format: date-time */
+            expires_at?: string | null;
+        };
+        AdminAPIKeyUpdateRequest: {
+            name?: string;
+            allowed_models?: string[];
+            ip_allowlist?: string[];
+            /** Format: date-time */
+            expires_at?: string | null;
+        };
+        AdminAPIKeyRotateRequest: {
+            /** @description Optional caller-supplied replacement; omitted generates a new key. */
+            plaintext_key?: string;
+        };
+        AdminAPIKeyCreateResponse: {
+            api_key: components["schemas"]["AdminAPIKeyView"];
+            plaintext_key: string;
+        };
+        AdminAPIKeyRotateResponse: {
+            api_key: components["schemas"]["AdminAPIKeyView"];
+            plaintext_key: string;
         };
         AdminCustomerUsageRow: {
             model?: string;
@@ -1442,7 +1528,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["ListResponse"];
+            /** @description Safe API key metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAPIKeyListResponse"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -1453,9 +1547,71 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: components["requestBodies"]["JSONBody"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAPIKeyCreateRequest"];
+            };
+        };
         responses: {
-            200: components["responses"]["ObjectResponse"];
+            /** @description Created API key and one-time plaintext */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAPIKeyCreateResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateAdminAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: components["parameters"]["KeyID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminAPIKeyUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated API key metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAPIKeyView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    enableAdminAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: components["parameters"]["KeyID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Enabled API key metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAPIKeyView"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -1470,7 +1626,42 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["ObjectResponse"];
+            /** @description Disabled API key metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAPIKeyView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    rotateAdminAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: components["parameters"]["KeyID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminAPIKeyRotateRequest"];
+            };
+        };
+        responses: {
+            /** @description Rotated API key and one-time plaintext */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminAPIKeyRotateResponse"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };

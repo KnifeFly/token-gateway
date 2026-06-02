@@ -71,6 +71,9 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			Hash:          apiKey.KeyHash,
 			Enabled:       apiKey.Enabled,
 			AllowedModels: append([]string(nil), apiKey.AllowedModels...),
+			IPAllowlist:   append([]string(nil), apiKey.IPAllowlist...),
+			ExpiresAt:     cloneTimePtr(apiKey.ExpiresAt),
+			LastUsedAt:    cloneTimePtr(apiKey.LastUsedAt),
 		}
 	}
 	for _, model := range runtime.Models {
@@ -440,6 +443,14 @@ func limitSpecificity(scope engine.LimitScope) int {
 
 func limitKey(scope engine.LimitScope) string {
 	return fmt.Sprintf("limit:%s:%s:%s:%s:%s:%s", scope.TenantID, scope.ProjectID, scope.APIKeyID, scope.PublicModel, scope.ProviderType, scope.ChannelID)
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 // ProviderOption configures a Provider.

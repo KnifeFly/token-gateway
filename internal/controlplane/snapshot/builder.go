@@ -53,6 +53,9 @@ func (b *Builder) Build(ctx context.Context) (*RuntimeSnapshot, error) {
 			KeyHash:       key.KeyHash,
 			Enabled:       key.Enabled,
 			AllowedModels: append([]string(nil), key.AllowedModels...),
+			IPAllowlist:   append([]string(nil), key.IPAllowlist...),
+			ExpiresAt:     cloneTimePtr(key.ExpiresAt),
+			LastUsedAt:    cloneTimePtr(key.LastUsedAt),
 		})
 	}
 	for _, model := range cfg.Models {
@@ -352,6 +355,14 @@ func providerMappingsByModel(channels []configadmin.ChannelConfig) map[string][]
 		}
 	}
 	return out
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func validPhase(phase string) bool {

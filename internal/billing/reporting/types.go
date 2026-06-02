@@ -17,6 +17,7 @@ type TimeRange struct {
 type TenantUsageFilter struct {
 	TenantID  string    `json:"tenant_id"`
 	ProjectID string    `json:"project_id,omitempty"`
+	APIKeyID  string    `json:"api_key_id,omitempty"`
 	Currency  string    `json:"currency,omitempty"`
 	From      time.Time `json:"from,omitempty"`
 	To        time.Time `json:"to,omitempty"`

@@ -22,6 +22,7 @@ type Repository interface {
 	ListProjects(ctx context.Context, tenantID string) ([]Project, error)
 	CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error)
 	ListAPIKeys(ctx context.Context, tenantID, projectID string) ([]APIKey, error)
+	UpdateAPIKey(ctx context.Context, key APIKey) (*APIKey, error)
 	DisableAPIKey(ctx context.Context, keyID string, revokedAt *time.Time) (*APIKey, error)
 	UpsertModel(ctx context.Context, model ModelConfig) (*ModelConfig, error)
 	UpsertChannel(ctx context.Context, channel ChannelConfig) (*ChannelConfig, error)

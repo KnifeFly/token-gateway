@@ -313,6 +313,14 @@ SELECT model, provider_type, channel_id, currency, COUNT(*),
        COALESCE(SUM(total_tokens), 0), COALESCE(SUM(amount_micros), 0)
 FROM usage_records`
 	where, args := reportWhere(filter.TenantID, filter.ProjectID, filter.Currency, filter.From, filter.To)
+	if filter.APIKeyID != "" {
+		if where == "" {
+			where = " WHERE api_key_id = ?"
+		} else {
+			where += " AND api_key_id = ?"
+		}
+		args = append(args, filter.APIKeyID)
+	}
 	query += where + ` GROUP BY model, provider_type, channel_id, currency ORDER BY model, provider_type, channel_id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

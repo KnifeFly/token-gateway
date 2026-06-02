@@ -154,6 +154,9 @@ type APIKeyView struct {
 	Hash          string
 	Enabled       bool
 	AllowedModels []string
+	IPAllowlist   []string
+	ExpiresAt     *time.Time
+	LastUsedAt    *time.Time
 }
 
 // ModelView is the indexed public model view used by routing.

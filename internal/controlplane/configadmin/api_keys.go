@@ -7,16 +7,19 @@ import (
 	"time"
 )
 
+const apiKeySelectColumns = `id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, ip_allowlist_json, expires_at, last_used_at, revoked_at, created_at, updated_at`
+
 // CreateAPIKey stores a hashed API key row.
 func (r *MySQLRepository) CreateAPIKey(ctx context.Context, key APIKey) (*APIKey, error) {
 	if key.ID == "" {
 		key.ID = newID("key")
 	}
 	allowed, _ := json.Marshal(key.AllowedModels)
+	ipAllowlist, _ := json.Marshal(key.IPAllowlist)
 	_, err := r.db.ExecContext(ctx, `
-INSERT INTO cp_api_keys (id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		key.ID, key.TenantID, key.ProjectID, key.Name, key.KeyHash, key.Enabled, allowed)
+INSERT INTO cp_api_keys (id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, ip_allowlist_json, expires_at, last_used_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		key.ID, key.TenantID, key.ProjectID, key.Name, key.KeyHash, key.Enabled, allowed, ipAllowlist, key.ExpiresAt, key.LastUsedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +28,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?)`,
 
 // ListAPIKeys returns API key metadata for the requested scope.
 func (r *MySQLRepository) ListAPIKeys(ctx context.Context, tenantID, projectID string) ([]APIKey, error) {
-	query := `SELECT id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, revoked_at, created_at, updated_at FROM cp_api_keys WHERE 1=1`
+	query := `SELECT ` + apiKeySelectColumns + ` FROM cp_api_keys WHERE 1=1`
 	var args []any
 	if tenantID != "" {
 		query += ` AND tenant_id = ?`
@@ -52,6 +55,22 @@ func (r *MySQLRepository) ListAPIKeys(ctx context.Context, tenantID, projectID s
 	return keys, rows.Err()
 }
 
+// UpdateAPIKey updates safe API key metadata and optional hash material.
+func (r *MySQLRepository) UpdateAPIKey(ctx context.Context, key APIKey) (*APIKey, error) {
+	allowed, _ := json.Marshal(key.AllowedModels)
+	ipAllowlist, _ := json.Marshal(key.IPAllowlist)
+	_, err := r.db.ExecContext(ctx, `
+UPDATE cp_api_keys
+SET name = ?, key_hash = ?, enabled = ?, allowed_models_json = ?, ip_allowlist_json = ?,
+    expires_at = ?, last_used_at = ?, revoked_at = ?, updated_at = CURRENT_TIMESTAMP
+WHERE id = ?`,
+		key.Name, key.KeyHash, key.Enabled, allowed, ipAllowlist, key.ExpiresAt, key.LastUsedAt, key.RevokedAt, key.ID)
+	if err != nil {
+		return nil, err
+	}
+	return r.getAPIKey(ctx, key.ID)
+}
+
 // DisableAPIKey disables an API key and records revocation time.
 func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revokedAt *time.Time) (*APIKey, error) {
 	_, err := r.db.ExecContext(ctx, `UPDATE cp_api_keys SET enabled = FALSE, revoked_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, revokedAt, keyID)
@@ -62,19 +81,32 @@ func (r *MySQLRepository) DisableAPIKey(ctx context.Context, keyID string, revok
 }
 
 func (r *MySQLRepository) getAPIKey(ctx context.Context, id string) (*APIKey, error) {
-	return scanAPIKey(r.db.QueryRowContext(ctx, `SELECT id, tenant_id, project_id, name, key_hash, enabled, allowed_models_json, revoked_at, created_at, updated_at FROM cp_api_keys WHERE id = ?`, id))
+	return scanAPIKey(r.db.QueryRowContext(ctx, `SELECT `+apiKeySelectColumns+` FROM cp_api_keys WHERE id = ?`, id))
 }
 
 func scanAPIKey(row rowScanner) (*APIKey, error) {
 	var key APIKey
 	var allowed []byte
-	var revokedAt sql.NullTime
-	err := row.Scan(&key.ID, &key.TenantID, &key.ProjectID, &key.Name, &key.KeyHash, &key.Enabled, &allowed, &revokedAt, &key.CreatedAt, &key.UpdatedAt)
+	var ipAllowlist []byte
+	var expiresAt, lastUsedAt, revokedAt sql.NullTime
+	err := row.Scan(
+		&key.ID, &key.TenantID, &key.ProjectID, &key.Name, &key.KeyHash, &key.Enabled,
+		&allowed, &ipAllowlist, &expiresAt, &lastUsedAt, &revokedAt, &key.CreatedAt, &key.UpdatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 	if len(allowed) > 0 {
 		_ = json.Unmarshal(allowed, &key.AllowedModels)
+	}
+	if len(ipAllowlist) > 0 {
+		_ = json.Unmarshal(ipAllowlist, &key.IPAllowlist)
+	}
+	if expiresAt.Valid {
+		key.ExpiresAt = &expiresAt.Time
+	}
+	if lastUsedAt.Valid {
+		key.LastUsedAt = &lastUsedAt.Time
 	}
 	if revokedAt.Valid {
 		key.RevokedAt = &revokedAt.Time
@@ -112,6 +144,17 @@ func (r *MemoryRepository) ListAPIKeys(_ context.Context, tenantID, projectID st
 		keys = append(keys, key)
 	}
 	return keys, nil
+}
+
+// UpdateAPIKey updates a stored API key.
+func (r *MemoryRepository) UpdateAPIKey(_ context.Context, key APIKey) (*APIKey, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.apiKeys[key.ID]
+	key.CreatedAt = current.CreatedAt
+	key.UpdatedAt = time.Now().UTC()
+	r.apiKeys[key.ID] = key
+	return clone(key), nil
 }
 
 // DisableAPIKey disables a stored API key and records revocation time.

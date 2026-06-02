@@ -226,6 +226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portal/v1/api-keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate a derived customer API key */
+        post: operations["rotatePortalAPIKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/v1/tasks": {
         parameters: {
             query?: never;
@@ -457,6 +474,12 @@ export interface components {
             name: string;
             enabled: boolean;
             allowed_models: string[];
+            ip_allowlist?: string[];
+            /** Format: date-time */
+            expires_at?: string | null;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            usage_summary?: components["schemas"]["UsageTotals"];
             /** Format: date-time */
             created_at?: string;
             /** Format: date-time */
@@ -465,8 +488,15 @@ export interface components {
         APIKeyCreateRequest: {
             name: string;
             allowed_models?: string[];
+            ip_allowlist?: string[];
+            /** Format: date-time */
+            expires_at?: string | null;
         };
         APIKeyCreateResponse: {
+            api_key: components["schemas"]["APIKey"];
+            plaintext_key: string;
+        };
+        APIKeyRotateResponse: {
             api_key: components["schemas"]["APIKey"];
             plaintext_key: string;
         };
@@ -826,6 +856,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIKey"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            403: components["responses"]["ErrorResponse"];
+        };
+    };
+    rotatePortalAPIKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rotated API key and one-time plaintext */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APIKeyRotateResponse"];
                 };
             };
             401: components["responses"]["ErrorResponse"];

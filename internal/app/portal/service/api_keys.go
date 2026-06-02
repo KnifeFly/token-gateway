@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	portalapp "github.com/KnifeFly/token-gateway/internal/app/portal"
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -24,7 +26,11 @@ func (s *Service) ListAPIKeys(ctx context.Context, principal portalapp.Principal
 		if key.TenantID != principal.TenantID || key.ProjectID != principal.ProjectID {
 			continue
 		}
-		out = append(out, safeAPIKey(key))
+		view, err := s.apiKeyView(ctx, key)
+		if err != nil {
+			return portalapp.APIKeyListResponse{}, err
+		}
+		out = append(out, view)
 	}
 	return portalapp.APIKeyListResponse{Data: out}, nil
 }
@@ -46,6 +52,8 @@ func (s *Service) CreateAPIKey(ctx context.Context, principal portalapp.Principa
 		ProjectID:     principal.ProjectID,
 		Name:          strings.TrimSpace(request.Name),
 		AllowedModels: allowedModels,
+		IPAllowlist:   cleanStrings(request.IPAllowlist),
+		ExpiresAt:     request.ExpiresAt,
 	})
 	if err != nil {
 		return portalapp.APIKeyCreateResponse{}, err
@@ -53,7 +61,11 @@ func (s *Service) CreateAPIKey(ctx context.Context, principal portalapp.Principa
 	if err := s.refreshSnapshot(ctx); err != nil {
 		return portalapp.APIKeyCreateResponse{}, err
 	}
-	return portalapp.APIKeyCreateResponse{APIKey: safeAPIKey(*key), PlaintextKey: key.PlaintextKey}, nil
+	view, err := s.apiKeyView(ctx, *key)
+	if err != nil {
+		return portalapp.APIKeyCreateResponse{}, err
+	}
+	return portalapp.APIKeyCreateResponse{APIKey: view, PlaintextKey: key.PlaintextKey}, nil
 }
 
 // DisableAPIKey disables a derived API key.
@@ -68,18 +80,7 @@ func (s *Service) DisableAPIKey(ctx context.Context, principal portalapp.Princip
 	if keyID == principal.APIKeyID {
 		return portalapp.APIKey{}, apperr.Forbidden("current api key cannot disable itself")
 	}
-	keys, err := s.admin.ListAPIKeys(ctx, principal.TenantID, principal.ProjectID)
-	if err != nil {
-		return portalapp.APIKey{}, err
-	}
-	var found bool
-	for _, key := range keys {
-		if key.ID == keyID && key.TenantID == principal.TenantID && key.ProjectID == principal.ProjectID {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if _, err := s.findPrincipalAPIKey(ctx, principal, keyID); err != nil {
 		return portalapp.APIKey{}, apperr.NotFound("api key not found")
 	}
 	disabled, err := s.admin.DisableAPIKey(ctx, keyID)
@@ -89,7 +90,69 @@ func (s *Service) DisableAPIKey(ctx context.Context, principal portalapp.Princip
 	if err := s.refreshSnapshot(ctx); err != nil {
 		return portalapp.APIKey{}, err
 	}
-	return safeAPIKey(*disabled), nil
+	return s.apiKeyView(ctx, *disabled)
+}
+
+// RotateAPIKey rotates a derived API key and returns plaintext once.
+func (s *Service) RotateAPIKey(ctx context.Context, principal portalapp.Principal, keyID string) (portalapp.APIKeyRotateResponse, error) {
+	if s == nil || s.admin == nil {
+		return portalapp.APIKeyRotateResponse{}, apperr.ConfigUnavailable("admin service is unavailable")
+	}
+	keyID = strings.TrimSpace(keyID)
+	if keyID == "" {
+		return portalapp.APIKeyRotateResponse{}, apperr.InvalidArgument("api key id is required")
+	}
+	if _, err := s.findPrincipalAPIKey(ctx, principal, keyID); err != nil {
+		return portalapp.APIKeyRotateResponse{}, apperr.NotFound("api key not found")
+	}
+	rotated, err := s.admin.RotateAPIKey(ctx, keyID, "")
+	if err != nil {
+		return portalapp.APIKeyRotateResponse{}, err
+	}
+	if err := s.refreshSnapshot(ctx); err != nil {
+		return portalapp.APIKeyRotateResponse{}, err
+	}
+	view, err := s.apiKeyView(ctx, *rotated)
+	if err != nil {
+		return portalapp.APIKeyRotateResponse{}, err
+	}
+	return portalapp.APIKeyRotateResponse{APIKey: view, PlaintextKey: rotated.PlaintextKey}, nil
+}
+
+func (s *Service) findPrincipalAPIKey(ctx context.Context, principal portalapp.Principal, keyID string) (*configadmin.APIKey, error) {
+	keys, err := s.admin.ListAPIKeys(ctx, principal.TenantID, principal.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range keys {
+		if key.ID == keyID && key.TenantID == principal.TenantID && key.ProjectID == principal.ProjectID {
+			return &key, nil
+		}
+	}
+	return nil, apperr.NotFound("api key not found")
+}
+
+func (s *Service) apiKeyView(ctx context.Context, key configadmin.APIKey) (portalapp.APIKey, error) {
+	view := safeAPIKey(key)
+	if s == nil || s.reporting == nil {
+		return view, nil
+	}
+	report, err := s.reporting.TenantUsageReport(ctx, reporting.TenantUsageFilter{
+		TenantID:  key.TenantID,
+		ProjectID: key.ProjectID,
+		APIKeyID:  key.ID,
+		Limit:     1,
+	})
+	if err != nil {
+		return portalapp.APIKey{}, err
+	}
+	view.UsageSummary = portalapp.UsageTotals{
+		Requests:     report.Totals.Requests,
+		InputTokens:  report.Totals.InputTokens,
+		OutputTokens: report.Totals.OutputTokens,
+		CreditsUsed:  microsToCredits(report.Totals.RevenueMicros),
+	}
+	return view, nil
 }
 
 func safeAPIKey(key configadmin.APIKey) portalapp.APIKey {
@@ -98,9 +161,20 @@ func safeAPIKey(key configadmin.APIKey) portalapp.APIKey {
 		Name:          key.Name,
 		Enabled:       key.Enabled,
 		AllowedModels: append([]string(nil), key.AllowedModels...),
+		IPAllowlist:   append([]string(nil), key.IPAllowlist...),
+		ExpiresAt:     cloneTimePtr(key.ExpiresAt),
+		LastUsedAt:    cloneTimePtr(key.LastUsedAt),
 		CreatedAt:     key.CreatedAt,
 		RevokedAt:     key.RevokedAt,
 	}
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func allowedModelsSubset(parent []string, child []string) bool {

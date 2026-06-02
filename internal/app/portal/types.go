@@ -227,12 +227,16 @@ type UsageItem struct {
 
 // APIKey is safe Portal API key metadata.
 type APIKey struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name"`
-	Enabled       bool       `json:"enabled"`
-	AllowedModels []string   `json:"allowed_models"`
-	CreatedAt     time.Time  `json:"created_at,omitempty"`
-	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	Enabled       bool        `json:"enabled"`
+	AllowedModels []string    `json:"allowed_models"`
+	IPAllowlist   []string    `json:"ip_allowlist,omitempty"`
+	ExpiresAt     *time.Time  `json:"expires_at,omitempty"`
+	LastUsedAt    *time.Time  `json:"last_used_at,omitempty"`
+	UsageSummary  UsageTotals `json:"usage_summary"`
+	CreatedAt     time.Time   `json:"created_at,omitempty"`
+	RevokedAt     *time.Time  `json:"revoked_at,omitempty"`
 }
 
 // APIKeyListResponse is the Portal API key list shape.
@@ -242,12 +246,20 @@ type APIKeyListResponse struct {
 
 // APIKeyCreateRequest requests a derived Portal API key.
 type APIKeyCreateRequest struct {
-	Name          string   `json:"name"`
-	AllowedModels []string `json:"allowed_models"`
+	Name          string     `json:"name"`
+	AllowedModels []string   `json:"allowed_models"`
+	IPAllowlist   []string   `json:"ip_allowlist,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
 }
 
 // APIKeyCreateResponse returns the derived API key and one-time plaintext.
 type APIKeyCreateResponse struct {
+	APIKey       APIKey `json:"api_key"`
+	PlaintextKey string `json:"plaintext_key"`
+}
+
+// APIKeyRotateResponse returns the rotated API key and one-time plaintext.
+type APIKeyRotateResponse struct {
 	APIKey       APIKey `json:"api_key"`
 	PlaintextKey string `json:"plaintext_key"`
 }

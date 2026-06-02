@@ -17,6 +17,7 @@ import { portalCopy } from "../shared/i18n";
 import type {
   APIKey,
   APIKeyCreateResponse,
+  APIKeyRotateResponse,
   CreditsResponse,
   Dashboard,
   ModelDetail,
@@ -50,7 +51,9 @@ export function App() {
   const [settings, setSettings] = useState<ProjectSettings>();
   const [derivedName, setDerivedName] = useState("");
   const [derivedModels, setDerivedModels] = useState("");
-  const [createdKey, setCreatedKey] = useState<APIKeyCreateResponse>();
+  const [derivedIPAllowlist, setDerivedIPAllowlist] = useState("");
+  const [derivedExpiresAt, setDerivedExpiresAt] = useState("");
+  const [createdKey, setCreatedKey] = useState<APIKeyCreateResponse | APIKeyRotateResponse>();
 
   async function portalRequest<TResponse>(
     path: string,
@@ -228,6 +231,10 @@ export function App() {
       setAPIKeys([]);
       setTasks(undefined);
       setSettings(undefined);
+      setDerivedName("");
+      setDerivedModels("");
+      setDerivedIPAllowlist("");
+      setDerivedExpiresAt("");
       setCreatedKey(undefined);
       setBusy(false);
     }
@@ -240,16 +247,22 @@ export function App() {
     setCreatedKey(undefined);
     try {
       const allowedModels = splitModels(derivedModels);
+      const ipAllowlist = splitModels(derivedIPAllowlist);
+      const expiresAt = derivedExpiresAt ? new Date(derivedExpiresAt).toISOString() : undefined;
       const response = await portalRequest<APIKeyCreateResponse>("/api/portal/v1/api-keys", {
         method: "POST",
         body: {
           name: derivedName || portalCopy.defaults.derivedKeyName,
-          ...(allowedModels.length > 0 ? { allowed_models: allowedModels } : {})
+          ...(allowedModels.length > 0 ? { allowed_models: allowedModels } : {}),
+          ...(ipAllowlist.length > 0 ? { ip_allowlist: ipAllowlist } : {}),
+          ...(expiresAt ? { expires_at: expiresAt } : {})
         }
       });
       setCreatedKey(response);
       setDerivedName("");
       setDerivedModels("");
+      setDerivedIPAllowlist("");
+      setDerivedExpiresAt("");
       await loadPortalData();
     } catch (error) {
       setMessage(errorMessage(error));
@@ -265,6 +278,26 @@ export function App() {
       await portalRequest<APIKey>(`/api/portal/v1/api-keys/${encodeURIComponent(keyID)}/disable`, {
         method: "POST"
       });
+      await loadPortalData();
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRotateKey(keyID: string) {
+    setBusy(true);
+    setMessage("");
+    setCreatedKey(undefined);
+    try {
+      const response = await portalRequest<APIKeyRotateResponse>(
+        `/api/portal/v1/api-keys/${encodeURIComponent(keyID)}/rotate`,
+        {
+          method: "POST"
+        }
+      );
+      setCreatedKey(response);
       await loadPortalData();
     } catch (error) {
       setMessage(errorMessage(error));
@@ -368,10 +401,15 @@ export function App() {
             apiKeys={apiKeys}
             createdKey={createdKey}
             currentKeyID={session.api_key_id ?? ""}
+            derivedExpiresAt={derivedExpiresAt}
+            derivedIPAllowlist={derivedIPAllowlist}
             derivedModels={derivedModels}
             derivedName={derivedName}
             onCreateKey={handleCreateKey}
             onDisableKey={handleDisableKey}
+            onRotateKey={handleRotateKey}
+            setDerivedExpiresAt={setDerivedExpiresAt}
+            setDerivedIPAllowlist={setDerivedIPAllowlist}
             setDerivedModels={setDerivedModels}
             setDerivedName={setDerivedName}
           />

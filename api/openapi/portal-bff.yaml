@@ -331,6 +331,32 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "403":
           $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/api-keys/{key_id}/rotate:
+    post:
+      tags:
+        - Portal Web API Keys
+      summary: Rotate a derived customer API key
+      operationId: rotatePortalAPIKey
+      security:
+        - portalSession: []
+          csrfHeader: []
+      parameters:
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rotated API key and one-time plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APIKeyRotateResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "403":
+          $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
   /api/portal/v1/tasks:
@@ -840,6 +866,20 @@ components:
           type: array
           items:
             type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        usage_summary:
+          $ref: "#/components/schemas/UsageTotals"
         created_at:
           type: string
           format: date-time
@@ -858,7 +898,25 @@ components:
           type: array
           items:
             type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
     APIKeyCreateResponse:
+      type: object
+      required:
+        - api_key
+        - plaintext_key
+      properties:
+        api_key:
+          $ref: "#/components/schemas/APIKey"
+        plaintext_key:
+          type: string
+    APIKeyRotateResponse:
       type: object
       required:
         - api_key

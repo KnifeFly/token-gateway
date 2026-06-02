@@ -56,6 +56,13 @@ const sampleAccounts: AdminCustomerAccountDetail[] = [
         name: "生产环境",
         enabled: true,
         allowed_models: ["gpt-4o-mini", "qwen-plus"],
+        usage_summary: {
+          requests: 1620,
+          input_tokens: 1984000,
+          output_tokens: 588000,
+          revenue_micros: 76000000,
+          currency: "CNY"
+        },
         created_at: "2026-05-20T03:13:00Z",
         updated_at: "2026-06-01T10:42:00Z"
       },
@@ -66,6 +73,13 @@ const sampleAccounts: AdminCustomerAccountDetail[] = [
         name: "旧密钥",
         enabled: false,
         allowed_models: ["gpt-4o-mini"],
+        usage_summary: {
+          requests: 222,
+          input_tokens: 221000,
+          output_tokens: 54000,
+          revenue_micros: 9000000,
+          currency: "CNY"
+        },
         revoked_at: "2026-06-01T10:40:00Z",
         created_at: "2026-05-20T03:13:00Z",
         updated_at: "2026-06-01T10:40:00Z"
@@ -170,6 +184,13 @@ const sampleAccounts: AdminCustomerAccountDetail[] = [
         name: "验证密钥",
         enabled: false,
         allowed_models: ["gpt-4o-mini"],
+        usage_summary: {
+          requests: 96,
+          input_tokens: 82000,
+          output_tokens: 19000,
+          revenue_micros: 60000000,
+          currency: "CNY"
+        },
         revoked_at: "2026-06-01T14:18:00Z",
         created_at: "2026-05-18T04:49:00Z",
         updated_at: "2026-06-01T14:18:00Z"

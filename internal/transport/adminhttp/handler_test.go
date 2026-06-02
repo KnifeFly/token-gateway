@@ -274,6 +274,93 @@ func TestAdminCustomerAccountWorkflows(t *testing.T) {
 	}
 }
 
+func TestAdminAPIKeyWorkflows(t *testing.T) {
+	mux, _ := testMux(t)
+	cookie, csrf := loginOperator(t, mux, "admin@example.com", "admin-local")
+
+	create := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/api-keys", `{
+		"tenant_id":"tenant_1",
+		"project_id":"project_1",
+		"name":"ops key",
+		"allowed_models":["gpt-public"],
+		"ip_allowlist":["203.0.113.10","2001:db8::/32"],
+		"expires_at":"2026-06-30T00:00:00Z"
+	}`, cookie, csrf, "api_key_create")
+	if create.Code != http.StatusOK {
+		t.Fatalf("create api key status=%d body=%s", create.Code, create.Body.String())
+	}
+	if !strings.Contains(create.Body.String(), `"plaintext_key"`) || strings.Contains(create.Body.String(), "key_hash") {
+		t.Fatalf("create api key missing plaintext or leaked hash: %s", create.Body.String())
+	}
+	var created adminapp.APIKeyCreateResponse
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created api key: %v", err)
+	}
+	if created.APIKey.ID == "" || created.PlaintextKey == "" || created.APIKey.Fingerprint == "" {
+		t.Fatalf("created api key = %#v", created)
+	}
+	if len(created.APIKey.AllowedModels) != 1 || created.APIKey.AllowedModels[0] != "gpt-public" {
+		t.Fatalf("created allowed models = %#v", created.APIKey.AllowedModels)
+	}
+	if len(created.APIKey.IPAllowlist) != 2 || created.APIKey.ExpiresAt == nil {
+		t.Fatalf("created api key metadata = %#v", created.APIKey)
+	}
+
+	list := request(t, mux, http.MethodGet, "/api/admin/v1/api-keys?tenant_id=tenant_1&project_id=project_1", "", cookie, "")
+	if list.Code != http.StatusOK || !strings.Contains(list.Body.String(), created.APIKey.ID) {
+		t.Fatalf("list api key status=%d body=%s", list.Code, list.Body.String())
+	}
+	if strings.Contains(list.Body.String(), created.PlaintextKey) || strings.Contains(list.Body.String(), "key_hash") {
+		t.Fatalf("list api key leaked secret material: %s", list.Body.String())
+	}
+
+	update := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/api-keys/"+created.APIKey.ID+"/update", `{"name":"ops renamed"}`, cookie, csrf, "api_key_update")
+	if update.Code != http.StatusOK {
+		t.Fatalf("update api key status=%d body=%s", update.Code, update.Body.String())
+	}
+	var updated adminapp.APIKeyView
+	if err := json.Unmarshal(update.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated api key: %v", err)
+	}
+	if updated.Name != "ops renamed" || len(updated.AllowedModels) != 1 || updated.AllowedModels[0] != "gpt-public" {
+		t.Fatalf("updated api key unexpectedly expanded or lost scope: %#v", updated)
+	}
+	if strings.Contains(update.Body.String(), created.PlaintextKey) || strings.Contains(update.Body.String(), "key_hash") {
+		t.Fatalf("update api key leaked secret material: %s", update.Body.String())
+	}
+
+	rotate := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/api-keys/"+created.APIKey.ID+"/rotate", `{}`, cookie, csrf, "api_key_rotate")
+	if rotate.Code != http.StatusOK {
+		t.Fatalf("rotate api key status=%d body=%s", rotate.Code, rotate.Body.String())
+	}
+	var rotated adminapp.APIKeyRotateResponse
+	if err := json.Unmarshal(rotate.Body.Bytes(), &rotated); err != nil {
+		t.Fatalf("decode rotated api key: %v", err)
+	}
+	if rotated.PlaintextKey == "" || rotated.PlaintextKey == created.PlaintextKey || rotated.APIKey.Fingerprint == "" {
+		t.Fatalf("rotated api key = %#v", rotated)
+	}
+	if strings.Contains(rotate.Body.String(), "key_hash") {
+		t.Fatalf("rotate api key leaked hash: %s", rotate.Body.String())
+	}
+
+	disable := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/api-keys/"+created.APIKey.ID+"/disable", "", cookie, csrf, "api_key_disable")
+	if disable.Code != http.StatusOK || !strings.Contains(disable.Body.String(), `"enabled":false`) {
+		t.Fatalf("disable api key status=%d body=%s", disable.Code, disable.Body.String())
+	}
+	if strings.Contains(disable.Body.String(), rotated.PlaintextKey) || strings.Contains(disable.Body.String(), "key_hash") {
+		t.Fatalf("disable api key leaked secret material: %s", disable.Body.String())
+	}
+
+	enable := mutationRequest(t, mux, http.MethodPost, "/api/admin/v1/api-keys/"+created.APIKey.ID+"/enable", "", cookie, csrf, "api_key_enable")
+	if enable.Code != http.StatusOK || !strings.Contains(enable.Body.String(), `"enabled":true`) {
+		t.Fatalf("enable api key status=%d body=%s", enable.Code, enable.Body.String())
+	}
+	if strings.Contains(enable.Body.String(), rotated.PlaintextKey) || strings.Contains(enable.Body.String(), "key_hash") {
+		t.Fatalf("enable api key leaked secret material: %s", enable.Body.String())
+	}
+}
+
 func testMux(t *testing.T) (*http.ServeMux, *adminservice.Service) {
 	t.Helper()
 	repo := adminrepo.NewMemoryRepository()

@@ -5,8 +5,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -121,6 +123,12 @@ func (a *SnapshotAuthenticator) Authenticate(ctx context.Context, state *engine.
 		if !ok || !apiKey.Enabled {
 			continue
 		}
+		if apiKey.ExpiresAt != nil && !apiKey.ExpiresAt.After(authNow(state)) {
+			return apperr.Unauthorized("api key is expired")
+		}
+		if !clientIPAllowed(state.ClientIP, apiKey.IPAllowlist) {
+			return apperr.Unauthorized("api key is not allowed from this client")
+		}
 		state.Principal = &engine.Principal{
 			TenantID:      apiKey.TenantID,
 			ProjectID:     apiKey.ProjectID,
@@ -133,6 +141,43 @@ func (a *SnapshotAuthenticator) Authenticate(ctx context.Context, state *engine.
 		return nil
 	}
 	return apperr.Unauthorized("invalid api key")
+}
+
+func authNow(state *engine.RequestState) time.Time {
+	if state != nil && !state.StartedAt.IsZero() {
+		return state.StartedAt
+	}
+	return time.Now().UTC()
+}
+
+func clientIPAllowed(remoteAddr string, allowlist []string) bool {
+	if len(allowlist) == 0 {
+		return true
+	}
+	ip := parseClientIP(remoteAddr)
+	if ip == nil {
+		return false
+	}
+	for _, value := range allowlist {
+		if _, network, err := net.ParseCIDR(strings.TrimSpace(value)); err == nil && network.Contains(ip) {
+			return true
+		}
+		if allowedIP := net.ParseIP(strings.TrimSpace(value)); allowedIP != nil && allowedIP.Equal(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseClientIP(remoteAddr string) net.IP {
+	remoteAddr = strings.TrimSpace(remoteAddr)
+	if remoteAddr == "" {
+		return nil
+	}
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		remoteAddr = host
+	}
+	return net.ParseIP(remoteAddr)
 }
 
 // APIKeyHasher hashes customer API keys for snapshot lookup.

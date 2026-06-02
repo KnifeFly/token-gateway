@@ -39,6 +39,7 @@ func (s *Service) TenantUsageReport(ctx context.Context, filter TenantUsageFilte
 	}
 	filter.TenantID = strings.TrimSpace(filter.TenantID)
 	filter.ProjectID = strings.TrimSpace(filter.ProjectID)
+	filter.APIKeyID = strings.TrimSpace(filter.APIKeyID)
 	filter.Currency = normalizeCurrency(filter.Currency)
 	if filter.TenantID == "" {
 		return nil, apperr.InvalidArgument("tenant_id is required")

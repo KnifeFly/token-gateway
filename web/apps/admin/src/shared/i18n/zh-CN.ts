@@ -173,6 +173,50 @@ export const adminCopy = {
       audit: "创建、停用、额度调整和会话重置都记录操作员审计。"
     }
   },
+  apiKeys: {
+    title: "密钥管理",
+    subtitle: "T06 收口创建、更新范围、启用、停用、轮换、允许模型、IP 白名单、过期时间和用量摘要。",
+    status: "P24-T06",
+    sections: {
+      list: "密钥列表",
+      rotation: "创建与轮换",
+      guardrails: "安全约束",
+      workflow: "工作流"
+    },
+    columns: {
+      key: "密钥",
+      scope: "租户/项目",
+      models: "允许模型",
+      ip: "IP 白名单",
+      expires: "过期时间",
+      usage: "用量摘要",
+      state: "状态",
+      requests: "次请求"
+    },
+    actions: {
+      create: "创建密钥",
+      update: "更新范围",
+      enable: "启用密钥",
+      disable: "停用密钥",
+      rotate: "轮换密钥"
+    },
+    state: {
+      enabled: "启用",
+      disabled: "停用",
+      inherit: "保持当前范围",
+      allModels: "全部模型",
+      anyIP: "不限 IP",
+      none: "未设置"
+    },
+    hints: {
+      oneTimeTitle: "明文只显示一次",
+      oneTimeBody: "创建或轮换响应返回一次性明文，列表和详情只展示指纹与安全元数据。",
+      oneTimePlaceholder: "tgk_live_************",
+      noHash: "不返回密钥哈希或原始密钥。",
+      noExpansion: "更新 allowed models 时不能扩大客户项目的模型权限。",
+      audit: "创建、更新、启停和轮换都需要理由、CSRF、幂等键和审计。"
+    }
+  },
   session: {
     signedIn: "已登录",
     signedOut: "未登录"

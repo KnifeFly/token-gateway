@@ -64,13 +64,22 @@ export const portalCopy = {
     createTitle: "创建密钥",
     nameColumn: "名称",
     modelsColumn: "模型范围",
+    ipColumn: "IP 白名单",
+    expiresColumn: "过期时间",
+    usageColumn: "用量",
     stateColumn: "状态",
     actionColumn: "操作",
     nameLabel: "名称",
     allowedModelsLabel: "允许模型",
+    ipAllowlistLabel: "IP 白名单",
+    expiresAtLabel: "过期时间",
     createAction: "创建",
     disableAction: "停用",
-    plaintextHint: "明文密钥仅显示一次"
+    rotateAction: "轮换",
+    plaintextHint: "明文密钥仅显示一次",
+    noLimit: "不限",
+    neverExpires: "永不过期",
+    usageRequests: (count: string) => `${count} 次`
   },
   credits: {
     title: "额度",

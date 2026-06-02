@@ -6,6 +6,7 @@ import (
 	"time"
 
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
+	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
@@ -67,22 +68,88 @@ func (s *Service) ListAPIKeys(ctx context.Context, actor adminapp.Actor, tenantI
 	}
 	views := make([]adminapp.APIKeyView, 0, len(keys))
 	for _, key := range keys {
-		views = append(views, safeAPIKey(key))
+		view, err := s.apiKeyView(ctx, key)
+		if err != nil {
+			return adminapp.ListResponse[adminapp.APIKeyView]{}, err
+		}
+		views = append(views, view)
 	}
 	return adminapp.ListResponse[adminapp.APIKeyView]{Data: views}, nil
 }
 
 // CreateAPIKey creates an API key through the control-plane owner service and audits the mutation.
-func (s *Service) CreateAPIKey(ctx context.Context, actor adminapp.Actor, request configadmin.APIKey, opts adminapp.MutationOptions) (*configadmin.APIKey, error) {
-	return mutate(ctx, s, actor, opts, "write", "api_key", request.ID, request, func() (*configadmin.APIKey, error) {
-		return s.owner.CreateAPIKey(ctx, request)
+func (s *Service) CreateAPIKey(ctx context.Context, actor adminapp.Actor, request adminapp.APIKeyCreateRequest, opts adminapp.MutationOptions) (adminapp.APIKeyCreateResponse, error) {
+	return mutate(ctx, s, actor, opts, "write", "api_key", request.ProjectID, request, func() (adminapp.APIKeyCreateResponse, error) {
+		key, err := s.owner.CreateAPIKey(ctx, configadmin.APIKey{
+			TenantID:      strings.TrimSpace(request.TenantID),
+			ProjectID:     strings.TrimSpace(request.ProjectID),
+			Name:          strings.TrimSpace(request.Name),
+			AllowedModels: cleanCustomerStrings(request.AllowedModels),
+			IPAllowlist:   cleanCustomerStrings(request.IPAllowlist),
+			ExpiresAt:     request.ExpiresAt,
+		})
+		if err != nil {
+			return adminapp.APIKeyCreateResponse{}, err
+		}
+		view, err := s.apiKeyView(ctx, *key)
+		if err != nil {
+			return adminapp.APIKeyCreateResponse{}, err
+		}
+		return adminapp.APIKeyCreateResponse{APIKey: view, PlaintextKey: key.PlaintextKey}, nil
+	})
+}
+
+// UpdateAPIKey updates safe API key metadata through the owner service.
+func (s *Service) UpdateAPIKey(ctx context.Context, actor adminapp.Actor, keyID string, request adminapp.APIKeyUpdateRequest, opts adminapp.MutationOptions) (adminapp.APIKeyView, error) {
+	return mutate(ctx, s, actor, opts, "write", "api_key", keyID, request, func() (adminapp.APIKeyView, error) {
+		key, err := s.owner.UpdateAPIKey(ctx, configadmin.APIKey{
+			ID:            strings.TrimSpace(keyID),
+			Name:          strings.TrimSpace(request.Name),
+			AllowedModels: cleanCustomerStrings(request.AllowedModels),
+			IPAllowlist:   cleanCustomerStrings(request.IPAllowlist),
+			ExpiresAt:     request.ExpiresAt,
+		})
+		if err != nil {
+			return adminapp.APIKeyView{}, err
+		}
+		return s.apiKeyView(ctx, *key)
+	})
+}
+
+// EnableAPIKey enables an API key through the control-plane owner service.
+func (s *Service) EnableAPIKey(ctx context.Context, actor adminapp.Actor, keyID string, opts adminapp.MutationOptions) (adminapp.APIKeyView, error) {
+	return mutate(ctx, s, actor, opts, "write", "api_key", keyID, map[string]string{"id": keyID}, func() (adminapp.APIKeyView, error) {
+		key, err := s.owner.EnableAPIKey(ctx, keyID)
+		if err != nil {
+			return adminapp.APIKeyView{}, err
+		}
+		return s.apiKeyView(ctx, *key)
 	})
 }
 
 // DisableAPIKey disables an API key through the control-plane owner service.
-func (s *Service) DisableAPIKey(ctx context.Context, actor adminapp.Actor, keyID string, opts adminapp.MutationOptions) (*configadmin.APIKey, error) {
-	return mutate(ctx, s, actor, opts, "write", "api_key", keyID, map[string]string{"id": keyID}, func() (*configadmin.APIKey, error) {
-		return s.owner.DisableAPIKey(ctx, keyID)
+func (s *Service) DisableAPIKey(ctx context.Context, actor adminapp.Actor, keyID string, opts adminapp.MutationOptions) (adminapp.APIKeyView, error) {
+	return mutate(ctx, s, actor, opts, "write", "api_key", keyID, map[string]string{"id": keyID}, func() (adminapp.APIKeyView, error) {
+		key, err := s.owner.DisableAPIKey(ctx, keyID)
+		if err != nil {
+			return adminapp.APIKeyView{}, err
+		}
+		return s.apiKeyView(ctx, *key)
+	})
+}
+
+// RotateAPIKey rotates an API key and returns the new plaintext once.
+func (s *Service) RotateAPIKey(ctx context.Context, actor adminapp.Actor, keyID string, request adminapp.APIKeyRotateRequest, opts adminapp.MutationOptions) (adminapp.APIKeyRotateResponse, error) {
+	return mutate(ctx, s, actor, opts, "write", "api_key", keyID, request, func() (adminapp.APIKeyRotateResponse, error) {
+		key, err := s.owner.RotateAPIKey(ctx, keyID, request.PlaintextKey)
+		if err != nil {
+			return adminapp.APIKeyRotateResponse{}, err
+		}
+		view, err := s.apiKeyView(ctx, *key)
+		if err != nil {
+			return adminapp.APIKeyRotateResponse{}, err
+		}
+		return adminapp.APIKeyRotateResponse{APIKey: view, PlaintextKey: key.PlaintextKey}, nil
 	})
 }
 
@@ -341,18 +408,58 @@ func (s *Service) UpsertLimit(ctx context.Context, actor adminapp.Actor, request
 	})
 }
 
+func (s *Service) apiKeyView(ctx context.Context, key configadmin.APIKey) (adminapp.APIKeyView, error) {
+	view := safeAPIKey(key)
+	if s.commercial == nil {
+		return view, nil
+	}
+	report, err := s.commercial.TenantUsageReport(ctx, reporting.TenantUsageFilter{
+		TenantID:  key.TenantID,
+		ProjectID: key.ProjectID,
+		APIKeyID:  key.ID,
+		Limit:     1,
+	})
+	if err != nil {
+		return adminapp.APIKeyView{}, err
+	}
+	view.UsageSummary = customerUsageSummary(report)
+	return view, nil
+}
+
 func safeAPIKey(key configadmin.APIKey) adminapp.APIKeyView {
 	return adminapp.APIKeyView{
 		ID:            key.ID,
 		TenantID:      key.TenantID,
 		ProjectID:     key.ProjectID,
 		Name:          key.Name,
+		Fingerprint:   apiKeyFingerprint(key),
 		Enabled:       key.Enabled,
 		AllowedModels: append([]string(nil), key.AllowedModels...),
+		IPAllowlist:   append([]string(nil), key.IPAllowlist...),
+		ExpiresAt:     cloneTimePtr(key.ExpiresAt),
+		LastUsedAt:    cloneTimePtr(key.LastUsedAt),
 		RevokedAt:     key.RevokedAt,
 		CreatedAt:     key.CreatedAt,
 		UpdatedAt:     key.UpdatedAt,
 	}
+}
+
+func apiKeyFingerprint(key configadmin.APIKey) string {
+	if len(key.KeyHash) >= 12 {
+		return key.KeyHash[len(key.KeyHash)-12:]
+	}
+	if len(key.ID) >= 8 {
+		return key.ID[len(key.ID)-8:]
+	}
+	return key.ID
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func safeChannel(channel configadmin.ChannelConfig, routes []configadmin.RoutePolicyConfig) adminapp.ChannelView {

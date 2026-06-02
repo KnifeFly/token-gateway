@@ -79,11 +79,10 @@ func TestMutationAuditRedactsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Session() error = %v", err)
 	}
-	_, err = svc.CreateAPIKey(ctx, actor, configadmin.APIKey{
-		TenantID:     "tenant_1",
-		ProjectID:    "project_1",
-		Name:         "secret key",
-		PlaintextKey: "tg_should_not_appear",
+	created, err := svc.CreateAPIKey(ctx, actor, adminapp.APIKeyCreateRequest{
+		TenantID:  "tenant_1",
+		ProjectID: "project_1",
+		Name:      "secret key",
 	}, adminapp.MutationOptions{
 		RequestID:      "req_key",
 		IdempotencyKey: "idem_key",
@@ -93,6 +92,9 @@ func TestMutationAuditRedactsSecrets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAPIKey() error = %v", err)
 	}
+	if created.PlaintextKey == "" {
+		t.Fatal("CreateAPIKey() returned empty one-time plaintext")
+	}
 	events, err := repo.ListAuditEvents(ctx, adminapp.AuditFilter{Resource: "api_key"})
 	if err != nil {
 		t.Fatalf("ListAuditEvents() error = %v", err)
@@ -101,8 +103,84 @@ func TestMutationAuditRedactsSecrets(t *testing.T) {
 		t.Fatalf("audit events = %d, want 1", len(events))
 	}
 	combined := string(events[0].Before) + string(events[0].After)
-	if strings.Contains(combined, "tg_should_not_appear") || strings.Contains(combined, "sha256:") {
+	if strings.Contains(combined, created.PlaintextKey) || strings.Contains(combined, "key_hash") || strings.Contains(combined, "sha256:") {
 		t.Fatalf("audit event leaked key material: before=%s after=%s", events[0].Before, events[0].After)
+	}
+}
+
+func TestAPIKeyManagementWorkflowsReturnSafeViews(t *testing.T) {
+	ctx := context.Background()
+	svc, _ := testService(t)
+	login, err := svc.Login(ctx, adminapp.LoginRequest{Email: "admin@example.com", Password: "admin-local"}, "ua-key", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	_, actor, err := svc.Session(ctx, login.Session.SessionID)
+	if err != nil {
+		t.Fatalf("Session() error = %v", err)
+	}
+	expiresAt := time.Date(2026, 6, 30, 0, 0, 0, 0, time.UTC)
+
+	created, err := svc.CreateAPIKey(ctx, actor, adminapp.APIKeyCreateRequest{
+		TenantID:      "tenant_1",
+		ProjectID:     "project_1",
+		Name:          "primary",
+		AllowedModels: []string{"gpt-4o-mini"},
+		IPAllowlist:   []string{"203.0.113.10", "2001:db8::/32"},
+		ExpiresAt:     &expiresAt,
+	}, mutationOptions("api_key_create"))
+	if err != nil {
+		t.Fatalf("CreateAPIKey() error = %v", err)
+	}
+	if created.PlaintextKey == "" || created.APIKey.Fingerprint == "" {
+		t.Fatalf("created key missing one-time plaintext or fingerprint: %#v", created)
+	}
+	if len(created.APIKey.AllowedModels) != 1 || created.APIKey.AllowedModels[0] != "gpt-4o-mini" {
+		t.Fatalf("allowed models = %#v", created.APIKey.AllowedModels)
+	}
+	if len(created.APIKey.IPAllowlist) != 2 || created.APIKey.ExpiresAt == nil {
+		t.Fatalf("metadata = %#v", created.APIKey)
+	}
+
+	updated, err := svc.UpdateAPIKey(ctx, actor, created.APIKey.ID, adminapp.APIKeyUpdateRequest{Name: "renamed"}, mutationOptions("api_key_update"))
+	if err != nil {
+		t.Fatalf("UpdateAPIKey() error = %v", err)
+	}
+	if updated.Name != "renamed" || len(updated.AllowedModels) != 1 || updated.AllowedModels[0] != "gpt-4o-mini" {
+		t.Fatalf("updated key expanded or lost scope: %#v", updated)
+	}
+
+	rotated, err := svc.RotateAPIKey(ctx, actor, created.APIKey.ID, adminapp.APIKeyRotateRequest{}, mutationOptions("api_key_rotate"))
+	if err != nil {
+		t.Fatalf("RotateAPIKey() error = %v", err)
+	}
+	if rotated.PlaintextKey == "" || rotated.PlaintextKey == created.PlaintextKey {
+		t.Fatalf("rotated plaintext = %q original=%q", rotated.PlaintextKey, created.PlaintextKey)
+	}
+
+	disabled, err := svc.DisableAPIKey(ctx, actor, created.APIKey.ID, mutationOptions("api_key_disable"))
+	if err != nil {
+		t.Fatalf("DisableAPIKey() error = %v", err)
+	}
+	if disabled.Enabled || disabled.RevokedAt == nil {
+		t.Fatalf("disabled key = %#v", disabled)
+	}
+
+	enabled, err := svc.EnableAPIKey(ctx, actor, created.APIKey.ID, mutationOptions("api_key_enable"))
+	if err != nil {
+		t.Fatalf("EnableAPIKey() error = %v", err)
+	}
+	if !enabled.Enabled || enabled.RevokedAt != nil {
+		t.Fatalf("enabled key = %#v", enabled)
+	}
+
+	list, err := svc.ListAPIKeys(ctx, actor, "tenant_1", "project_1")
+	if err != nil {
+		t.Fatalf("ListAPIKeys() error = %v", err)
+	}
+	content := mustJSON(t, list)
+	if strings.Contains(content, created.PlaintextKey) || strings.Contains(content, rotated.PlaintextKey) || strings.Contains(content, "key_hash") {
+		t.Fatalf("safe list leaked key material: %s", content)
 	}
 }
 

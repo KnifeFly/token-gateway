@@ -15,6 +15,7 @@ type memoryUsageRecord struct {
 	UsageSummary
 	TenantID  string
 	ProjectID string
+	APIKeyID  string
 	CreatedAt time.Time
 }
 
@@ -64,6 +65,9 @@ func (r *MemoryRepository) TenantUsageReport(_ context.Context, filter TenantUsa
 			continue
 		}
 		if filter.ProjectID != "" && record.ProjectID != filter.ProjectID {
+			continue
+		}
+		if filter.APIKeyID != "" && record.APIKeyID != filter.APIKeyID {
 			continue
 		}
 		key := fmt.Sprintf("%s:%s:%s:%s", record.Model, record.ProviderType, record.ChannelID, record.Currency)

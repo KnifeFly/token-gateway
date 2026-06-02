@@ -32,6 +32,9 @@ type APIKeyRuntime struct {
 	KeyHash       string
 	Enabled       bool
 	AllowedModels []string
+	IPAllowlist   []string
+	ExpiresAt     *time.Time
+	LastUsedAt    *time.Time
 }
 
 // ModelRuntime describes one public model.

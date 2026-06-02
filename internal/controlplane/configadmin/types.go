@@ -39,6 +39,9 @@ type APIKey struct {
 	PlaintextKey  string     `json:"plaintext_key,omitempty"`
 	Enabled       bool       `json:"enabled"`
 	AllowedModels []string   `json:"allowed_models"`
+	IPAllowlist   []string   `json:"ip_allowlist,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	LastUsedAt    *time.Time `json:"last_used_at,omitempty"`
 	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
 	CreatedAt     time.Time  `json:"created_at,omitempty"`
 	UpdatedAt     time.Time  `json:"updated_at,omitempty"`

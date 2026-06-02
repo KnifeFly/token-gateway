@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -47,6 +48,56 @@ func TestSnapshotAuthenticator(t *testing.T) {
 	}
 	if state.Principal == nil || state.Principal.APIKeyID != "key_1" {
 		t.Fatalf("principal = %#v", state.Principal)
+	}
+}
+
+func TestSnapshotAuthenticatorRejectsExpiredAPIKey(t *testing.T) {
+	key := "sk-local"
+	expiresAt := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	state := &engine.RequestState{
+		StartedAt: time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC),
+		Snapshot: fakeSnapshot{apiKey: engine.APIKeyView{
+			ID:        "key_1",
+			TenantID:  "tenant_1",
+			ProjectID: "project_1",
+			Hash:      HashAPIKey(key),
+			Enabled:   true,
+			ExpiresAt: &expiresAt,
+		}},
+		Incoming: engine.IncomingRequest{Header: http.Header{"Authorization": []string{"Bearer " + key}}},
+	}
+
+	err := NewSnapshotAuthenticator().Authenticate(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeUnauthorized {
+		t.Fatalf("error = %v, want unauthorized", err)
+	}
+}
+
+func TestSnapshotAuthenticatorEnforcesIPAllowlist(t *testing.T) {
+	key := "sk-local"
+	state := &engine.RequestState{
+		Snapshot: fakeSnapshot{apiKey: engine.APIKeyView{
+			ID:          "key_1",
+			TenantID:    "tenant_1",
+			ProjectID:   "project_1",
+			Hash:        HashAPIKey(key),
+			Enabled:     true,
+			IPAllowlist: []string{"203.0.113.0/24"},
+		}},
+		ClientIP: "198.51.100.10:443",
+		Incoming: engine.IncomingRequest{Header: http.Header{"Authorization": []string{"Bearer " + key}}},
+	}
+
+	err := NewSnapshotAuthenticator().Authenticate(context.Background(), state)
+	appErr, ok := apperr.As(err)
+	if !ok || appErr.Code != apperr.CodeUnauthorized {
+		t.Fatalf("error = %v, want unauthorized", err)
+	}
+
+	state.ClientIP = "203.0.113.10:443"
+	if err := NewSnapshotAuthenticator().Authenticate(context.Background(), state); err != nil {
+		t.Fatalf("Authenticate(allowed IP) error = %v", err)
 	}
 }
 

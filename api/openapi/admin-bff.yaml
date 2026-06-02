@@ -164,7 +164,11 @@ paths:
         - $ref: "#/components/parameters/ProjectIDQuery"
       responses:
         "200":
-          $ref: "#/components/responses/ListResponse"
+          description: Safe API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyListResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
@@ -176,10 +180,64 @@ paths:
           idempotencyKey: []
           reasonHeader: []
       requestBody:
-        $ref: "#/components/requestBodies/JSONBody"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAPIKeyCreateRequest"
       responses:
         "200":
-          $ref: "#/components/responses/ObjectResponse"
+          description: Created API key and one-time plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyCreateResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/update:
+    post:
+      tags: [Admin Web Config]
+      operationId: updateAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAPIKeyUpdateRequest"
+      responses:
+        "200":
+          description: Updated API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/enable:
+    post:
+      tags: [Admin Web Config]
+      operationId: enableAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      responses:
+        "200":
+          description: Enabled API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyView"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/api-keys/{key_id}/disable:
@@ -195,7 +253,36 @@ paths:
         - $ref: "#/components/parameters/KeyID"
       responses:
         "200":
-          $ref: "#/components/responses/ObjectResponse"
+          description: Disabled API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/rotate:
+    post:
+      tags: [Admin Web Config]
+      operationId: rotateAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAPIKeyRotateRequest"
+      responses:
+        "200":
+          description: Rotated API key and one-time plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyRotateResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/customer-accounts:
@@ -1363,9 +1450,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AdminCustomerLedgerLine"
+    AdminAPIKeyListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAPIKeyView"
     AdminAPIKeyView:
       type: object
-      required: [id, tenant_id, project_id, name, enabled]
+      required: [id, tenant_id, project_id, name, enabled, usage_summary]
       properties:
         id:
           type: string
@@ -1375,12 +1470,28 @@ components:
           type: string
         name:
           type: string
+        fingerprint:
+          type: string
         enabled:
           type: boolean
         allowed_models:
           type: array
           items:
             type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        usage_summary:
+          $ref: "#/components/schemas/AdminCustomerUsageSummary"
         revoked_at:
           type: string
           format: date-time
@@ -1391,6 +1502,67 @@ components:
         updated_at:
           type: string
           format: date-time
+    AdminAPIKeyCreateRequest:
+      type: object
+      required: [tenant_id, project_id]
+      properties:
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminAPIKeyUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminAPIKeyRotateRequest:
+      type: object
+      properties:
+        plaintext_key:
+          type: string
+          description: Optional caller-supplied replacement; omitted generates a new key.
+    AdminAPIKeyCreateResponse:
+      type: object
+      required: [api_key, plaintext_key]
+      properties:
+        api_key:
+          $ref: "#/components/schemas/AdminAPIKeyView"
+        plaintext_key:
+          type: string
+    AdminAPIKeyRotateResponse:
+      type: object
+      required: [api_key, plaintext_key]
+      properties:
+        api_key:
+          $ref: "#/components/schemas/AdminAPIKeyView"
+        plaintext_key:
+          type: string
     AdminCustomerUsageRow:
       type: object
       required: [requests, input_tokens, output_tokens, total_tokens, amount_micros]

@@ -81,13 +81,45 @@ func TestPortalWebLoginDashboardAPIKeyAndLogout(t *testing.T) {
 		t.Fatalf("expanded key status = %d, body = %s", expandedRec.Code, expandedRec.Body.String())
 	}
 
-	createReq = httptest.NewRequest(http.MethodPost, "/api/portal/v1/api-keys", strings.NewReader(`{"name":"derived","allowed_models":["gpt-public"]}`))
+	createReq = httptest.NewRequest(http.MethodPost, "/api/portal/v1/api-keys", strings.NewReader(`{"name":"derived","allowed_models":["gpt-public"],"ip_allowlist":["203.0.113.10"],"expires_at":"2026-06-30T00:00:00Z"}`))
 	createReq.Header.Set(csrfHeaderName, login.CSRFToken)
 	createReq.AddCookie(cookie)
 	createRec = httptest.NewRecorder()
 	handler.ServeHTTP(createRec, createReq)
 	if createRec.Code != http.StatusOK || !strings.Contains(createRec.Body.String(), `"plaintext_key"`) || strings.Contains(createRec.Body.String(), "key_hash") {
 		t.Fatalf("create key status = %d, body = %s", createRec.Code, createRec.Body.String())
+	}
+	var created struct {
+		APIKey struct {
+			ID          string     `json:"id"`
+			IPAllowlist []string   `json:"ip_allowlist"`
+			ExpiresAt   *time.Time `json:"expires_at"`
+		} `json:"api_key"`
+		PlaintextKey string `json:"plaintext_key"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created key: %v", err)
+	}
+	if created.APIKey.ID == "" || created.PlaintextKey == "" || len(created.APIKey.IPAllowlist) != 1 || created.APIKey.ExpiresAt == nil {
+		t.Fatalf("created key missing T06 metadata: %s", createRec.Body.String())
+	}
+
+	rotateReq := httptest.NewRequest(http.MethodPost, "/api/portal/v1/api-keys/"+created.APIKey.ID+"/rotate", nil)
+	rotateReq.Header.Set(csrfHeaderName, login.CSRFToken)
+	rotateReq.AddCookie(cookie)
+	rotateRec := httptest.NewRecorder()
+	handler.ServeHTTP(rotateRec, rotateReq)
+	if rotateRec.Code != http.StatusOK || !strings.Contains(rotateRec.Body.String(), `"plaintext_key"`) || strings.Contains(rotateRec.Body.String(), "key_hash") {
+		t.Fatalf("rotate key status = %d, body = %s", rotateRec.Code, rotateRec.Body.String())
+	}
+	var rotated struct {
+		PlaintextKey string `json:"plaintext_key"`
+	}
+	if err := json.Unmarshal(rotateRec.Body.Bytes(), &rotated); err != nil {
+		t.Fatalf("decode rotated key: %v", err)
+	}
+	if rotated.PlaintextKey == "" || rotated.PlaintextKey == created.PlaintextKey {
+		t.Fatalf("rotated plaintext = %q original=%q", rotated.PlaintextKey, created.PlaintextKey)
 	}
 
 	logoutReq := httptest.NewRequest(http.MethodPost, "/api/portal/v1/auth/logout", nil)

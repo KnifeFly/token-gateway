@@ -193,15 +193,55 @@ type DashboardCounts struct {
 
 // APIKeyView is safe Admin API key metadata without hashes or plaintext.
 type APIKeyView struct {
-	ID            string     `json:"id"`
+	ID            string               `json:"id"`
+	TenantID      string               `json:"tenant_id"`
+	ProjectID     string               `json:"project_id"`
+	Name          string               `json:"name"`
+	Fingerprint   string               `json:"fingerprint,omitempty"`
+	Enabled       bool                 `json:"enabled"`
+	AllowedModels []string             `json:"allowed_models,omitempty"`
+	IPAllowlist   []string             `json:"ip_allowlist,omitempty"`
+	ExpiresAt     *time.Time           `json:"expires_at,omitempty"`
+	LastUsedAt    *time.Time           `json:"last_used_at,omitempty"`
+	UsageSummary  CustomerUsageSummary `json:"usage_summary"`
+	RevokedAt     *time.Time           `json:"revoked_at,omitempty"`
+	CreatedAt     time.Time            `json:"created_at,omitempty"`
+	UpdatedAt     time.Time            `json:"updated_at,omitempty"`
+}
+
+// APIKeyCreateRequest creates an Admin-managed customer API key.
+type APIKeyCreateRequest struct {
 	TenantID      string     `json:"tenant_id"`
 	ProjectID     string     `json:"project_id"`
-	Name          string     `json:"name"`
-	Enabled       bool       `json:"enabled"`
+	Name          string     `json:"name,omitempty"`
 	AllowedModels []string   `json:"allowed_models,omitempty"`
-	RevokedAt     *time.Time `json:"revoked_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at,omitempty"`
-	UpdatedAt     time.Time  `json:"updated_at,omitempty"`
+	IPAllowlist   []string   `json:"ip_allowlist,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+}
+
+// APIKeyUpdateRequest updates safe API key metadata.
+type APIKeyUpdateRequest struct {
+	Name          string     `json:"name,omitempty"`
+	AllowedModels []string   `json:"allowed_models,omitempty"`
+	IPAllowlist   []string   `json:"ip_allowlist,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+}
+
+// APIKeyRotateRequest optionally supplies new plaintext for key rotation.
+type APIKeyRotateRequest struct {
+	PlaintextKey string `json:"plaintext_key,omitempty"`
+}
+
+// APIKeyCreateResponse returns one-time plaintext and safe metadata.
+type APIKeyCreateResponse struct {
+	APIKey       APIKeyView `json:"api_key"`
+	PlaintextKey string     `json:"plaintext_key"`
+}
+
+// APIKeyRotateResponse returns one-time rotated plaintext and safe metadata.
+type APIKeyRotateResponse struct {
+	APIKey       APIKeyView `json:"api_key"`
+	PlaintextKey string     `json:"plaintext_key"`
 }
 
 // CustomerAccountView is a safe tenant/project scoped customer account row.
