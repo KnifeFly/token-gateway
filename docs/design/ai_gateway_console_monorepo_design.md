@@ -443,6 +443,9 @@ P22 Console Frontend Production
 
 P23 Console Directory Structure Alignment
   configadmin rename, full internal/portal migration, behavior-preserving split of handlers, services, repositories, frontend apps/packages, API scripts and examples
+
+P24 NewAPI Lean Console Parity
+  channel management, model management, customer accounts, API keys, usage/task logs, playground, minimal credit operations, and explicit group/ratio/payment exclusions
 ```
 
-P19-P22 是后续新增产品面，不改变 P8 作为“Portal Public API 第一版”的历史完成范围。P23 是结构治理阶段，不新增产品能力，只把 P19-P22 已有或待扩展能力对齐到目标目录树。
+P19-P22 是后续新增产品面，不改变 P8 作为“Portal Public API 第一版”的历史完成范围。P23 是结构治理阶段，不新增产品能力，只把 P19-P22 已有或待扩展能力对齐到目标目录树。P24 是 NewAPI 精简对标阶段，只补齐 token-gateway 需要的 Console 产品能力，不复制 NewAPI 的分组、倍率、支付、订阅、兑换码、模型部署和复杂设置。

@@ -27,7 +27,8 @@ Before implementing architecture or domain behavior, use the docs in this order:
 6. `docs/design/ai_gateway_architecture_design.md` for planes, layering, package ownership, runtime snapshot, routing, billing, and stream rules.
 7. `docs/design/ai_gateway_code_blueprint.md` for package layout, interfaces, structs, and code-level architecture references.
 8. `docs/design/ai_gateway_console_monorepo_design.md` for Portal/Admin console, BFF, frontend monorepo, session, RBAC, audit, and deployment boundaries.
-9. `docs/design/ai_gateway_openapi.yaml` for API contract updates.
+9. `docs/design/ai_gateway_newapi_lean_console_design.md` for NewAPI-inspired but trimmed Console parity, channel/model/user/account/token/log/playground scope, and explicit group/ratio/payment exclusions.
+10. `docs/design/ai_gateway_openapi.yaml` for API contract updates.
 
 `docs/plan/` and `docs/tasks.md` are the execution entry points. `docs/design/` remains the source of truth for system, architecture, code blueprint, and OpenAPI design. Do not copy long design or plan text into code; keep implementation comments focused on local behavior.
 
@@ -44,6 +45,7 @@ Before implementing architecture or domain behavior, use the docs in this order:
 - Use `internal/app/portal` and `internal/app/admin` for human Portal/Admin application services and repositories. Keep the control/config owner separate from `internal/app/admin`: the current path is `internal/controlplane/configadmin`.
 - Do not create a global repository or service package. Split Portal/Admin service and repository files by use case/read model once a single file starts collecting unrelated methods.
 - Frontend code lives under `web/apps/portal`, `web/apps/admin`, and shared `web/packages/*`. Frontend API clients must be generated from OpenAPI contracts or kept contract-checked against them.
+- When matching NewAPI behavior, keep only token-gateway's lean Console parity scope. Do not introduce NewAPI user/model/channel groups, ratio pricing, subscription packages, redemption codes, third-party payment settings, model deployment services, or broad system setting pages without a new phase decision.
 - `internal/bootstrap` wires dependencies only. Do not put business logic there.
 - Use a single request state through the GatewayEngine hot path. The main flow should remain readable enough to act as system documentation.
 - Plugins are configuration-driven built-ins first. Do not introduce dynamic code execution or plugin marketplaces in the MVP.
@@ -129,6 +131,7 @@ Prefer the staged path from `docs/plan/00-roadmap.md`:
 13. P21: Admin Web BFF with operator sessions, RBAC, audit, safe read models, and write workflows delegated to owner services.
 14. P22: Admin frontend, console static/deployment hardening, E2E smoke, security headers, rollback, and operations handoff.
 15. P23: console directory structure alignment, rename `internal/controlplane/admin` to `internal/controlplane/configadmin`, split large handlers, services, repositories, frontend apps, shared packages, API scripts, and examples without behavior changes.
+16. P24: NewAPI lean console parity for channel, model, customer account, API key, usage log, task log, playground, and minimal credit operations while excluding groups, ratios, payment, subscription, redemption, model deployment, and broad settings.
 
 When a task is broad, narrow it to the next milestone unless the user explicitly asks for a later capability.
 

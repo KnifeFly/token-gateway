@@ -1,6 +1,6 @@
 # 商用 AI Gateway 最终设计包
 
-本设计包综合 `v0.2` 的完整商业化设计、`v0.3` 的评审修订、P5-P18 剩余能力与可靠性收敛路线，以及 P19-P23 Portal/Admin Console monorepo 规划，作为后续实现、计划和任务拆分的唯一设计来源。
+本设计包综合 `v0.2` 的完整商业化设计、`v0.3` 的评审修订、P5-P18 剩余能力与可靠性收敛路线，以及 P19-P24 Portal/Admin Console monorepo 与 NewAPI 精简对标规划，作为后续实现、计划和任务拆分的唯一设计来源。
 
 ## 文档清单
 
@@ -10,6 +10,7 @@
 | `ai_gateway_architecture_design.md` | 四平面架构、Go 分层、package 职责、GatewayEngine、插件、路由、限流、账务、任务和 snapshot 架构 |
 | `ai_gateway_code_blueprint.md` | Go module、最小骨架、核心接口、结构体字段、数据库优先级和测试文件要求 |
 | `ai_gateway_console_monorepo_design.md` | Portal/Admin Web、`cmd/console`、BFF API、session/RBAC/audit、frontend monorepo、OpenAPI 拆分和部署边界 |
+| `ai_gateway_newapi_lean_console_design.md` | NewAPI 精简对标后的渠道、模型、用户/客户账户、令牌、日志、任务、操练场和额度运营设计，以及分组、倍率、支付等裁剪边界 |
 | `ai_gateway_implementation_plan.md` | M0-M9 阶段计划、交付物、验收标准和每阶段 Definition of Done |
 | `ai_gateway_ADR.md` | 架构决策记录模板和首批已接受 ADR |
 | `ai_gateway_openapi.yaml` | 对外 OpenAPI 合同，可导入 Apifox |
@@ -48,13 +49,15 @@ P20 Portal Web BFF
 P21 Admin Web BFF
 P22 Console Frontend Production
 P23 Console Directory Structure Alignment
+P24 NewAPI Lean Console Parity
 ```
 
 第一版不要急着铺满所有 provider 和高级商业功能。先把请求生命周期、账务闭环、幂等、失败补偿、snapshot、限流和基础可观测性写稳。
 
 ## 当前范围边界
 
-- P19-P22 开始解除“当前只做后端 API”的限制，把完整 Portal/Admin 前后端纳入后续路线；P23 单独治理目录结构、模块拆分和 `internal/controlplane/admin -> internal/controlplane/configadmin` rename-only；但 browser BFF 必须与 machine API 分离。
+- P19-P22 开始解除“当前只做后端 API”的限制，把完整 Portal/Admin 前后端纳入后续路线；P23 单独治理目录结构、模块拆分和 `internal/controlplane/admin -> internal/controlplane/configadmin` rename-only；P24 补齐 NewAPI 精简对标能力；但 browser BFF 必须与 machine API 分离。
+- P24 只保留渠道、模型、用户/客户账户、令牌、日志、任务、操练场和最小额度运营；用户分组、模型分组、渠道分组、倍率、订阅、兑换码、支付、邀请返利、模型部署和复杂系统设置不进入当前路线。
 - 当前仍不做：复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件。
 - 当前先不做：semantic routing/cache、多地域 active-active。
 - 文件能力按非存储输入资产处理，只用于请求归一化、幂等校验和 provider 转发，不承诺持久化、下载、生命周期或存储 SLA。
