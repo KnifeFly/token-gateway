@@ -8,7 +8,7 @@ export function primaryCreditBucket(credits?: CreditsResponse) {
 }
 
 export function moneyValue(value = 0): string {
-  return new Intl.NumberFormat("en", { maximumFractionDigits: 4 }).format(value);
+  return new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 4 }).format(value);
 }
 
 export function formatMaybeDate(value?: string): string {
@@ -47,5 +47,5 @@ export function errorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
-  return "request failed";
+  return "请求失败";
 }

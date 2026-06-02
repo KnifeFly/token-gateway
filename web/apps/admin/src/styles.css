@@ -69,6 +69,7 @@ nav a {
   border-radius: 8px;
   color: #475467;
   font-size: 14px;
+  line-height: 1.35;
   padding: 10px 12px;
 }
 
@@ -123,6 +124,115 @@ nav a:hover {
   background: #ffffff;
   box-shadow: 0 14px 34px rgba(16, 24, 40, 0.07);
   padding: 22px;
+}
+
+.route-plan {
+  display: grid;
+  gap: 20px;
+}
+
+.route-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.route-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid #e1e7f0;
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 18px;
+}
+
+.route-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.route-card h3,
+.guardrail-band h3 {
+  margin: 0;
+  color: #101828;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.route-card-header span {
+  min-width: 0;
+  color: #475467;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.route-card p,
+.guardrail-band p {
+  margin: 0;
+  color: #667085;
+  font-size: 14px;
+}
+
+.route-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.route-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.route-meta dt {
+  color: #667085;
+  font-size: 12px;
+}
+
+.route-meta dd {
+  margin: 0;
+  color: #1d2939;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  background: #eef4ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.tag-list.danger span {
+  background: #fff1f0;
+  color: #9f2a1d;
+}
+
+.guardrail-band {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #ffd3cf;
+  border-radius: 8px;
+  background: #fff8f7;
+  padding: 18px;
 }
 
 .table {
@@ -221,6 +331,19 @@ nav a:hover {
 
   nav a {
     text-align: center;
+  }
+
+  .route-grid,
+  .route-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .route-card-header {
+    flex-direction: column;
+  }
+
+  .route-card-header span {
+    text-align: left;
   }
 
   .workspace {

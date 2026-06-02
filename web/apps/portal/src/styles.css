@@ -105,6 +105,7 @@ nav button {
   background: transparent;
   color: #cbd5e1;
   font-size: 14px;
+  line-height: 1.35;
   padding: 0 12px;
   text-align: left;
 }
@@ -187,6 +188,12 @@ nav button:hover {
 .panel {
   min-width: 0;
   padding: 22px;
+}
+
+.panel-note {
+  margin: 0 0 16px;
+  color: #667085;
+  font-size: 14px;
 }
 
 .panel-grid {
@@ -331,6 +338,10 @@ nav button:hover {
   grid-template-columns: 1.4fr 0.8fr 1fr 1fr;
 }
 
+.table-row.route {
+  grid-template-columns: 1fr 1.6fr 0.9fr;
+}
+
 .schema-box {
   max-height: 520px;
   overflow: auto;
@@ -360,6 +371,29 @@ nav button:hover {
   color: #07553f;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
+}
+
+.secret-box small {
+  color: #087443;
+  font-size: 13px;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 999px;
+  background: #ecfbf5;
+  color: #087443;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
 }
 
 .settings-list {
@@ -486,6 +520,10 @@ nav button:hover {
   .table-row.keys,
   .table-row.tasks {
     min-width: 720px;
+  }
+
+  .table-row.route {
+    min-width: 760px;
   }
 
   .settings-list dd {

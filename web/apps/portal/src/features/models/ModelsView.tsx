@@ -1,3 +1,4 @@
+import { modelModeLabel, portalCopy } from "../../shared/i18n";
 import { PanelHeading } from "../../shared/layout/PanelHeading";
 import type { ModelList, ModelSchema } from "../../shared/types";
 
@@ -15,12 +16,12 @@ export function ModelsView({
   return (
     <section className="panel-grid split">
       <article className="panel">
-        <PanelHeading title="Models" />
+        <PanelHeading title={portalCopy.models.title} />
         <div className="table" role="table">
           <div className="table-row table-head" role="row">
-            <span role="columnheader">Model</span>
-            <span role="columnheader">Type</span>
-            <span role="columnheader">Mode</span>
+            <span role="columnheader">{portalCopy.models.modelColumn}</span>
+            <span role="columnheader">{portalCopy.models.typeColumn}</span>
+            <span role="columnheader">{portalCopy.models.modeColumn}</span>
           </div>
           {(models?.data ?? []).map((model) => (
             <button
@@ -32,13 +33,13 @@ export function ModelsView({
             >
               <span role="cell">{model.display_name}</span>
               <span role="cell">{model.type}</span>
-              <span role="cell">{model.async ? "Async" : "Sync"}</span>
+              <span role="cell">{modelModeLabel(model.async)}</span>
             </button>
           ))}
         </div>
       </article>
       <article className="panel">
-        <PanelHeading title="Schema" meta={selectedModel} />
+        <PanelHeading title={portalCopy.models.schemaTitle} meta={selectedModel} />
         <pre className="schema-box">
           {modelSchema ? JSON.stringify(modelSchema.schema, null, 2) : "{}"}
         </pre>

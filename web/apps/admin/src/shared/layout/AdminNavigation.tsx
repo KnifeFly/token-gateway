@@ -1,16 +1,17 @@
-import { navItems } from "../../app/routes";
+import { adminRouteSections } from "../../app/routes";
+import { adminCopy } from "../i18n";
 
 export function AdminNavigation() {
   return (
-    <aside className="rail" aria-label="Admin navigation">
+    <aside className="rail" aria-label={adminCopy.navigationLabel}>
       <div className="brand">
         <span className="brand-mark">TG</span>
-        <span>Admin</span>
+        <span>{adminCopy.brand}</span>
       </div>
       <nav>
-        {navItems.map((item) => (
-          <a href={`#${item.toLowerCase()}`} key={item}>
-            {item}
+        {adminRouteSections.map((item) => (
+          <a href={item.href} key={item.id}>
+            {item.label}
           </a>
         ))}
       </nav>

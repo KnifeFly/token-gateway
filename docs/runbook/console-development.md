@@ -91,6 +91,10 @@ web/packages/ui/src/primitives/
 
 Do not move Portal/Admin business feature components into `web/packages/ui`, and do not add shared package imports back into `web/apps/*`.
 
+## P24 Route Plan
+
+P24 的 Admin/Portal 信息架构、中文文案策略、i18n 预留和 NewAPI 裁剪边界记录在 `docs/runbook/p24-console-route-plan.md`。后续渠道、模型、客户账户、API 密钥、日志、任务、操练场和额度页面应按该 route plan 接入。
+
 For a local no-DB/no-Redis console render smoke:
 
 ```bash

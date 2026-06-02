@@ -1,5 +1,4 @@
 import { ConsoleAPIError } from "@token-gateway/api-client";
-import { sessionStateLabel } from "@token-gateway/auth";
 import { formatInteger } from "@token-gateway/format";
 import { Button, StatusBadge } from "@token-gateway/ui";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -9,11 +8,12 @@ import { LoginView } from "../features/auth/LoginView";
 import { CreditsView } from "../features/credits/CreditsView";
 import { DashboardView } from "../features/dashboard/DashboardView";
 import { ModelsView } from "../features/models/ModelsView";
-import { OnboardingView } from "../features/onboarding/OnboardingView";
+import { PlaygroundView } from "../features/playground/PlaygroundView";
 import { SettingsView } from "../features/settings/SettingsView";
 import { TasksView } from "../features/tasks/TasksView";
 import { UsageView } from "../features/usage/UsageView";
 import { errorMessage, moneyValue, primaryCreditBucket, splitModels } from "../shared/format";
+import { portalCopy } from "../shared/i18n";
 import type {
   APIKey,
   APIKeyCreateResponse,
@@ -21,7 +21,6 @@ import type {
   Dashboard,
   ModelList,
   ModelSchema,
-  Onboarding,
   PortalSchemas,
   ProjectSettings,
   Session,
@@ -46,7 +45,6 @@ export function App() {
   const [usage, setUsage] = useState<UsageResponse>();
   const [apiKeys, setAPIKeys] = useState<APIKey[]>([]);
   const [tasks, setTasks] = useState<TaskList>();
-  const [onboarding, setOnboarding] = useState<Onboarding>();
   const [settings, setSettings] = useState<ProjectSettings>();
   const [derivedName, setDerivedName] = useState("");
   const [derivedModels, setDerivedModels] = useState("");
@@ -75,7 +73,6 @@ export function App() {
   async function loadPortalData(csrfOverride = csrfToken): Promise<void> {
     const [
       nextDashboard,
-      nextOnboarding,
       nextModels,
       nextCredits,
       nextUsage,
@@ -84,7 +81,6 @@ export function App() {
       nextSettings
     ] = await Promise.all([
       portalRequest<Dashboard>("/api/portal/v1/dashboard", {}, csrfOverride),
-      portalRequest<Onboarding>("/api/portal/v1/onboarding", {}, csrfOverride),
       portalRequest<ModelList>("/api/portal/v1/models", {}, csrfOverride),
       portalRequest<CreditsResponse>("/api/portal/v1/credits", {}, csrfOverride),
       portalRequest<UsageResponse>("/api/portal/v1/usage?limit=10", {}, csrfOverride),
@@ -98,7 +94,6 @@ export function App() {
     ]);
 
     setDashboard(nextDashboard);
-    setOnboarding(nextOnboarding);
     setModels(nextModels);
     setCredits(nextCredits);
     setUsage(nextUsage);
@@ -157,24 +152,26 @@ export function App() {
   const summary = useMemo(
     () => [
       {
-        label: "Credits",
+        label: portalCopy.summary.credits,
         value: moneyValue(primaryCreditBucket(credits)?.remaining_credits),
-        detail: primaryCreditBucket(credits)?.currency ?? "USD"
+        detail: primaryCreditBucket(credits)?.currency ?? portalCopy.summary.creditsFallback
       },
       {
-        label: "Requests",
+        label: portalCopy.summary.requests,
         value: formatInteger(usage?.totals.requests ?? 0),
-        detail: "Settled usage"
+        detail: portalCopy.summary.requestsDetail
       },
       {
-        label: "Active keys",
+        label: portalCopy.summary.activeKeys,
         value: formatInteger(dashboard?.active_key_count ?? 0),
-        detail: `${formatInteger(apiKeys.length)} total`
+        detail: portalCopy.summary.totalKeys(formatInteger(apiKeys.length))
       },
       {
-        label: "Tasks",
+        label: portalCopy.summary.tasks,
         value: formatInteger(dashboard?.task_summary.total ?? 0),
-        detail: `${formatInteger(dashboard?.task_summary.processing ?? 0)} processing`
+        detail: portalCopy.summary.processingTasks(
+          formatInteger(dashboard?.task_summary.processing ?? 0)
+        )
       }
     ],
     [apiKeys.length, credits, dashboard, usage]
@@ -223,7 +220,6 @@ export function App() {
       setUsage(undefined);
       setAPIKeys([]);
       setTasks(undefined);
-      setOnboarding(undefined);
       setSettings(undefined);
       setCreatedKey(undefined);
       setBusy(false);
@@ -240,7 +236,7 @@ export function App() {
       const response = await portalRequest<APIKeyCreateResponse>("/api/portal/v1/api-keys", {
         method: "POST",
         body: {
-          name: derivedName || "derived key",
+          name: derivedName || portalCopy.defaults.derivedKeyName,
           ...(allowedModels.length > 0 ? { allowed_models: allowedModels } : {})
         }
       });
@@ -282,6 +278,8 @@ export function App() {
     }
   }
 
+  const activeRoute = navItems.find((item) => item.id === activeView);
+
   if (!session.authenticated) {
     return (
       <LoginView
@@ -296,10 +294,10 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <aside className="sidebar" aria-label="Portal navigation">
+      <aside className="sidebar" aria-label={portalCopy.navigationLabel}>
         <div className="brand">
           <span className="brand-mark">TG</span>
-          <span>Portal</span>
+          <span>{portalCopy.brand}</span>
         </div>
         <nav>
           {navItems.map((item) => (
@@ -315,25 +313,27 @@ export function App() {
         </nav>
       </aside>
 
-      <section className="workspace" aria-label="Portal workspace">
+      <section className="workspace" aria-label={portalCopy.workspaceLabel}>
         <header className="topbar">
           <div>
-            <h1>Portal</h1>
-            <p>{portalClient.baseURL}/api/portal/v1</p>
+            <h1>{activeRoute?.label ?? portalCopy.topbar.title}</h1>
+            <p>
+              {activeRoute?.purpose} {portalClient.baseURL}/api/portal/v1
+            </p>
           </div>
           <div className="topbar-actions">
             <StatusBadge tone={busy ? "warning" : "success"}>
-              {busy ? "Syncing" : sessionStateLabel({ authenticated: true })}
+              {busy ? portalCopy.topbar.syncing : portalCopy.topbar.signedIn}
             </StatusBadge>
             <Button disabled={busy} onClick={handleLogout} variant="secondary">
-              Logout
+              {portalCopy.topbar.logout}
             </Button>
           </div>
         </header>
 
         {message ? <div className="error-banner">{message}</div> : null}
 
-        <section className="summary-grid" aria-label="Portal summary">
+        <section className="summary-grid" aria-label={portalCopy.summaryLabel}>
           {summary.map((item) => (
             <article className="metric-card" key={item.label}>
               <span>{item.label}</span>
@@ -354,8 +354,7 @@ export function App() {
             selectedModel={selectedModel}
           />
         ) : null}
-        {activeView === "credits" ? <CreditsView credits={credits} /> : null}
-        {activeView === "usage" ? <UsageView usage={usage} /> : null}
+        {activeView === "playground" ? <PlaygroundView /> : null}
         {activeView === "api-keys" ? (
           <APIKeysView
             apiKeys={apiKeys}
@@ -369,8 +368,9 @@ export function App() {
             setDerivedName={setDerivedName}
           />
         ) : null}
+        {activeView === "usage" ? <UsageView usage={usage} /> : null}
         {activeView === "tasks" ? <TasksView tasks={tasks?.data ?? []} /> : null}
-        {activeView === "onboarding" ? <OnboardingView onboarding={onboarding} /> : null}
+        {activeView === "credits" ? <CreditsView credits={credits} /> : null}
         {activeView === "settings" ? <SettingsView settings={settings} session={session} /> : null}
       </section>
     </main>
