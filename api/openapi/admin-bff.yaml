@@ -444,6 +444,143 @@ paths:
                 $ref: "#/components/schemas/AdminCustomerSessionResetResult"
         default:
           $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/usage-logs:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminUsageLogs
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+        - name: api_key_id
+          in: query
+          schema: { type: string }
+        - name: request_id
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: provider_type
+          in: query
+          schema: { type: string }
+        - name: channel_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Operator-safe request-level usage logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsageLogListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/usage-logs/{request_id}:
+    get:
+      tags: [Admin Web Operations]
+      operationId: getAdminUsageLog
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200":
+          description: Operator-safe usage log detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsageLogDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/task-logs:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminTaskLogs
+      security:
+        - adminSession: []
+      parameters:
+        - name: task_id
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+        - name: api_key_id
+          in: query
+          schema: { type: string }
+        - name: request_id
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: provider_type
+          in: query
+          schema: { type: string }
+        - name: channel_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Operator-safe async task logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTaskLogListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/task-logs/{task_id}:
+    get:
+      tags: [Admin Web Operations]
+      operationId: getAdminTaskLog
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: Operator-safe async task detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTaskLogDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/models:
     get:
       tags: [Admin Web Config]
@@ -1178,6 +1315,16 @@ components:
       in: path
       required: true
       schema: { type: string }
+    RequestID:
+      name: request_id
+      in: path
+      required: true
+      schema: { type: string }
+    TaskID:
+      name: task_id
+      in: path
+      required: true
+      schema: { type: string }
     ModelID:
       name: model_id
       in: path
@@ -1615,6 +1762,172 @@ components:
         created_at:
           type: string
           format: date-time
+    AdminUsageLogListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUsageLogView"
+    AdminUsageLogView:
+      type: object
+      required:
+        - request_id
+        - tenant_id
+        - project_id
+        - api_key_id
+        - model
+        - provider_type
+        - channel_id
+        - status
+        - input_tokens
+        - output_tokens
+        - total_tokens
+        - amount_micros
+        - currency
+      properties:
+        request_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        model:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        status:
+          type: string
+        settlement_status:
+          type: string
+        ledger_entry_id:
+          type: string
+        settlement_kind:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        amount_micros:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        balance_after_micros:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: string
+          format: date-time
+    AdminUsageLogDetail:
+      type: object
+      required: [usage]
+      properties:
+        usage:
+          $ref: "#/components/schemas/AdminUsageLogView"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+    AdminTaskLogListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTaskLogView"
+    AdminTaskLogView:
+      type: object
+      required:
+        - task_id
+        - request_id
+        - tenant_id
+        - project_id
+        - api_key_id
+        - kind
+        - model
+        - status
+        - progress
+        - callback_configured
+        - settlement_status
+      properties:
+        task_id:
+          type: string
+        request_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        kind:
+          type: string
+        media_type:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+        progress:
+          type: integer
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        provider_task_id:
+          type: string
+        callback_configured:
+          type: boolean
+        settlement_status:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        error_code:
+          type: string
+        error_message:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminTaskLogDetail:
+      type: object
+      required: [task]
+      properties:
+        task:
+          $ref: "#/components/schemas/AdminTaskLogView"
     AdminCustomerAccountCreateRequest:
       type: object
       required: [tenant_name, project_name]

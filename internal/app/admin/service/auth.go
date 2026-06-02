@@ -256,6 +256,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "api_key"}, {Action: "write", Resource: "api_key"},
 		{Action: "read", Resource: "model"}, {Action: "write", Resource: "model"},
 		{Action: "read", Resource: "channel"}, {Action: "write", Resource: "channel"},
+		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
 		{Action: "read", Resource: "route"}, {Action: "write", Resource: "route"},
 		{Action: "read", Resource: "pricing"}, {Action: "write", Resource: "pricing"},
 		{Action: "read", Resource: "limit"}, {Action: "write", Resource: "limit"},
@@ -268,6 +269,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "api_key"}, {Action: "read", Resource: "pricing"},
 		{Action: "read", Resource: "limit"}, {Action: "read", Resource: "settlement"},
 		{Action: "replay", Resource: "settlement"}, {Action: "read", Resource: "hold"},
+		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
 		{Action: "read", Resource: "audit"},
 	},
 	adminapp.RoleSupport: {
@@ -275,7 +277,8 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "tenant"}, {Action: "read", Resource: "project"},
 		{Action: "read", Resource: "customer_account"},
 		{Action: "read", Resource: "api_key"}, {Action: "read", Resource: "model"},
-		{Action: "read", Resource: "task"}, {Action: "read", Resource: "callback"},
+		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
+		{Action: "read", Resource: "callback"},
 	},
 	adminapp.RoleOps: {
 		{Action: "read", Resource: "dashboard"},
@@ -283,6 +286,7 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "settlement"}, {Action: "replay", Resource: "settlement"},
 		{Action: "read", Resource: "callback"}, {Action: "retry", Resource: "callback"},
 		{Action: "read", Resource: "worker"}, {Action: "read", Resource: "hold"},
+		{Action: "read", Resource: "usage"}, {Action: "read", Resource: "task"},
 	},
 	adminapp.RoleReadOnly: {
 		{Action: "read", Resource: "dashboard"},
@@ -293,7 +297,8 @@ var rolePermissions = map[adminapp.Role][]adminapp.Permission{
 		{Action: "read", Resource: "pricing"}, {Action: "read", Resource: "limit"},
 		{Action: "read", Resource: "snapshot"}, {Action: "read", Resource: "settlement"},
 		{Action: "read", Resource: "callback"}, {Action: "read", Resource: "worker"},
-		{Action: "read", Resource: "hold"},
+		{Action: "read", Resource: "hold"}, {Action: "read", Resource: "usage"},
+		{Action: "read", Resource: "task"},
 	},
 }
 

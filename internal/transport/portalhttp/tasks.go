@@ -3,6 +3,8 @@ package portalhttp
 import (
 	"net/http"
 	"strings"
+
+	portalapp "github.com/KnifeFly/token-gateway/internal/app/portal"
 )
 
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
@@ -14,7 +16,11 @@ func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	response, err := h.portal.ListTasks(r.Context(), principal, r.URL.Query().Get("status"), limit, r.URL.Query().Get("cursor"))
+	response, err := h.portal.ListTasks(r.Context(), principal, portalapp.TaskFilter{
+		Status: r.URL.Query().Get("status"),
+		Cursor: r.URL.Query().Get("cursor"),
+		Limit:  limit,
+	})
 	writeResult(w, state.RequestID, response, err)
 }
 

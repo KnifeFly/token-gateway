@@ -215,6 +215,36 @@ paths:
       security:
         - portalSession: []
       parameters:
+        - name: api_key_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: model
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: provider_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: channel_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
         - name: currency
           in: query
           required: false
@@ -368,11 +398,48 @@ paths:
       security:
         - portalSession: []
       parameters:
+        - name: api_key_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: request_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: model
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: provider_type
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: channel_id
+          in: query
+          required: false
+          schema:
+            type: string
         - name: status
           in: query
           required: false
           schema:
             type: string
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
         - name: cursor
           in: query
           required: false
@@ -826,12 +893,19 @@ components:
           type: string
         capability:
           type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
         status:
           type: string
         input_tokens:
           type: integer
           format: int64
         output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
           type: integer
           format: int64
         credits_used:

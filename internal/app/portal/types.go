@@ -113,10 +113,30 @@ type ProjectSettings struct {
 
 // UsageFilter scopes Portal Web usage queries.
 type UsageFilter struct {
-	Currency string
-	From     time.Time
-	To       time.Time
-	Limit    int
+	APIKeyID     string
+	RequestID    string
+	Model        string
+	ProviderType string
+	ChannelID    string
+	Status       string
+	Currency     string
+	From         time.Time
+	To           time.Time
+	Limit        int
+}
+
+// TaskFilter scopes Portal Web task queries.
+type TaskFilter struct {
+	APIKeyID     string
+	RequestID    string
+	Model        string
+	ProviderType string
+	ChannelID    string
+	Status       string
+	Cursor       string
+	From         time.Time
+	To           time.Time
+	Limit        int
 }
 
 // ModelListResponse is the Portal model list shape.
@@ -218,9 +238,12 @@ type UsageItem struct {
 	APIKeyID     string    `json:"api_key_id,omitempty"`
 	Model        string    `json:"model,omitempty"`
 	Capability   string    `json:"capability,omitempty"`
+	ProviderType string    `json:"provider_type,omitempty"`
+	ChannelID    string    `json:"channel_id,omitempty"`
 	Status       string    `json:"status"`
 	InputTokens  int64     `json:"input_tokens"`
 	OutputTokens int64     `json:"output_tokens"`
+	TotalTokens  int64     `json:"total_tokens,omitempty"`
 	CreditsUsed  float64   `json:"credits_used"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 }

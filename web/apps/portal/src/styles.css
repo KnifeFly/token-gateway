@@ -211,12 +211,14 @@ nav button:hover {
 }
 
 .field,
+.filter-grid label,
 .stacked-form {
   display: grid;
   gap: 8px;
 }
 
-.field input {
+.field input,
+.filter-grid input {
   width: 100%;
   min-height: 42px;
   border: 1px solid #cfd7e6;
@@ -226,9 +228,31 @@ nav button:hover {
   padding: 0 12px;
 }
 
-.field input:focus {
+.field input:focus,
+.filter-grid input:focus {
   border-color: #246bfe;
   outline: 2px solid rgba(36, 107, 254, 0.16);
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr)) max-content;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.filter-grid label {
+  min-width: 0;
+}
+
+.filter-grid label span {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.filter-grid .tg-button {
+  align-self: end;
 }
 
 .stacked-form {
@@ -327,7 +351,7 @@ nav button:hover {
 }
 
 .table-row.usage {
-  grid-template-columns: 0.9fr 1.2fr 0.8fr 0.8fr 0.8fr;
+  grid-template-columns: 1.2fr 0.8fr 1fr 1.1fr 0.75fr 0.75fr 0.75fr;
 }
 
 .table-row.keys {
@@ -335,7 +359,12 @@ nav button:hover {
 }
 
 .table-row.tasks {
-  grid-template-columns: 1.4fr 0.8fr 1fr 1fr;
+  grid-template-columns: 1.2fr 1.1fr 0.75fr 1fr 1.1fr 0.9fr;
+}
+
+.table-empty span {
+  grid-column: 1 / -1;
+  color: #667085;
 }
 
 .table-row.route {
@@ -572,6 +601,7 @@ nav button:hover {
   }
 
   .summary-grid,
+  .filter-grid,
   nav,
   .task-summary {
     grid-template-columns: 1fr;
@@ -588,6 +618,11 @@ nav button:hover {
   .table-row.tasks,
   .portal-model-row {
     min-width: 720px;
+  }
+
+  .table-row.usage,
+  .table-row.tasks {
+    min-width: 1040px;
   }
 
   .table-row.keys {

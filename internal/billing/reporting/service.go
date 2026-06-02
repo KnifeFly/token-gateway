@@ -14,6 +14,7 @@ const defaultLedgerLimit = 100
 // Repository reads and writes commercial reporting state.
 type Repository interface {
 	TenantUsageReport(ctx context.Context, filter TenantUsageFilter) (*TenantUsageReport, error)
+	UsageLogReport(ctx context.Context, filter UsageLogFilter) (*UsageLogReport, error)
 	UpsertProviderCostProfile(ctx context.Context, profile ProviderCostProfile) (*ProviderCostProfile, error)
 	ProviderProfitReport(ctx context.Context, filter ProviderProfitFilter) (*ProviderProfitReport, error)
 	ReconciliationReport(ctx context.Context) (*ReconciliationReport, error)
@@ -40,12 +41,35 @@ func (s *Service) TenantUsageReport(ctx context.Context, filter TenantUsageFilte
 	filter.TenantID = strings.TrimSpace(filter.TenantID)
 	filter.ProjectID = strings.TrimSpace(filter.ProjectID)
 	filter.APIKeyID = strings.TrimSpace(filter.APIKeyID)
+	filter.RequestID = strings.TrimSpace(filter.RequestID)
+	filter.Model = strings.TrimSpace(filter.Model)
+	filter.ProviderType = strings.TrimSpace(filter.ProviderType)
+	filter.ChannelID = strings.TrimSpace(filter.ChannelID)
+	filter.Status = strings.TrimSpace(filter.Status)
 	filter.Currency = normalizeCurrency(filter.Currency)
 	if filter.TenantID == "" {
 		return nil, apperr.InvalidArgument("tenant_id is required")
 	}
 	filter.Limit = normalizeLimit(filter.Limit)
 	return s.repo.TenantUsageReport(ctx, filter)
+}
+
+// UsageLogReport returns request-level usage log rows.
+func (s *Service) UsageLogReport(ctx context.Context, filter UsageLogFilter) (*UsageLogReport, error) {
+	if s == nil || s.repo == nil {
+		return nil, apperr.ConfigUnavailable("reporting repository is unavailable")
+	}
+	filter.TenantID = strings.TrimSpace(filter.TenantID)
+	filter.ProjectID = strings.TrimSpace(filter.ProjectID)
+	filter.APIKeyID = strings.TrimSpace(filter.APIKeyID)
+	filter.RequestID = strings.TrimSpace(filter.RequestID)
+	filter.Model = strings.TrimSpace(filter.Model)
+	filter.ProviderType = strings.TrimSpace(filter.ProviderType)
+	filter.ChannelID = strings.TrimSpace(filter.ChannelID)
+	filter.Status = strings.TrimSpace(filter.Status)
+	filter.Currency = normalizeCurrency(filter.Currency)
+	filter.Limit = normalizeLimit(filter.Limit)
+	return s.repo.UsageLogReport(ctx, filter)
 }
 
 // UpsertProviderCostProfile creates or updates provider cost assumptions.

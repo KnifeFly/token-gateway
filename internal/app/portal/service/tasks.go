@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"time"
 
 	portalapp "github.com/KnifeFly/token-gateway/internal/app/portal"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
@@ -10,17 +11,24 @@ import (
 )
 
 // ListTasks returns project-scoped tasks.
-func (s *Service) ListTasks(ctx context.Context, principal portalapp.Principal, status string, limit int, cursor string) (portalapp.TaskListResponse, error) {
+func (s *Service) ListTasks(ctx context.Context, principal portalapp.Principal, filter portalapp.TaskFilter) (portalapp.TaskListResponse, error) {
 	if s == nil || s.tasks == nil {
 		return portalapp.TaskListResponse{}, apperr.ConfigUnavailable("task repository is unavailable")
 	}
-	limit = normalizeLimit(limit)
+	limit := normalizeLimit(filter.Limit)
 	tasks, err := s.tasks.ListTasks(ctx, tasksvc.TaskListFilter{
-		TenantID:  principal.TenantID,
-		ProjectID: principal.ProjectID,
-		Status:    tasksvc.Status(strings.TrimSpace(status)),
-		Cursor:    strings.TrimSpace(cursor),
-		Limit:     limit + 1,
+		TenantID:     principal.TenantID,
+		ProjectID:    principal.ProjectID,
+		APIKeyID:     strings.TrimSpace(filter.APIKeyID),
+		RequestID:    strings.TrimSpace(filter.RequestID),
+		Model:        strings.TrimSpace(filter.Model),
+		ProviderType: strings.TrimSpace(filter.ProviderType),
+		ChannelID:    strings.TrimSpace(filter.ChannelID),
+		Status:       tasksvc.Status(strings.TrimSpace(filter.Status)),
+		Cursor:       strings.TrimSpace(filter.Cursor),
+		From:         filter.From,
+		To:           filter.To,
+		Limit:        limit + 1,
 	})
 	if err != nil {
 		return portalapp.TaskListResponse{}, err
@@ -60,6 +68,10 @@ func (s *Service) GetTask(ctx context.Context, principal portalapp.Principal, ta
 
 func safeTaskObject(task *tasksvc.Task) map[string]any {
 	object := tasksvc.TaskObject(task)
+	object["request_id"] = task.RequestID
+	object["api_key_id"] = task.APIKeyID
+	object["created_at"] = task.CreatedAt.Format(time.RFC3339)
+	object["updated_at"] = task.UpdatedAt.Format(time.RFC3339)
 	if metadata, ok := object["metadata"].(map[string]string); ok {
 		object["metadata"] = safeMetadata(metadata)
 	}

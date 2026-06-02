@@ -64,6 +64,39 @@ func TestPortalWebLoginDashboardAPIKeyAndLogout(t *testing.T) {
 		t.Fatalf("dashboard body was not safely scoped: %s", body)
 	}
 
+	usageReq := httptest.NewRequest(http.MethodGet, "/api/portal/v1/usage?request_id=req_usage_1&api_key_id=key_current&model=gpt-public&provider_type=openai&channel_id=channel_primary", nil)
+	usageReq.AddCookie(cookie)
+	usageRec := httptest.NewRecorder()
+	handler.ServeHTTP(usageRec, usageReq)
+	if usageRec.Code != http.StatusOK || !strings.Contains(usageRec.Body.String(), `"request_id":"req_usage_1"`) || !strings.Contains(usageRec.Body.String(), `"channel_id":"channel_primary"`) {
+		t.Fatalf("usage filter status = %d, body = %s", usageRec.Code, usageRec.Body.String())
+	}
+	if strings.Contains(usageRec.Body.String(), "req_usage_other") || strings.Contains(usageRec.Body.String(), "secret") {
+		t.Fatalf("usage filter leaked cross-scope or unsafe data: %s", usageRec.Body.String())
+	}
+
+	emptyUsageReq := httptest.NewRequest(http.MethodGet, "/api/portal/v1/usage?model=no-match", nil)
+	emptyUsageReq.AddCookie(cookie)
+	emptyUsageRec := httptest.NewRecorder()
+	handler.ServeHTTP(emptyUsageRec, emptyUsageReq)
+	if emptyUsageRec.Code != http.StatusOK || !strings.Contains(emptyUsageRec.Body.String(), `"items":[]`) {
+		t.Fatalf("empty usage filter status = %d, body = %s", emptyUsageRec.Code, emptyUsageRec.Body.String())
+	}
+	if strings.Contains(emptyUsageRec.Body.String(), "usage_debit") || strings.Contains(emptyUsageRec.Body.String(), "req_usage_1") {
+		t.Fatalf("empty usage filter fell back to ledger rows: %s", emptyUsageRec.Body.String())
+	}
+
+	taskReq := httptest.NewRequest(http.MethodGet, "/api/portal/v1/tasks?request_id=req_1&api_key_id=key_current&model=gpt-public", nil)
+	taskReq.AddCookie(cookie)
+	taskRec := httptest.NewRecorder()
+	handler.ServeHTTP(taskRec, taskReq)
+	if taskRec.Code != http.StatusOK || !strings.Contains(taskRec.Body.String(), ids.ownTaskID) || strings.Contains(taskRec.Body.String(), ids.otherTaskID) {
+		t.Fatalf("task filter status = %d, body = %s", taskRec.Code, taskRec.Body.String())
+	}
+	if strings.Contains(taskRec.Body.String(), "secret-token") || strings.Contains(taskRec.Body.String(), "callback_url") {
+		t.Fatalf("task filter leaked unsafe data: %s", taskRec.Body.String())
+	}
+
 	createReq := httptest.NewRequest(http.MethodPost, "/api/portal/v1/api-keys", strings.NewReader(`{"name":"derived","allowed_models":["gpt-public"]}`))
 	createReq.AddCookie(cookie)
 	createRec := httptest.NewRecorder()
@@ -225,6 +258,31 @@ func testPortalWebHandler(t *testing.T) (http.Handler, portalWebTestIDs) {
 	}); err != nil {
 		t.Fatalf("CreateManualAdjustment() error = %v", err)
 	}
+	reportRepo.SeedUsageRecord(reporting.UsageLogRow{
+		RequestID:    "req_usage_1",
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_current",
+		Model:        "gpt-public",
+		ProviderType: "openai",
+		ChannelID:    "channel_primary",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalTokens:  30,
+		AmountMicros: 1200,
+		Currency:     "CNY",
+	})
+	reportRepo.SeedUsageRecord(reporting.UsageLogRow{
+		RequestID:    "req_usage_other",
+		TenantID:     "tenant_2",
+		ProjectID:    "project_2",
+		APIKeyID:     "other",
+		Model:        "gpt-public",
+		ProviderType: "openai",
+		ChannelID:    "channel_primary",
+		AmountMicros: 9000,
+		Currency:     "CNY",
+	})
 
 	taskRepo := tasksvc.NewMemoryRepository()
 	taskService := tasksvc.NewService(taskRepo, 0)

@@ -15,6 +15,7 @@ import (
 	adminservice "github.com/KnifeFly/token-gateway/internal/app/admin/service"
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
+	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 )
 
 func TestAdminAuthSessionAndCSRF(t *testing.T) {
@@ -361,17 +362,95 @@ func TestAdminAPIKeyWorkflows(t *testing.T) {
 	}
 }
 
+func TestAdminActivityLogs(t *testing.T) {
+	mux, _ := testMux(t)
+	cookie, _ := loginOperator(t, mux, "admin@example.com", "admin-local")
+
+	usage := request(t, mux, http.MethodGet, "/api/admin/v1/usage-logs?tenant_id=tenant_1&request_id=req_usage_1&model=gpt-public", "", cookie, "")
+	if usage.Code != http.StatusOK || !strings.Contains(usage.Body.String(), `"request_id":"req_usage_1"`) || !strings.Contains(usage.Body.String(), `"channel_id":"channel_primary"`) {
+		t.Fatalf("usage log status=%d body=%s", usage.Code, usage.Body.String())
+	}
+	if strings.Contains(usage.Body.String(), "prompt") || strings.Contains(usage.Body.String(), "secret") || strings.Contains(usage.Body.String(), "ratio") {
+		t.Fatalf("usage log exposed unsafe or cut-scope field: %s", usage.Body.String())
+	}
+
+	usageDetail := request(t, mux, http.MethodGet, "/api/admin/v1/usage-logs/req_usage_1", "", cookie, "")
+	if usageDetail.Code != http.StatusOK || !strings.Contains(usageDetail.Body.String(), `"ledger"`) || strings.Contains(usageDetail.Body.String(), "prompt") {
+		t.Fatalf("usage detail status=%d body=%s", usageDetail.Code, usageDetail.Body.String())
+	}
+
+	tasks := request(t, mux, http.MethodGet, "/api/admin/v1/task-logs?request_id=req_task_1&provider_type=openai&channel_id=channel_primary", "", cookie, "")
+	if tasks.Code != http.StatusOK || !strings.Contains(tasks.Body.String(), `"request_id":"req_task_1"`) || !strings.Contains(tasks.Body.String(), `"provider_task_id":"provider_task_1"`) {
+		t.Fatalf("task logs status=%d body=%s", tasks.Code, tasks.Body.String())
+	}
+	var taskList struct {
+		Data []adminapp.TaskLogView `json:"data"`
+	}
+	if err := json.Unmarshal(tasks.Body.Bytes(), &taskList); err != nil {
+		t.Fatalf("decode task logs: %v", err)
+	}
+	if len(taskList.Data) != 1 || taskList.Data[0].TaskID == "" {
+		t.Fatalf("task log data = %#v", taskList.Data)
+	}
+
+	taskDetail := request(t, mux, http.MethodGet, "/api/admin/v1/task-logs/"+taskList.Data[0].TaskID, "", cookie, "")
+	if taskDetail.Code != http.StatusOK || !strings.Contains(taskDetail.Body.String(), `"workflow":"wf_1"`) {
+		t.Fatalf("task detail status=%d body=%s", taskDetail.Code, taskDetail.Body.String())
+	}
+	if strings.Contains(taskDetail.Body.String(), "secret-token") || strings.Contains(taskDetail.Body.String(), "callback_url") || strings.Contains(taskDetail.Body.String(), `"input"`) {
+		t.Fatalf("task detail exposed unsafe field: %s", taskDetail.Body.String())
+	}
+}
+
 func testMux(t *testing.T) (*http.ServeMux, *adminservice.Service) {
 	t.Helper()
+	ctx := context.Background()
 	repo := adminrepo.NewMemoryRepository()
 	owner := configadmin.NewService(configadmin.NewMemoryRepository(), configadmin.NewCredentialCodec("test-secret"), nil)
+	reportRepo := reporting.NewMemoryRepository()
+	reportRepo.SeedUsageRecord(reporting.UsageLogRow{
+		RequestID:    "req_usage_1",
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_current",
+		Model:        "gpt-public",
+		ProviderType: "openai",
+		ChannelID:    "channel_primary",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalTokens:  30,
+		AmountMicros: 1200,
+		Currency:     "CNY",
+	})
+	taskRepo := tasksvc.NewMemoryRepository()
+	taskService := tasksvc.NewService(taskRepo, 0)
+	task, _, err := taskService.CreateMediaTask(ctx, tasksvc.CreateTaskRequest{
+		TenantID:    "tenant_1",
+		ProjectID:   "project_1",
+		APIKeyID:    "key_current",
+		RequestID:   "req_task_1",
+		Endpoint:    "/v1/images/generations",
+		Kind:        tasksvc.KindImageGeneration,
+		MediaType:   "image",
+		Model:       "gpt-public",
+		Input:       []byte(`{"prompt":"do not return"}`),
+		CallbackURL: "https://customer.example/callback",
+		Metadata:    map[string]string{"workflow": "wf_1", "api_secret": "secret-token"},
+	})
+	if err != nil {
+		t.Fatalf("CreateMediaTask() error = %v", err)
+	}
+	if _, err := taskService.MarkDispatched(ctx, task.ID, "openai", "channel_primary", "provider_task_1"); err != nil {
+		t.Fatalf("MarkDispatched() error = %v", err)
+	}
 	svc := adminservice.New(
 		repo,
 		owner,
-		adminservice.WithCommercialReporting(reporting.NewService(reporting.NewMemoryRepository())),
+		adminservice.WithCommercialReporting(reporting.NewService(reportRepo)),
+		adminservice.WithTaskRepository(taskRepo),
 		adminservice.WithPortalSessionResetter(fakePortalSessionResetter{count: 1}),
 	)
-	if _, err := svc.EnsureBootstrapOperator(context.Background(), "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
+	if _, err := svc.EnsureBootstrapOperator(ctx, "admin@example.com", "admin-local", []adminapp.Role{adminapp.RoleSuperAdmin}); err != nil {
 		t.Fatalf("EnsureBootstrapOperator() error = %v", err)
 	}
 	mux := http.NewServeMux()

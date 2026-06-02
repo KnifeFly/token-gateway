@@ -217,6 +217,39 @@ export const adminCopy = {
       audit: "创建、更新、启停和轮换都需要理由、CSRF、幂等键和审计。"
     }
   },
+  activity: {
+    title: "活动日志",
+    subtitle: "T07 补齐请求用量和异步任务运营视图，支持关键维度筛选和安全详情。",
+    status: "P24-T07",
+    sections: {
+      usage: "用量日志",
+      tasks: "任务日志",
+      filters: "筛选维度",
+      safeDetail: "安全详情"
+    },
+    columns: {
+      request: "请求",
+      task: "任务",
+      scope: "租户/项目",
+      model: "模型",
+      route: "供应商/渠道",
+      tokens: "Token",
+      cost: "金额",
+      progress: "进度",
+      callback: "回调",
+      status: "状态"
+    },
+    state: {
+      configured: "已配置",
+      notConfigured: "未配置",
+      unknown: "未知"
+    },
+    hints: {
+      noRawPayload: "详情不返回原始请求、响应或回调地址。",
+      safeMetadata: "metadata 按敏感键过滤后再展示。",
+      exportReady: "导出只使用 safe DTO，后续接入审计留痕。"
+    }
+  },
   session: {
     signedIn: "已登录",
     signedOut: "未登录"

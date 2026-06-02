@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,10 +14,12 @@ import (
 
 type memoryUsageRecord struct {
 	UsageSummary
-	TenantID  string
-	ProjectID string
-	APIKeyID  string
-	CreatedAt time.Time
+	RequestID  string
+	TenantID   string
+	ProjectID  string
+	APIKeyID   string
+	CreatedAt  time.Time
+	LedgerLine LedgerLine
 }
 
 type memoryAgentTask struct {
@@ -61,13 +64,19 @@ func (r *MemoryRepository) TenantUsageReport(_ context.Context, filter TenantUsa
 	}
 	usageByKey := make(map[string]*UsageSummary)
 	for _, record := range r.usage {
-		if !timeMatches(record.CreatedAt, filter.From, filter.To) || record.TenantID != filter.TenantID {
-			continue
-		}
-		if filter.ProjectID != "" && record.ProjectID != filter.ProjectID {
-			continue
-		}
-		if filter.APIKeyID != "" && record.APIKeyID != filter.APIKeyID {
+		if !usageRecordMatches(record, UsageLogFilter{
+			TenantID:     filter.TenantID,
+			ProjectID:    filter.ProjectID,
+			APIKeyID:     filter.APIKeyID,
+			RequestID:    filter.RequestID,
+			Model:        filter.Model,
+			ProviderType: filter.ProviderType,
+			ChannelID:    filter.ChannelID,
+			Status:       filter.Status,
+			Currency:     filter.Currency,
+			From:         filter.From,
+			To:           filter.To,
+		}) {
 			continue
 		}
 		key := fmt.Sprintf("%s:%s:%s:%s", record.Model, record.ProviderType, record.ChannelID, record.Currency)
@@ -96,9 +105,96 @@ func (r *MemoryRepository) TenantUsageReport(_ context.Context, filter TenantUsa
 		if filter.Currency != "" && line.Currency != filter.Currency {
 			continue
 		}
+		if filter.RequestID != "" && line.RequestID != filter.RequestID {
+			continue
+		}
+		if filter.Status != "" && filter.Status != "settled" && filter.Status != line.SettlementKind {
+			continue
+		}
 		report.Ledger = append(report.Ledger, line)
 	}
 	return report, nil
+}
+
+// UsageLogReport returns request-level usage rows from memory.
+func (r *MemoryRepository) UsageLogReport(_ context.Context, filter UsageLogFilter) (*UsageLogReport, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	report := &UsageLogReport{GeneratedAt: time.Now().UTC(), Filter: filter}
+	for i := len(r.usage) - 1; i >= 0 && len(report.Rows) < filter.Limit; i-- {
+		record := r.usage[i]
+		if !usageRecordMatches(record, filter) {
+			continue
+		}
+		row := usageLogRowFromMemory(record)
+		report.Rows = append(report.Rows, row)
+		addTotals(&report.Totals, UsageSummary{
+			Currency:     row.Currency,
+			Requests:     1,
+			InputTokens:  row.InputTokens,
+			OutputTokens: row.OutputTokens,
+			TotalTokens:  row.TotalTokens,
+			AmountMicros: row.AmountMicros,
+		})
+	}
+	return report, nil
+}
+
+// SeedUsageRecord appends one settled usage row for tests and local console demos.
+func (r *MemoryRepository) SeedUsageRecord(record UsageLogRow) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = time.Now().UTC()
+	}
+	if record.Status == "" {
+		record.Status = "settled"
+	}
+	if record.SettlementStatus == "" {
+		record.SettlementStatus = record.Status
+	}
+	if record.LedgerEntryID == "" {
+		record.LedgerEntryID = newID("ledger")
+	}
+	if record.SettlementKind == "" {
+		record.SettlementKind = "usage_debit"
+	}
+	line := LedgerLine{
+		ID:                 record.LedgerEntryID,
+		RequestID:          record.RequestID,
+		SettlementKind:     record.SettlementKind,
+		TenantID:           record.TenantID,
+		ProjectID:          record.ProjectID,
+		AccountID:          "",
+		Currency:           record.Currency,
+		AmountMicros:       -record.AmountMicros,
+		BalanceAfterMicros: record.BalanceAfterMicros,
+		Reason:             "usage settlement",
+		CreatedAt:          record.SettledAt,
+	}
+	if line.CreatedAt.IsZero() {
+		line.CreatedAt = record.CreatedAt
+	}
+	r.usage = append(r.usage, memoryUsageRecord{
+		UsageSummary: UsageSummary{
+			Model:        record.Model,
+			ProviderType: record.ProviderType,
+			ChannelID:    record.ChannelID,
+			Currency:     record.Currency,
+			Requests:     1,
+			InputTokens:  record.InputTokens,
+			OutputTokens: record.OutputTokens,
+			TotalTokens:  record.TotalTokens,
+			AmountMicros: record.AmountMicros,
+		},
+		RequestID:  record.RequestID,
+		TenantID:   record.TenantID,
+		ProjectID:  record.ProjectID,
+		APIKeyID:   record.APIKeyID,
+		CreatedAt:  record.CreatedAt,
+		LedgerLine: line,
+	})
+	r.ledger = append(r.ledger, line)
 }
 
 // UpsertProviderCostProfile creates or updates a provider cost profile.
@@ -354,6 +450,72 @@ func timeMatches(value, from, to time.Time) bool {
 		return false
 	}
 	return true
+}
+
+func usageRecordMatches(record memoryUsageRecord, filter UsageLogFilter) bool {
+	if !timeMatches(record.CreatedAt, filter.From, filter.To) {
+		return false
+	}
+	if filter.TenantID != "" && record.TenantID != filter.TenantID {
+		return false
+	}
+	if filter.ProjectID != "" && record.ProjectID != filter.ProjectID {
+		return false
+	}
+	if filter.APIKeyID != "" && record.APIKeyID != filter.APIKeyID {
+		return false
+	}
+	if filter.RequestID != "" && record.RequestID != filter.RequestID {
+		return false
+	}
+	if filter.Model != "" && record.Model != filter.Model {
+		return false
+	}
+	if filter.ProviderType != "" && record.ProviderType != filter.ProviderType {
+		return false
+	}
+	if filter.ChannelID != "" && record.ChannelID != filter.ChannelID {
+		return false
+	}
+	if filter.Currency != "" && record.Currency != filter.Currency {
+		return false
+	}
+	return usageStatusMatches("settled", filter.Status)
+}
+
+func usageLogRowFromMemory(record memoryUsageRecord) UsageLogRow {
+	row := UsageLogRow{
+		RequestID:      record.RequestID,
+		TenantID:       record.TenantID,
+		ProjectID:      record.ProjectID,
+		APIKeyID:       record.APIKeyID,
+		Model:          record.Model,
+		ProviderType:   record.ProviderType,
+		ChannelID:      record.ChannelID,
+		Status:         "settled",
+		InputTokens:    record.InputTokens,
+		OutputTokens:   record.OutputTokens,
+		TotalTokens:    record.TotalTokens,
+		AmountMicros:   record.AmountMicros,
+		Currency:       record.Currency,
+		CreatedAt:      record.CreatedAt,
+		SettlementKind: record.LedgerLine.SettlementKind,
+	}
+	if record.LedgerLine.ID != "" {
+		row.LedgerEntryID = record.LedgerLine.ID
+		row.SettlementStatus = "settled"
+		row.BalanceAfterMicros = record.LedgerLine.BalanceAfterMicros
+		row.SettledAt = record.LedgerLine.CreatedAt
+	}
+	return row
+}
+
+func usageStatusMatches(rowStatus, filterStatus string) bool {
+	filterStatus = strings.TrimSpace(filterStatus)
+	if filterStatus == "" {
+		return true
+	}
+	return strings.EqualFold(rowStatus, filterStatus)
 }
 
 func balanceKey(tenantID, projectID, currency string) string {

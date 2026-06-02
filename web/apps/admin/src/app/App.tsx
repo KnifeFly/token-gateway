@@ -1,4 +1,5 @@
 import { CustomerAccountsPanel } from "../features/accounts/CustomerAccountsPanel";
+import { ActivityLogsPanel } from "../features/activity/ActivityLogsPanel";
 import { APIKeyManagementPanel } from "../features/api-keys/APIKeyManagementPanel";
 import { ChannelManagementPanel } from "../features/channels/ChannelManagementPanel";
 import { ModelManagementPanel } from "../features/models/ModelManagementPanel";
@@ -19,6 +20,7 @@ export function App() {
         <ChannelManagementPanel />
         <CustomerAccountsPanel />
         <APIKeyManagementPanel />
+        <ActivityLogsPanel />
       </section>
     </main>
   );

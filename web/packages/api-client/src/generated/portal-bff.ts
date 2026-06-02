@@ -457,11 +457,15 @@ export interface components {
             api_key_id?: string;
             model?: string;
             capability?: string;
+            provider_type?: string;
+            channel_id?: string;
             status: string;
             /** Format: int64 */
             input_tokens: number;
             /** Format: int64 */
             output_tokens: number;
+            /** Format: int64 */
+            total_tokens?: number;
             credits_used: number;
             /** Format: date-time */
             created_at?: string;
@@ -754,6 +758,12 @@ export interface operations {
     getPortalUsage: {
         parameters: {
             query?: {
+                api_key_id?: string;
+                request_id?: string;
+                model?: string;
+                provider_type?: string;
+                channel_id?: string;
+                status?: string;
                 currency?: string;
                 from?: string;
                 to?: string;
@@ -890,7 +900,14 @@ export interface operations {
     listPortalTasks: {
         parameters: {
             query?: {
+                api_key_id?: string;
+                request_id?: string;
+                model?: string;
+                provider_type?: string;
+                channel_id?: string;
                 status?: string;
+                from?: string;
+                to?: string;
                 cursor?: string;
                 limit?: number;
             };

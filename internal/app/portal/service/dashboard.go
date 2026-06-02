@@ -21,7 +21,7 @@ func (s *Service) Dashboard(ctx context.Context, principal portalapp.Principal) 
 	if err != nil {
 		return portalapp.Dashboard{}, err
 	}
-	tasks, err := s.ListTasks(ctx, principal, "", 5, "")
+	tasks, err := s.ListTasks(ctx, principal, portalapp.TaskFilter{Limit: 5})
 	if err != nil {
 		return portalapp.Dashboard{}, err
 	}

@@ -54,6 +54,11 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/admin/v1/customer-accounts/", h.withSession(h.customerAccountRead))
 	mux.HandleFunc("POST /api/admin/v1/customer-accounts/", h.withSession(h.customerAccountAction))
 
+	mux.HandleFunc("GET /api/admin/v1/usage-logs", h.withSession(h.listUsageLogs))
+	mux.HandleFunc("GET /api/admin/v1/usage-logs/", h.withSession(h.usageLogByRequestID))
+	mux.HandleFunc("GET /api/admin/v1/task-logs", h.withSession(h.listTaskLogs))
+	mux.HandleFunc("GET /api/admin/v1/task-logs/", h.withSession(h.taskLogByTaskID))
+
 	mux.HandleFunc("GET /api/admin/v1/models", h.withSession(h.listModels))
 	mux.HandleFunc("POST /api/admin/v1/models", h.withSession(h.upsertModel))
 	mux.HandleFunc("POST /api/admin/v1/models/sync-preview", h.withSession(h.previewModelCatalogSync))

@@ -337,6 +337,101 @@ type CustomerLedgerLine struct {
 	CreatedAt          time.Time `json:"created_at,omitempty"`
 }
 
+// UsageLogFilter scopes Admin request-level usage log queries.
+type UsageLogFilter struct {
+	TenantID     string
+	ProjectID    string
+	APIKeyID     string
+	RequestID    string
+	Model        string
+	ProviderType string
+	ChannelID    string
+	Status       string
+	Currency     string
+	From         time.Time
+	To           time.Time
+	Limit        int
+}
+
+// UsageLogView is one operator-safe request usage row.
+type UsageLogView struct {
+	RequestID          string    `json:"request_id"`
+	TenantID           string    `json:"tenant_id"`
+	ProjectID          string    `json:"project_id"`
+	APIKeyID           string    `json:"api_key_id"`
+	Model              string    `json:"model"`
+	ProviderType       string    `json:"provider_type"`
+	ChannelID          string    `json:"channel_id"`
+	Status             string    `json:"status"`
+	SettlementStatus   string    `json:"settlement_status,omitempty"`
+	LedgerEntryID      string    `json:"ledger_entry_id,omitempty"`
+	SettlementKind     string    `json:"settlement_kind,omitempty"`
+	InputTokens        int64     `json:"input_tokens"`
+	OutputTokens       int64     `json:"output_tokens"`
+	TotalTokens        int64     `json:"total_tokens"`
+	AmountMicros       int64     `json:"amount_micros"`
+	Currency           string    `json:"currency"`
+	BalanceAfterMicros int64     `json:"balance_after_micros,omitempty"`
+	CreatedAt          time.Time `json:"created_at,omitempty"`
+	SettledAt          time.Time `json:"settled_at,omitempty"`
+}
+
+// UsageLogDetail returns a usage row and related safe ledger rows.
+type UsageLogDetail struct {
+	Usage  UsageLogView         `json:"usage"`
+	Ledger []CustomerLedgerLine `json:"ledger,omitempty"`
+}
+
+// TaskLogFilter scopes Admin async task log queries.
+type TaskLogFilter struct {
+	TaskID       string
+	TenantID     string
+	ProjectID    string
+	APIKeyID     string
+	RequestID    string
+	Model        string
+	ProviderType string
+	ChannelID    string
+	Status       string
+	Cursor       string
+	From         time.Time
+	To           time.Time
+	Limit        int
+}
+
+// TaskLogView is one operator-safe async task row.
+type TaskLogView struct {
+	TaskID             string            `json:"task_id"`
+	RequestID          string            `json:"request_id"`
+	TenantID           string            `json:"tenant_id"`
+	ProjectID          string            `json:"project_id"`
+	APIKeyID           string            `json:"api_key_id"`
+	Kind               string            `json:"kind"`
+	MediaType          string            `json:"media_type,omitempty"`
+	Model              string            `json:"model"`
+	Status             string            `json:"status"`
+	Progress           int               `json:"progress"`
+	ProviderType       string            `json:"provider_type,omitempty"`
+	ChannelID          string            `json:"channel_id,omitempty"`
+	ProviderTaskID     string            `json:"provider_task_id,omitempty"`
+	CallbackConfigured bool              `json:"callback_configured"`
+	SettlementStatus   string            `json:"settlement_status"`
+	InputTokens        int64             `json:"input_tokens,omitempty"`
+	OutputTokens       int64             `json:"output_tokens,omitempty"`
+	TotalTokens        int64             `json:"total_tokens,omitempty"`
+	ErrorCode          string            `json:"error_code,omitempty"`
+	ErrorMessage       string            `json:"error_message,omitempty"`
+	Metadata           map[string]string `json:"metadata,omitempty"`
+	CreatedAt          time.Time         `json:"created_at,omitempty"`
+	UpdatedAt          time.Time         `json:"updated_at,omitempty"`
+	CompletedAt        *time.Time        `json:"completed_at,omitempty"`
+}
+
+// TaskLogDetail returns an operator-safe task detail without raw input, result, or callback URL.
+type TaskLogDetail struct {
+	Task TaskLogView `json:"task"`
+}
+
 // CustomerAccountCreateRequest creates a tenant/project scoped customer account.
 type CustomerAccountCreateRequest struct {
 	TenantID            string   `json:"tenant_id,omitempty"`

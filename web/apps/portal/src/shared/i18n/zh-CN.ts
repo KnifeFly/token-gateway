@@ -91,19 +91,32 @@ export const portalCopy = {
   tasks: {
     title: "任务",
     taskColumn: "任务",
+    requestColumn: "请求",
     statusColumn: "状态",
     modelColumn: "模型",
+    channelColumn: "供应商/渠道",
     createdColumn: "创建时间",
+    requestIDLabel: "请求 ID",
+    apiKeyLabel: "API 密钥",
+    filterAction: "筛选",
+    empty: "暂无任务记录",
     fallbackTask: "任务",
     fallbackStatus: "未知"
   },
   usage: {
     title: "用量",
+    requestColumn: "请求",
     statusColumn: "状态",
     modelColumn: "模型",
+    channelColumn: "供应商/渠道",
     inputColumn: "输入",
     outputColumn: "输出",
-    creditsColumn: "额度"
+    creditsColumn: "额度",
+    requestIDLabel: "请求 ID",
+    apiKeyLabel: "API 密钥",
+    filterAction: "筛选",
+    empty: "暂无用量记录",
+    aggregateRow: "汇总"
   },
   settings: {
     title: "项目设置",

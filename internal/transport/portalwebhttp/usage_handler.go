@@ -20,7 +20,13 @@ func (h *Handler) usage(w http.ResponseWriter, r *http.Request, sr sessionReques
 
 func parseUsageFilter(w http.ResponseWriter, requestID string, r *http.Request) (portalapp.UsageFilter, bool) {
 	var filter portalapp.UsageFilter
-	filter.Currency = r.URL.Query().Get("currency")
+	filter.APIKeyID = strings.TrimSpace(r.URL.Query().Get("api_key_id"))
+	filter.RequestID = strings.TrimSpace(r.URL.Query().Get("request_id"))
+	filter.Model = strings.TrimSpace(r.URL.Query().Get("model"))
+	filter.ProviderType = strings.TrimSpace(r.URL.Query().Get("provider_type"))
+	filter.ChannelID = strings.TrimSpace(r.URL.Query().Get("channel_id"))
+	filter.Status = strings.TrimSpace(r.URL.Query().Get("status"))
+	filter.Currency = strings.TrimSpace(r.URL.Query().Get("currency"))
 	limit, err := parseLimitValue(r.URL.Query().Get("limit"))
 	if err != nil {
 		writeError(w, requestID, err)

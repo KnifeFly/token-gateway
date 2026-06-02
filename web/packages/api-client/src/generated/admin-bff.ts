@@ -296,6 +296,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/usage-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminUsageLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/usage-logs/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminUsageLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/task-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminTaskLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/task-logs/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminTaskLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/models": {
         parameters: {
             query?: never;
@@ -999,6 +1063,81 @@ export interface components {
             /** Format: date-time */
             created_at?: string;
         };
+        AdminUsageLogListResponse: {
+            data: components["schemas"]["AdminUsageLogView"][];
+        };
+        AdminUsageLogView: {
+            request_id: string;
+            tenant_id: string;
+            project_id: string;
+            api_key_id: string;
+            model: string;
+            provider_type: string;
+            channel_id: string;
+            status: string;
+            settlement_status?: string;
+            ledger_entry_id?: string;
+            settlement_kind?: string;
+            /** Format: int64 */
+            input_tokens: number;
+            /** Format: int64 */
+            output_tokens: number;
+            /** Format: int64 */
+            total_tokens: number;
+            /** Format: int64 */
+            amount_micros: number;
+            currency: string;
+            /** Format: int64 */
+            balance_after_micros?: number;
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            settled_at?: string;
+        };
+        AdminUsageLogDetail: {
+            usage: components["schemas"]["AdminUsageLogView"];
+            ledger?: components["schemas"]["AdminCustomerLedgerLine"][];
+        };
+        AdminTaskLogListResponse: {
+            data: components["schemas"]["AdminTaskLogView"][];
+        };
+        AdminTaskLogView: {
+            task_id: string;
+            request_id: string;
+            tenant_id: string;
+            project_id: string;
+            api_key_id: string;
+            kind: string;
+            media_type?: string;
+            model: string;
+            status: string;
+            progress: number;
+            provider_type?: string;
+            channel_id?: string;
+            provider_task_id?: string;
+            callback_configured: boolean;
+            settlement_status: string;
+            /** Format: int64 */
+            input_tokens?: number;
+            /** Format: int64 */
+            output_tokens?: number;
+            /** Format: int64 */
+            total_tokens?: number;
+            error_code?: string;
+            error_message?: string;
+            metadata?: {
+                [key: string]: string;
+            };
+            /** Format: date-time */
+            created_at?: string;
+            /** Format: date-time */
+            updated_at?: string;
+            /** Format: date-time */
+            completed_at?: string | null;
+        };
+        AdminTaskLogDetail: {
+            task: components["schemas"]["AdminTaskLogView"];
+        };
         AdminCustomerAccountCreateRequest: {
             tenant_id?: string;
             tenant_name: string;
@@ -1337,6 +1476,8 @@ export interface components {
         ProjectIDQuery: string;
         CustomerAccountID: string;
         KeyID: string;
+        RequestID: string;
+        TaskID: string;
         ModelID: string;
         ChannelID: string;
         OperatorID: string;
@@ -1836,6 +1977,121 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminCustomerSessionResetResult"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminUsageLogs: {
+        parameters: {
+            query?: {
+                tenant_id?: components["parameters"]["TenantIDQuery"];
+                project_id?: components["parameters"]["ProjectIDQuery"];
+                api_key_id?: string;
+                request_id?: string;
+                model?: string;
+                provider_type?: string;
+                channel_id?: string;
+                status?: string;
+                currency?: string;
+                from?: string;
+                to?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operator-safe request-level usage logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUsageLogListResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminUsageLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: components["parameters"]["RequestID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operator-safe usage log detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUsageLogDetail"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminTaskLogs: {
+        parameters: {
+            query?: {
+                task_id?: string;
+                tenant_id?: components["parameters"]["TenantIDQuery"];
+                project_id?: components["parameters"]["ProjectIDQuery"];
+                api_key_id?: string;
+                request_id?: string;
+                model?: string;
+                provider_type?: string;
+                channel_id?: string;
+                status?: string;
+                cursor?: string;
+                from?: string;
+                to?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operator-safe async task logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTaskLogListResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminTaskLog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: components["parameters"]["TaskID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Operator-safe async task detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminTaskLogDetail"];
                 };
             };
             default: components["responses"]["ErrorResponse"];

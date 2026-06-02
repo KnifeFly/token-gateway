@@ -49,6 +49,65 @@ func (r *MySQLRepository) TenantUsageReport(ctx context.Context, filter TenantUs
 	return report, nil
 }
 
+// UsageLogReport reads request-level usage rows from MySQL.
+func (r *MySQLRepository) UsageLogReport(ctx context.Context, filter UsageLogFilter) (*UsageLogReport, error) {
+	if r == nil || r.db == nil {
+		return nil, apperr.ConfigUnavailable("reporting database is unavailable")
+	}
+	query := `
+SELECT u.request_id, u.tenant_id, u.project_id, u.api_key_id, u.model, u.provider_type,
+       u.channel_id, u.input_tokens, u.output_tokens, u.total_tokens, u.amount_micros,
+       u.currency, u.created_at,
+       COALESCE(l.id, ''), COALESCE(l.settlement_kind, ''), COALESCE(l.balance_after_micros, 0),
+       l.created_at, COALESCE(f.id, ''), COALESCE(f.status, '')
+FROM usage_records u
+LEFT JOIN ledger_entries l ON l.request_id = u.request_id AND l.settlement_kind = 'usage_debit'
+LEFT JOIN failed_settlements f ON f.request_id = u.request_id`
+	where, args := usageLogWhere(filter, "u")
+	query += where + ` ORDER BY u.created_at DESC LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	report := &UsageLogReport{GeneratedAt: time.Now().UTC(), Filter: filter}
+	for rows.Next() {
+		var row UsageLogRow
+		var settledAt sql.NullTime
+		var failedSettlementID, failedStatus string
+		if err := rows.Scan(
+			&row.RequestID, &row.TenantID, &row.ProjectID, &row.APIKeyID, &row.Model,
+			&row.ProviderType, &row.ChannelID, &row.InputTokens, &row.OutputTokens,
+			&row.TotalTokens, &row.AmountMicros, &row.Currency, &row.CreatedAt,
+			&row.LedgerEntryID, &row.SettlementKind, &row.BalanceAfterMicros, &settledAt,
+			&failedSettlementID, &failedStatus,
+		); err != nil {
+			return nil, err
+		}
+		row.Status = usageLogStatus(row.LedgerEntryID, failedStatus)
+		row.SettlementStatus = row.Status
+		if failedSettlementID != "" && row.LedgerEntryID == "" {
+			row.SettlementStatus = failedStatus
+		}
+		if settledAt.Valid {
+			row.SettledAt = settledAt.Time
+		}
+		if usageStatusMatches(row.Status, filter.Status) {
+			report.Rows = append(report.Rows, row)
+			addTotals(&report.Totals, UsageSummary{
+				Currency:     row.Currency,
+				Requests:     1,
+				InputTokens:  row.InputTokens,
+				OutputTokens: row.OutputTokens,
+				TotalTokens:  row.TotalTokens,
+				AmountMicros: row.AmountMicros,
+			})
+		}
+	}
+	return report, rows.Err()
+}
+
 // UpsertProviderCostProfile creates or updates provider cost assumptions.
 func (r *MySQLRepository) UpsertProviderCostProfile(ctx context.Context, profile ProviderCostProfile) (*ProviderCostProfile, error) {
 	if r == nil || r.db == nil {
@@ -307,20 +366,27 @@ FROM balance_accounts`
 }
 
 func (r *MySQLRepository) listUsageSummaries(ctx context.Context, filter TenantUsageFilter) ([]UsageSummary, error) {
+	if filter.Status != "" && !usageStatusMatches("settled", filter.Status) {
+		return nil, nil
+	}
 	query := `
 SELECT model, provider_type, channel_id, currency, COUNT(*),
        COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
        COALESCE(SUM(total_tokens), 0), COALESCE(SUM(amount_micros), 0)
 FROM usage_records`
-	where, args := reportWhere(filter.TenantID, filter.ProjectID, filter.Currency, filter.From, filter.To)
-	if filter.APIKeyID != "" {
-		if where == "" {
-			where = " WHERE api_key_id = ?"
-		} else {
-			where += " AND api_key_id = ?"
-		}
-		args = append(args, filter.APIKeyID)
-	}
+	where, args := usageLogWhere(UsageLogFilter{
+		TenantID:     filter.TenantID,
+		ProjectID:    filter.ProjectID,
+		APIKeyID:     filter.APIKeyID,
+		RequestID:    filter.RequestID,
+		Model:        filter.Model,
+		ProviderType: filter.ProviderType,
+		ChannelID:    filter.ChannelID,
+		Status:       filter.Status,
+		Currency:     filter.Currency,
+		From:         filter.From,
+		To:           filter.To,
+	}, "")
 	query += where + ` GROUP BY model, provider_type, channel_id, currency ORDER BY model, provider_type, channel_id`
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -347,6 +413,22 @@ SELECT id, request_id, settlement_kind, tenant_id, project_id, account_id, curre
        amount_micros, balance_after_micros, reason, created_at
 FROM ledger_entries`
 	where, args := reportWhere(filter.TenantID, filter.ProjectID, filter.Currency, filter.From, filter.To)
+	if filter.RequestID != "" {
+		if where == "" {
+			where = " WHERE request_id = ?"
+		} else {
+			where += " AND request_id = ?"
+		}
+		args = append(args, filter.RequestID)
+	}
+	if filter.Status != "" && !usageStatusMatches("settled", filter.Status) {
+		if where == "" {
+			where = " WHERE settlement_kind = ?"
+		} else {
+			where += " AND settlement_kind = ?"
+		}
+		args = append(args, filter.Status)
+	}
 	query += where + ` ORDER BY created_at DESC LIMIT ?`
 	args = append(args, filter.Limit)
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -518,6 +600,54 @@ func reportWhere(tenantID, projectID, currency string, from, to time.Time) (stri
 		return "", args
 	}
 	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func usageLogWhere(filter UsageLogFilter, alias string) (string, []any) {
+	column := func(name string) string {
+		if alias == "" {
+			return name
+		}
+		return alias + "." + name
+	}
+	var clauses []string
+	var args []any
+	add := func(name string, value string) {
+		if value == "" {
+			return
+		}
+		clauses = append(clauses, column(name)+" = ?")
+		args = append(args, value)
+	}
+	add("tenant_id", filter.TenantID)
+	add("project_id", filter.ProjectID)
+	add("api_key_id", filter.APIKeyID)
+	add("request_id", filter.RequestID)
+	add("model", filter.Model)
+	add("provider_type", filter.ProviderType)
+	add("channel_id", filter.ChannelID)
+	add("currency", filter.Currency)
+	if !filter.From.IsZero() {
+		clauses = append(clauses, column("created_at")+" >= ?")
+		args = append(args, filter.From)
+	}
+	if !filter.To.IsZero() {
+		clauses = append(clauses, column("created_at")+" < ?")
+		args = append(args, filter.To)
+	}
+	if len(clauses) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(clauses, " AND "), args
+}
+
+func usageLogStatus(ledgerEntryID string, failedStatus string) string {
+	if ledgerEntryID != "" {
+		return "settled"
+	}
+	if failedStatus != "" {
+		return "settlement_" + failedStatus
+	}
+	return "recorded"
 }
 
 func taskReportWhere(tenantID, projectID string, from, to time.Time) (string, []any) {

@@ -97,6 +97,56 @@ func TestProviderProfitReportUsesCostProfile(t *testing.T) {
 	}
 }
 
+func TestUsageLogReportFiltersRequestLevelRows(t *testing.T) {
+	repo := NewMemoryRepository()
+	now := time.Now().UTC()
+	repo.SeedUsageRecord(UsageLogRow{
+		RequestID:    "req_1",
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_1",
+		Model:        "gpt-public",
+		ProviderType: "openai",
+		ChannelID:    "channel_primary",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalTokens:  30,
+		AmountMicros: 1234,
+		Currency:     "USD",
+		CreatedAt:    now,
+	})
+	repo.SeedUsageRecord(UsageLogRow{
+		RequestID:    "req_2",
+		TenantID:     "tenant_2",
+		ProjectID:    "project_2",
+		APIKeyID:     "key_2",
+		Model:        "image-public",
+		ProviderType: "replicate",
+		ChannelID:    "channel_image",
+		AmountMicros: 9999,
+		Currency:     "USD",
+		CreatedAt:    now,
+	})
+	service := NewService(repo)
+
+	report, err := service.UsageLogReport(context.Background(), UsageLogFilter{
+		TenantID:  "tenant_1",
+		RequestID: "req_1",
+		Model:     "gpt-public",
+		Status:    "settled",
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("UsageLogReport() error = %v", err)
+	}
+	if len(report.Rows) != 1 || report.Rows[0].RequestID != "req_1" || report.Rows[0].ChannelID != "channel_primary" {
+		t.Fatalf("rows = %#v", report.Rows)
+	}
+	if report.Totals.Requests != 1 || report.Totals.RevenueMicros != 1234 {
+		t.Fatalf("totals = %#v", report.Totals)
+	}
+}
+
 func TestProviderProfitReportUsesComponentCostProfile(t *testing.T) {
 	repo := NewMemoryRepository()
 	repo.usage = append(repo.usage, memoryUsageRecord{

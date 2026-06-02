@@ -32,6 +32,49 @@ import type {
 import { navItems, type ViewID } from "./routes";
 import { portalClient, requestPortal } from "../shared/api/client";
 
+type ActivityFilters = {
+  apiKeyID: string;
+  requestID: string;
+  model: string;
+  providerType: string;
+  channelID: string;
+  status: string;
+  from: string;
+  to: string;
+};
+
+const emptyActivityFilters: ActivityFilters = {
+  apiKeyID: "",
+  requestID: "",
+  model: "",
+  providerType: "",
+  channelID: "",
+  status: "",
+  from: "",
+  to: ""
+};
+
+function activityQueryPath(basePath: string, filters: ActivityFilters, limit = 10): string {
+  const params = new URLSearchParams({ limit: String(limit) });
+  const entries: Array<[string, string]> = [
+    ["api_key_id", filters.apiKeyID],
+    ["request_id", filters.requestID],
+    ["model", filters.model],
+    ["provider_type", filters.providerType],
+    ["channel_id", filters.channelID],
+    ["status", filters.status],
+    ["from", filters.from],
+    ["to", filters.to]
+  ];
+  for (const [key, value] of entries) {
+    const trimmed = value.trim();
+    if (trimmed) {
+      params.set(key, trimmed);
+    }
+  }
+  return `${basePath}?${params.toString()}`;
+}
+
 export function App() {
   const [session, setSession] = useState<Session>({ authenticated: false });
   const [csrfToken, setCSRFToken] = useState("");
@@ -48,6 +91,8 @@ export function App() {
   const [usage, setUsage] = useState<UsageResponse>();
   const [apiKeys, setAPIKeys] = useState<APIKey[]>([]);
   const [tasks, setTasks] = useState<TaskList>();
+  const [usageFilters, setUsageFilters] = useState<ActivityFilters>(emptyActivityFilters);
+  const [taskFilters, setTaskFilters] = useState<ActivityFilters>(emptyActivityFilters);
   const [settings, setSettings] = useState<ProjectSettings>();
   const [derivedName, setDerivedName] = useState("");
   const [derivedModels, setDerivedModels] = useState("");
@@ -90,13 +135,21 @@ export function App() {
       portalRequest<Dashboard>("/api/portal/v1/dashboard", {}, csrfOverride),
       portalRequest<ModelList>("/api/portal/v1/models", {}, csrfOverride),
       portalRequest<CreditsResponse>("/api/portal/v1/credits", {}, csrfOverride),
-      portalRequest<UsageResponse>("/api/portal/v1/usage?limit=10", {}, csrfOverride),
+      portalRequest<UsageResponse>(
+        activityQueryPath("/api/portal/v1/usage", usageFilters),
+        {},
+        csrfOverride
+      ),
       portalRequest<PortalSchemas["APIKeyListResponse"]>(
         "/api/portal/v1/api-keys",
         {},
         csrfOverride
       ),
-      portalRequest<TaskList>("/api/portal/v1/tasks?limit=10", {}, csrfOverride),
+      portalRequest<TaskList>(
+        activityQueryPath("/api/portal/v1/tasks", taskFilters),
+        {},
+        csrfOverride
+      ),
       portalRequest<ProjectSettings>("/api/portal/v1/settings/project", {}, csrfOverride)
     ]);
 
@@ -230,6 +283,8 @@ export function App() {
       setUsage(undefined);
       setAPIKeys([]);
       setTasks(undefined);
+      setUsageFilters(emptyActivityFilters);
+      setTaskFilters(emptyActivityFilters);
       setSettings(undefined);
       setDerivedName("");
       setDerivedModels("");
@@ -311,6 +366,38 @@ export function App() {
     setMessage("");
     try {
       await loadModelDetail(modelID);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApplyUsageFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const nextUsage = await portalRequest<UsageResponse>(
+        activityQueryPath("/api/portal/v1/usage", usageFilters)
+      );
+      setUsage(nextUsage);
+    } catch (error) {
+      setMessage(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleApplyTaskFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const nextTasks = await portalRequest<TaskList>(
+        activityQueryPath("/api/portal/v1/tasks", taskFilters)
+      );
+      setTasks(nextTasks);
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -414,8 +501,22 @@ export function App() {
             setDerivedName={setDerivedName}
           />
         ) : null}
-        {activeView === "usage" ? <UsageView usage={usage} /> : null}
-        {activeView === "tasks" ? <TasksView tasks={tasks?.data ?? []} /> : null}
+        {activeView === "usage" ? (
+          <UsageView
+            filters={usageFilters}
+            onApplyFilters={handleApplyUsageFilters}
+            onFiltersChange={setUsageFilters}
+            usage={usage}
+          />
+        ) : null}
+        {activeView === "tasks" ? (
+          <TasksView
+            filters={taskFilters}
+            onApplyFilters={handleApplyTaskFilters}
+            onFiltersChange={setTaskFilters}
+            tasks={tasks?.data ?? []}
+          />
+        ) : null}
         {activeView === "credits" ? <CreditsView credits={credits} /> : null}
         {activeView === "settings" ? <SettingsView settings={settings} session={session} /> : null}
       </section>

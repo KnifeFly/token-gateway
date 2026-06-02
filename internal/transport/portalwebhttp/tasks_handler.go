@@ -3,17 +3,54 @@ package portalwebhttp
 import (
 	"net/http"
 	"strings"
+	"time"
 
+	portalapp "github.com/KnifeFly/token-gateway/internal/app/portal"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
 func (h *Handler) listTasks(w http.ResponseWriter, r *http.Request, sr sessionRequest) {
-	limit, ok := parseLimit(w, sr.requestID, r)
+	filter, ok := parseTaskFilter(w, sr.requestID, r)
 	if !ok {
 		return
 	}
-	response, err := h.portal.ListTasks(r.Context(), sr.principal, r.URL.Query().Get("status"), limit, r.URL.Query().Get("cursor"))
+	response, err := h.portal.ListTasks(r.Context(), sr.principal, filter)
 	writeResult(w, sr.requestID, response, err)
+}
+
+func parseTaskFilter(w http.ResponseWriter, requestID string, r *http.Request) (portalapp.TaskFilter, bool) {
+	limit, err := parseLimitValue(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, requestID, err)
+		return portalapp.TaskFilter{}, false
+	}
+	filter := portalapp.TaskFilter{
+		APIKeyID:     strings.TrimSpace(r.URL.Query().Get("api_key_id")),
+		RequestID:    strings.TrimSpace(r.URL.Query().Get("request_id")),
+		Model:        strings.TrimSpace(r.URL.Query().Get("model")),
+		ProviderType: strings.TrimSpace(r.URL.Query().Get("provider_type")),
+		ChannelID:    strings.TrimSpace(r.URL.Query().Get("channel_id")),
+		Status:       strings.TrimSpace(r.URL.Query().Get("status")),
+		Cursor:       strings.TrimSpace(r.URL.Query().Get("cursor")),
+		Limit:        limit,
+	}
+	if value := strings.TrimSpace(r.URL.Query().Get("from")); value != "" {
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			writeError(w, requestID, apperr.InvalidArgument("from must be RFC3339"))
+			return portalapp.TaskFilter{}, false
+		}
+		filter.From = parsed
+	}
+	if value := strings.TrimSpace(r.URL.Query().Get("to")); value != "" {
+		parsed, err := time.Parse(time.RFC3339, value)
+		if err != nil {
+			writeError(w, requestID, apperr.InvalidArgument("to must be RFC3339"))
+			return portalapp.TaskFilter{}, false
+		}
+		filter.To = parsed
+	}
+	return filter, true
 }
 
 func (h *Handler) taskByID(w http.ResponseWriter, r *http.Request, sr sessionRequest) {

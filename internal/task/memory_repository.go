@@ -153,7 +153,7 @@ func (r *MemoryRepository) ListProviderTasks(_ context.Context, limit int) ([]Ta
 	return tasks, nil
 }
 
-// ListTasks returns tenant/project scoped tasks ordered by newest first.
+// ListTasks returns filtered tasks ordered by newest first.
 func (r *MemoryRepository) ListTasks(_ context.Context, filter TaskListFilter) ([]Task, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -162,13 +162,37 @@ func (r *MemoryRepository) ListTasks(_ context.Context, filter TaskListFilter) (
 	}
 	tasks := make([]Task, 0, len(r.tasks))
 	for _, task := range r.tasks {
+		if filter.TaskID != "" && task.ID != filter.TaskID {
+			continue
+		}
 		if filter.TenantID != "" && task.TenantID != filter.TenantID {
 			continue
 		}
 		if filter.ProjectID != "" && task.ProjectID != filter.ProjectID {
 			continue
 		}
+		if filter.APIKeyID != "" && task.APIKeyID != filter.APIKeyID {
+			continue
+		}
+		if filter.RequestID != "" && task.RequestID != filter.RequestID {
+			continue
+		}
+		if filter.Model != "" && task.Model != filter.Model {
+			continue
+		}
+		if filter.ProviderType != "" && task.ProviderType != filter.ProviderType {
+			continue
+		}
+		if filter.ChannelID != "" && task.ChannelID != filter.ChannelID {
+			continue
+		}
 		if filter.Status != "" && task.Status != filter.Status {
+			continue
+		}
+		if !filter.From.IsZero() && task.CreatedAt.Before(filter.From) {
+			continue
+		}
+		if !filter.To.IsZero() && !task.CreatedAt.Before(filter.To) {
 			continue
 		}
 		tasks = append(tasks, *cloneTask(task))
