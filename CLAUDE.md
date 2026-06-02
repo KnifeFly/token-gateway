@@ -32,6 +32,16 @@ Before implementing architecture or domain behavior, use the docs in this order:
 
 `docs/plan/` and `docs/tasks.md` are the execution entry points. `docs/design/` remains the source of truth for system, architecture, code blueprint, and OpenAPI design. Do not copy long design or plan text into code; keep implementation comments focused on local behavior.
 
+## Monorepo Baseline
+
+This repository is a Go backend plus browser console monorepo:
+
+- Go commands live under `cmd/*`: `gateway` for customer data-plane APIs, `control-api` for machine control APIs, `console` for browser-facing BFF APIs/static console assets, plus worker/config/migration tools.
+- The console frontend is Vite React, not Next.js/SSR: `web/apps/portal` and `web/apps/admin` are independent browser apps.
+- Shared frontend code lives in raw TypeScript workspace packages under `web/packages/*`. Packages export source files and are compiled by the consuming app/toolchain.
+- The root `package.json` and `pnpm-workspace.yaml` own the frontend workspace. Do not introduce Turborepo, pnpm catalogs, Next.js, Electron, or mobile-specific conventions unless a future phase explicitly chooses them.
+- Backend, BFF, frontend app, shared package, OpenAPI, and Makefile/script boundaries are all part of the architecture. Keep them aligned when adding console behavior.
+
 ## Architecture Rules
 
 - Public URI names describe capabilities, not vendors. Do not add vendor-shaped public routes unless compatibility requires it.
@@ -177,6 +187,35 @@ pkg/tokenusage
 
 Create only the directories and packages needed for the current milestone. Avoid empty package sprawl.
 
+## Frontend Workspace Rules
+
+- Apps may import shared `web/packages/*`; shared packages must never import from `web/apps/*`, app routes, app providers, or app-local feature code.
+- `web/apps/portal` and `web/apps/admin` are separate apps. They must not import from each other; cross-app reuse belongs in a shared package only when it is genuinely shared.
+- `web/packages/ui` contains pure UI components and primitives only. Do not put tenant, channel, model, usage, billing, task, RBAC, session, or API-specific business behavior there.
+- `web/packages/api-client` owns generated OpenAPI types, BFF client entrypoints, fetch wrapper behavior, response/error normalization, and contract-adjacent tests.
+- `web/packages/auth` owns browser session, CSRF, and permission helpers. It must not own route rendering, app navigation, or backend RBAC decisions.
+- `web/packages/format` owns pure formatting helpers for dates, numbers, money, tokens, status labels, and related display values.
+- Every workspace package must declare its directly imported external dependencies in its own `package.json`. Use `workspace:*` for local `@token-gateway/*` packages.
+- Keep generated files under `web/packages/api-client/src/generated`. Do not hand-edit generated OpenAPI output.
+
+## API Contract Workflow
+
+- Split OpenAPI files under `api/openapi/*` are the console contract sources. `portal-bff.yaml` and `admin-bff.yaml` generate the browser API client.
+- BFF handler, DTO, auth, mutation, or response-shape changes must update the matching OpenAPI file in the same change.
+- After changing BFF contracts, run `pnpm generate:api` or `make api-generate`, then run `make api-check` to catch generated-client drift.
+- Keep browser BFF contracts separate from machine APIs: Admin Web uses `/api/admin/v1/*`, Portal Web uses `/api/portal/v1/*`, and browser code must never call `/admin/*` directly.
+- `docs/design/ai_gateway_openapi.yaml` remains a design/compatibility source. Update it when public API design truth changes, or explain why a split OpenAPI change is intentionally BFF-only.
+
+## Import Boundary Checks
+
+`make boundary-check` runs `scripts/check_import_boundaries.sh`. Keep these rules true:
+
+- Runtime Go code must not import the removed `internal/portal` package.
+- `internal/controlplane/configadmin` is the machine config owner and must not depend on `internal/app/admin`.
+- `internal/app/admin` and `internal/app/portal` must not depend on each other.
+- Admin browser code must call `/api/admin/v1/*`, not `/admin/*`.
+- Shared `web/packages/*` must not depend on `web/apps/*`.
+
 ## Coding Defaults
 
 - Use Go 1.26+ unless the repo pins a newer version.
@@ -190,7 +229,7 @@ Create only the directories and packages needed for the current milestone. Avoid
 
 ## Commands
 
-The repo is currently design-first. As implementation lands, keep these commands working:
+The repo has Go backend, console BFF, frontend workspace, OpenAPI generation, and import-boundary checks. Keep these commands or their Makefile equivalents working:
 
 ```bash
 go test ./...
@@ -198,6 +237,8 @@ make test
 make lint
 make build
 make run-gateway
+make run-console
+make run-worker
 go run ./cmd/gateway -config configs/local.yaml
 go run ./cmd/console -config configs/local.yaml
 ```
@@ -221,6 +262,15 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm generate:api
+pnpm api:check
+make web-install
+make web-lint
+make web-typecheck
+make web-test
+make web-build
+make api-generate
+make api-check
+make boundary-check
 ```
 
 ## Definition Of Done
@@ -232,9 +282,13 @@ For non-trivial changes, verify the relevant slice before finishing:
 - Error codes mapped to the external protocol.
 - Metrics, trace spans, structured logs, audit events, and redaction updated when the request path changes.
 - `docs/design/ai_gateway_openapi.yaml` updated when public API behavior changes.
+- `api/openapi/portal-bff.yaml` or `api/openapi/admin-bff.yaml` updated when browser BFF behavior changes, with generated client output refreshed and `make api-check` reported.
 - `docs/plan/` or `docs/tasks.md` updated when phase scope, execution order, task status, or handoff state changes.
 - `docs/design/` updated when system, architecture, blueprint, or API design truth changes; otherwise explain intentional implementation differences.
-- `go test ./...`, `make test`, `make lint`, or the nearest available focused command run and reported.
+- `make boundary-check` run and reported when touching console/backend package boundaries, Portal/Admin app boundaries, or shared frontend package imports.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, or `pnpm build` run and reported for frontend changes.
+- `go test ./...`, `make test`, `make lint`, or the nearest available focused command run and reported for Go changes.
+- For docs-only changes, at minimum run and report `git diff --check`.
 
 ## Review Checklist
 
