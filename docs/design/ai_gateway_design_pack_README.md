@@ -58,7 +58,7 @@ P23 Console Directory Structure Alignment
 - 当前仍不做：复杂财务/发票闭环、对象存储、完整 Realtime、生产级 Observability 扩展、WASM/动态插件。
 - 当前先不做：semantic routing/cache、多地域 active-active。
 - 文件能力按非存储输入资产处理，只用于请求归一化、幂等校验和 provider 转发，不承诺持久化、下载、生命周期或存储 SLA。
-- Portal 第一版 P8 只做 `/v1/portal/*` API：模型/Schema、credits、usage、API key 自助管理和 task 查询；P19-P22 之后新增 Portal Web 和 Admin Web，P23 对齐目标目录树并保留 Portal 兼容 shim，但不暴露 admin/control 配置能力给 Portal。
+- Portal 第一版 P8 只做 `/v1/portal/*` API：模型/Schema、credits、usage、API key 自助管理和 task 查询；P19-P22 之后新增 Portal Web 和 Admin Web，P23 对齐目标目录树并把 `internal/portal` 全量迁移到 `internal/app/portal`，但不暴露 admin/control 配置能力给 Portal。
 - Admin Web 不复用 `/admin/*` machine Control API，不把 admin token 放进浏览器；所有浏览器 Admin 能力走 `/api/admin/v1/*`、operator session、RBAC、CSRF、审计和脱敏响应。
 - P9 只做客户接入验收收口：Portal smoke、OpenAPI import preflight 和 RC smoke 集成，不扩大产品边界。
 - P10 只做发布交接收口：release handoff、PR 模板、验证证据和回滚字段，不扩大产品边界。

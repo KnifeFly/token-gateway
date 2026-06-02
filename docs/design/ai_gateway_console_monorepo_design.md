@@ -166,7 +166,7 @@ web/
     test-utils/
 ```
 
-`internal/portal` 可以作为兼容 shim 过渡到 `internal/app/portal`，但新增 Portal Web 能力应落在 `internal/app/portal`。新增 Admin 应使用 `internal/app/admin`，避免与已有 `internal/controlplane/admin` 混淆；P23 目标是把该 control/config owner rename-only 调整为 `internal/controlplane/configadmin`。
+`internal/portal` 在 P23 全量迁移到 `internal/app/portal`，完成态删除 Portal runtime package；新增 Portal Web 能力应落在 `internal/app/portal`。新增 Admin 应使用 `internal/app/admin`，避免与已有 `internal/controlplane/admin` 混淆；P23 目标是把该 control/config owner rename-only 调整为 `internal/controlplane/configadmin`。
 
 ## 5. Repository 与 Service 拆分规则
 
@@ -442,7 +442,7 @@ P22 Console Frontend Production
   Admin UI, static asset strategy, E2E, CSP/security headers, deployment and rollback runbook
 
 P23 Console Directory Structure Alignment
-  configadmin rename, behavior-preserving split of handlers, services, repositories, frontend apps/packages, API scripts and examples
+  configadmin rename, full internal/portal migration, behavior-preserving split of handlers, services, repositories, frontend apps/packages, API scripts and examples
 ```
 
 P19-P22 是后续新增产品面，不改变 P8 作为“Portal Public API 第一版”的历史完成范围。P23 是结构治理阶段，不新增产品能力，只把 P19-P22 已有或待扩展能力对齐到目标目录树。
