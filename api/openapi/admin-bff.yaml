@@ -206,7 +206,11 @@ paths:
         - adminSession: []
       responses:
         "200":
-          $ref: "#/components/responses/ListResponse"
+          description: Safe model catalog list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelListResponse"
         default:
           $ref: "#/components/responses/ErrorResponse"
     post:
@@ -218,10 +222,158 @@ paths:
           idempotencyKey: []
           reasonHeader: []
       requestBody:
-        $ref: "#/components/requestBodies/JSONBody"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminModelUpsertRequest"
       responses:
         "200":
-          $ref: "#/components/responses/ObjectResponse"
+          description: Safe model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/sync-preview:
+    post:
+      tags: [Admin Web Config]
+      operationId: previewAdminModelCatalogSync
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminModelCatalogSyncPreviewRequest"
+      responses:
+        "200":
+          description: Non-persistent model catalog diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelCatalogSyncPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminModel
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Safe model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      tags: [Admin Web Config]
+      operationId: patchAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminModelUpsertRequest"
+      responses:
+        "200":
+          description: Safe model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/channels:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminModelChannels
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Safe model channel coverage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelChannelCoverageListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/schema-preview:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminModelSchemaPreview
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Safe model schema preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelSchemaPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Disabled model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/deprecate:
+    post:
+      tags: [Admin Web Config]
+      operationId: deprecateAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Deprecated model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
         default:
           $ref: "#/components/responses/ErrorResponse"
   /api/admin/v1/channels:
@@ -775,6 +927,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    ModelID:
+      name: model_id
+      in: path
+      required: true
+      schema: { type: string }
     ChannelID:
       name: channel_id
       in: path
@@ -898,6 +1055,307 @@ components:
           items:
             type: object
             additionalProperties: true
+    AdminModelListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelView"
+    AdminModelView:
+      type: object
+      required: [public_model, protocol, capability, type, schema_available, enabled, async, pricing_summary]
+      properties:
+        public_model:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        type:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        input_modalities:
+          type: array
+          items:
+            type: string
+        output_modalities:
+          type: array
+          items:
+            type: string
+        context_window:
+          type: integer
+          format: int64
+        max_output_tokens:
+          type: integer
+          format: int64
+        status:
+          type: string
+        deprecated:
+          type: boolean
+        sort_order:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        schema_available:
+          type: boolean
+        enabled:
+          type: boolean
+        async:
+          type: boolean
+        pricing_summary:
+          $ref: "#/components/schemas/AdminModelPricingSummary"
+        channel_coverage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelChannelCoverage"
+    AdminModelPricingSummary:
+      type: object
+      required: [configured, component_price_count, legacy_token_price_active]
+      properties:
+        configured:
+          type: boolean
+        currency:
+          type: string
+        category:
+          type: string
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPricingComponentView"
+        input_micros_per_token:
+          type: integer
+          format: int64
+        output_micros_per_token:
+          type: integer
+          format: int64
+        estimated_output_tokens:
+          type: integer
+          format: int64
+        component_price_count:
+          type: integer
+        legacy_token_price_active:
+          type: boolean
+    AdminPricingComponentView:
+      type: object
+      required: [unit, micros_per_unit]
+      properties:
+        unit:
+          type: string
+        micros_per_unit:
+          type: integer
+          format: int64
+    AdminModelChannelCoverageListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelChannelCoverage"
+    AdminModelChannelCoverage:
+      type: object
+      required: [channel_id, provider_type, enabled, upstream_model, credential_configured]
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        enabled:
+          type: boolean
+        upstream_model:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        credential_configured:
+          type: boolean
+    AdminModelSchemaPreview:
+      type: object
+      required: [model, version, schema]
+      properties:
+        model:
+          type: string
+        version:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+    AdminModelUpsertRequest:
+      type: object
+      properties:
+        public_model:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        context_window:
+          type: integer
+          format: int64
+        max_output_tokens:
+          type: integer
+          format: int64
+        status:
+          type: string
+        deprecated:
+          type: boolean
+        sort_order:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        schema:
+          type: object
+          additionalProperties: true
+        enabled:
+          type: boolean
+    AdminModelCatalogSyncPreviewRequest:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncModel"
+    AdminModelCatalogSyncModel:
+      type: object
+      required: [public_model]
+      properties:
+        public_model:
+          type: string
+        display_name:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        category:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+    AdminModelCatalogSyncPreview:
+      type: object
+      required: [unchanged]
+      properties:
+        added:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncItem"
+        removed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncItem"
+        changed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncItem"
+        unchanged:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+    AdminModelCatalogSyncItem:
+      type: object
+      required: [public_model, known_catalog_model, pricing_configured, channel_coverage]
+      properties:
+        public_model:
+          type: string
+        display_name:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        category:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        known_catalog_model:
+          type: boolean
+        pricing_configured:
+          type: boolean
+        channel_coverage:
+          type: integer
+        current_display_name:
+          type: string
     AdminChannelListResponse:
       type: object
       required: [data]

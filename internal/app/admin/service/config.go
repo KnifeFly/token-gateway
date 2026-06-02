@@ -86,22 +86,6 @@ func (s *Service) DisableAPIKey(ctx context.Context, actor adminapp.Actor, keyID
 	})
 }
 
-// ListModels returns public model configuration read models.
-func (s *Service) ListModels(ctx context.Context, actor adminapp.Actor) (adminapp.ListResponse[configadmin.ModelConfig], error) {
-	if err := s.Authorize(actor, "read", "model"); err != nil {
-		return adminapp.ListResponse[configadmin.ModelConfig]{}, err
-	}
-	cfg, err := s.snapshotConfig(ctx)
-	return adminapp.ListResponse[configadmin.ModelConfig]{Data: cfg.Models}, err
-}
-
-// UpsertModel writes model configuration through the control-plane owner service.
-func (s *Service) UpsertModel(ctx context.Context, actor adminapp.Actor, request configadmin.ModelConfig, opts adminapp.MutationOptions) (*configadmin.ModelConfig, error) {
-	return mutate(ctx, s, actor, opts, "write", "model", request.PublicModel, request, func() (*configadmin.ModelConfig, error) {
-		return s.owner.UpsertModel(ctx, request)
-	})
-}
-
 // ListChannels returns safe channel read models without credential material.
 func (s *Service) ListChannels(ctx context.Context, actor adminapp.Actor) (adminapp.ListResponse[adminapp.ChannelView], error) {
 	if err := s.Authorize(actor, "read", "channel"); err != nil {

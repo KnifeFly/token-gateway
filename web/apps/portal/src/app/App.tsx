@@ -19,6 +19,7 @@ import type {
   APIKeyCreateResponse,
   CreditsResponse,
   Dashboard,
+  ModelDetail,
   ModelList,
   ModelSchema,
   PortalSchemas,
@@ -40,6 +41,7 @@ export function App() {
   const [dashboard, setDashboard] = useState<Dashboard>();
   const [models, setModels] = useState<ModelList>();
   const [selectedModel, setSelectedModel] = useState("");
+  const [modelDetail, setModelDetail] = useState<ModelDetail>();
   const [modelSchema, setModelSchema] = useState<ModelSchema>();
   const [credits, setCredits] = useState<CreditsResponse>();
   const [usage, setUsage] = useState<UsageResponse>();
@@ -58,16 +60,18 @@ export function App() {
     return requestPortal<TResponse>(path, init, csrfOverride);
   }
 
-  async function loadModelSchema(modelID: string): Promise<void> {
+  async function loadModelDetail(modelID: string): Promise<void> {
     if (!modelID) {
+      setModelDetail(undefined);
       setModelSchema(undefined);
       return;
     }
-    const schema = await portalRequest<ModelSchema>(
-      `/api/portal/v1/models/${encodeURIComponent(modelID)}/schema`
+    const detail = await portalRequest<ModelDetail>(
+      `/api/portal/v1/models/${encodeURIComponent(modelID)}`
     );
     setSelectedModel(modelID);
-    setModelSchema(schema);
+    setModelDetail(detail);
+    setModelSchema(detail.schema);
   }
 
   async function loadPortalData(csrfOverride = csrfToken): Promise<void> {
@@ -103,15 +107,17 @@ export function App() {
 
     const firstModel = nextModels.data[0]?.id ?? "";
     if (firstModel) {
-      const schema = await portalRequest<ModelSchema>(
-        `/api/portal/v1/models/${encodeURIComponent(firstModel)}/schema`,
+      const detail = await portalRequest<ModelDetail>(
+        `/api/portal/v1/models/${encodeURIComponent(firstModel)}`,
         {},
         csrfOverride
       );
       setSelectedModel(firstModel);
-      setModelSchema(schema);
+      setModelDetail(detail);
+      setModelSchema(detail.schema);
     } else {
       setSelectedModel("");
+      setModelDetail(undefined);
       setModelSchema(undefined);
     }
   }
@@ -215,6 +221,7 @@ export function App() {
       setCSRFToken("");
       setDashboard(undefined);
       setModels(undefined);
+      setModelDetail(undefined);
       setModelSchema(undefined);
       setCredits(undefined);
       setUsage(undefined);
@@ -270,7 +277,7 @@ export function App() {
     setBusy(true);
     setMessage("");
     try {
-      await loadModelSchema(modelID);
+      await loadModelDetail(modelID);
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -348,6 +355,7 @@ export function App() {
         ) : null}
         {activeView === "models" ? (
           <ModelsView
+            modelDetail={modelDetail}
             modelSchema={modelSchema}
             models={models}
             onSelectModel={handleSelectModel}

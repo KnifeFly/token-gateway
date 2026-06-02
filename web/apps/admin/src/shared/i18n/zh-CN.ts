@@ -64,8 +64,53 @@ export const adminCopy = {
     },
     hints: {
       noSecret: "浏览器响应不返回明文或密文凭证。",
-      noGroup: "路由提示只展示路由策略候选，不引入渠道分组或倍率。",
+      noGroup: "路由提示只展示路由策略候选，不引入渠道分组。",
       audit: "写动作必须带 Idempotency-Key 和 X-Reason，并写入审计。"
+    }
+  },
+  models: {
+    title: "模型管理",
+    subtitle: "T04 补齐模型目录、安全详情、结构定义预览、组件价格摘要、渠道覆盖和客户门户预览。",
+    status: "P24-T04",
+    sections: {
+      catalog: "模型目录",
+      coverage: "渠道覆盖",
+      portalPreview: "门户预览",
+      workflow: "工作流"
+    },
+    columns: {
+      model: "模型",
+      category: "分类",
+      capability: "能力",
+      price: "价格摘要",
+      coverage: "覆盖数",
+      state: "状态",
+      health: "健康",
+      cost: "成本配置"
+    },
+    actions: {
+      create: "创建/编辑",
+      patch: "局部更新",
+      disable: "停用模型",
+      deprecate: "标记弃用",
+      channels: "渠道覆盖",
+      schema: "结构预览",
+      syncPreview: "目录同步预览"
+    },
+    state: {
+      enabled: "启用",
+      disabled: "停用",
+      stable: "稳定",
+      candidate: "候选",
+      deprecated: "已弃用",
+      healthy: "健康",
+      unknown: "未知",
+      passed: "已通过",
+      untested: "未测试",
+      configured: "已配置",
+      incomplete: "未完整",
+      unpriced: "未配置价格",
+      componentPrice: "组件价格"
     }
   },
   session: {

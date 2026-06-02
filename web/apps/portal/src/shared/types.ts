@@ -5,6 +5,7 @@ export type APIKey = PortalSchemas["APIKey"];
 export type APIKeyCreateResponse = PortalSchemas["APIKeyCreateResponse"];
 export type CreditsResponse = PortalSchemas["CreditsResponse"];
 export type Dashboard = PortalSchemas["PortalDashboardResponse"];
+export type ModelDetail = PortalSchemas["ModelDetailResponse"];
 export type ModelList = PortalSchemas["ModelListResponse"];
 export type ModelSchema = PortalSchemas["ModelSchemaResponse"];
 export type Onboarding = PortalSchemas["OnboardingState"];

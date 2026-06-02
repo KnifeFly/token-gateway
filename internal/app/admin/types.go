@@ -270,6 +270,117 @@ type ChannelSyncApplyResult struct {
 	Channel   ChannelView `json:"channel"`
 }
 
+// ModelView is safe Admin model catalog metadata with pricing and channel coverage.
+type ModelView struct {
+	PublicModel      string                 `json:"public_model"`
+	Aliases          []string               `json:"aliases,omitempty"`
+	DisplayName      string                 `json:"display_name,omitempty"`
+	Description      string                 `json:"description,omitempty"`
+	Protocol         string                 `json:"protocol"`
+	Capability       string                 `json:"capability"`
+	Type             string                 `json:"type"`
+	Category         string                 `json:"category,omitempty"`
+	Tags             []string               `json:"tags,omitempty"`
+	ProviderFamily   string                 `json:"provider_family,omitempty"`
+	Modalities       []string               `json:"modalities,omitempty"`
+	Capabilities     []string               `json:"capabilities,omitempty"`
+	InputModalities  []string               `json:"input_modalities,omitempty"`
+	OutputModalities []string               `json:"output_modalities,omitempty"`
+	ContextWindow    int64                  `json:"context_window,omitempty"`
+	MaxOutputTokens  int64                  `json:"max_output_tokens,omitempty"`
+	Status           string                 `json:"status,omitempty"`
+	Deprecated       bool                   `json:"deprecated,omitempty"`
+	SortOrder        int                    `json:"sort_order,omitempty"`
+	Metadata         json.RawMessage        `json:"metadata,omitempty"`
+	SchemaAvailable  bool                   `json:"schema_available"`
+	Enabled          bool                   `json:"enabled"`
+	Async            bool                   `json:"async"`
+	PricingSummary   ModelPricingSummary    `json:"pricing_summary"`
+	ChannelCoverage  []ModelChannelCoverage `json:"channel_coverage,omitempty"`
+}
+
+// ModelPricingSummary is a safe component-price summary without ratio fields.
+type ModelPricingSummary struct {
+	Configured             bool                   `json:"configured"`
+	Currency               string                 `json:"currency,omitempty"`
+	Category               string                 `json:"category,omitempty"`
+	Components             []PricingComponentView `json:"components,omitempty"`
+	InputMicrosPerToken    int64                  `json:"input_micros_per_token,omitempty"`
+	OutputMicrosPerToken   int64                  `json:"output_micros_per_token,omitempty"`
+	EstimatedOutputTokens  int64                  `json:"estimated_output_tokens,omitempty"`
+	ComponentPriceCount    int                    `json:"component_price_count"`
+	LegacyTokenPriceActive bool                   `json:"legacy_token_price_active"`
+}
+
+// PricingComponentView is one customer price component in micros.
+type PricingComponentView struct {
+	Unit          string `json:"unit"`
+	MicrosPerUnit int64  `json:"micros_per_unit"`
+}
+
+// ModelChannelCoverage summarizes how one public model maps to provider channels.
+type ModelChannelCoverage struct {
+	ChannelID            string   `json:"channel_id"`
+	ProviderType         string   `json:"provider_type"`
+	Enabled              bool     `json:"enabled"`
+	UpstreamModel        string   `json:"upstream_model"`
+	Capabilities         []string `json:"capabilities,omitempty"`
+	SupportedParameters  []string `json:"supported_parameters,omitempty"`
+	HealthStatus         string   `json:"health_status,omitempty"`
+	TestStatus           string   `json:"test_status,omitempty"`
+	CostConfigStatus     string   `json:"cost_config_status,omitempty"`
+	CredentialConfigured bool     `json:"credential_configured"`
+}
+
+// ModelSchemaPreview returns the Admin-visible request schema preview.
+type ModelSchemaPreview struct {
+	Model   string         `json:"model"`
+	Version string         `json:"version"`
+	Schema  map[string]any `json:"schema"`
+}
+
+// ModelCatalogSyncPreviewRequest compares discovered public models with the catalog.
+type ModelCatalogSyncPreviewRequest struct {
+	Models []ModelCatalogSyncModel `json:"models"`
+}
+
+// ModelCatalogSyncModel is one discovered model row for catalog sync preview.
+type ModelCatalogSyncModel struct {
+	PublicModel    string   `json:"public_model"`
+	DisplayName    string   `json:"display_name,omitempty"`
+	Protocol       string   `json:"protocol,omitempty"`
+	Capability     string   `json:"capability,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	Modalities     []string `json:"modalities,omitempty"`
+	Capabilities   []string `json:"capabilities,omitempty"`
+	ProviderFamily string   `json:"provider_family,omitempty"`
+}
+
+// ModelCatalogSyncPreview summarizes non-persistent model catalog differences.
+type ModelCatalogSyncPreview struct {
+	Added     []ModelCatalogSyncItem `json:"added,omitempty"`
+	Removed   []ModelCatalogSyncItem `json:"removed,omitempty"`
+	Changed   []ModelCatalogSyncItem `json:"changed,omitempty"`
+	Unchanged int                    `json:"unchanged"`
+	Warnings  []string               `json:"warnings,omitempty"`
+}
+
+// ModelCatalogSyncItem is one model catalog diff row.
+type ModelCatalogSyncItem struct {
+	PublicModel        string   `json:"public_model"`
+	DisplayName        string   `json:"display_name,omitempty"`
+	Protocol           string   `json:"protocol,omitempty"`
+	Capability         string   `json:"capability,omitempty"`
+	Category           string   `json:"category,omitempty"`
+	Modalities         []string `json:"modalities,omitempty"`
+	Capabilities       []string `json:"capabilities,omitempty"`
+	ProviderFamily     string   `json:"provider_family,omitempty"`
+	KnownCatalogModel  bool     `json:"known_catalog_model"`
+	PricingConfigured  bool     `json:"pricing_configured"`
+	ChannelCoverage    int      `json:"channel_coverage"`
+	CurrentDisplayName string   `json:"current_display_name,omitempty"`
+}
+
 // SnapshotSummary describes active and rollback runtime snapshot state.
 type SnapshotSummary struct {
 	Active   any `json:"active,omitempty"`

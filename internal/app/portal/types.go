@@ -122,24 +122,49 @@ type ModelListResponse struct {
 
 // ModelSummary is one customer-visible model.
 type ModelSummary struct {
-	ID               string   `json:"id"`
-	Object           string   `json:"object"`
-	Type             string   `json:"type"`
-	Category         string   `json:"category,omitempty"`
-	DisplayName      string   `json:"display_name"`
-	Description      string   `json:"description,omitempty"`
-	Aliases          []string `json:"aliases,omitempty"`
-	Tags             []string `json:"tags,omitempty"`
-	ProviderFamily   string   `json:"provider_family,omitempty"`
-	Owner            string   `json:"owner"`
-	Capabilities     []string `json:"capabilities"`
-	InputModalities  []string `json:"input_modalities"`
-	OutputModalities []string `json:"output_modalities"`
-	ContextWindow    int64    `json:"context_window,omitempty"`
-	MaxOutputTokens  int64    `json:"max_output_tokens,omitempty"`
-	Status           string   `json:"status,omitempty"`
-	Async            bool     `json:"async"`
-	Deprecated       bool     `json:"deprecated"`
+	ID               string              `json:"id"`
+	Object           string              `json:"object"`
+	Type             string              `json:"type"`
+	Category         string              `json:"category,omitempty"`
+	DisplayName      string              `json:"display_name"`
+	Description      string              `json:"description,omitempty"`
+	Aliases          []string            `json:"aliases,omitempty"`
+	Tags             []string            `json:"tags,omitempty"`
+	ProviderFamily   string              `json:"provider_family,omitempty"`
+	Owner            string              `json:"owner"`
+	Capabilities     []string            `json:"capabilities"`
+	InputModalities  []string            `json:"input_modalities"`
+	OutputModalities []string            `json:"output_modalities"`
+	ContextWindow    int64               `json:"context_window,omitempty"`
+	MaxOutputTokens  int64               `json:"max_output_tokens,omitempty"`
+	Status           string              `json:"status,omitempty"`
+	Async            bool                `json:"async"`
+	Deprecated       bool                `json:"deprecated"`
+	PricingSummary   ModelPricingSummary `json:"pricing_summary"`
+}
+
+// ModelPricingSummary is the customer-visible model price summary without ratio fields.
+type ModelPricingSummary struct {
+	Configured            bool                        `json:"configured"`
+	Currency              string                      `json:"currency,omitempty"`
+	Category              string                      `json:"category,omitempty"`
+	Components            []ModelPricingComponentView `json:"components,omitempty"`
+	InputMicrosPerToken   int64                       `json:"input_micros_per_token,omitempty"`
+	OutputMicrosPerToken  int64                       `json:"output_micros_per_token,omitempty"`
+	EstimatedOutputTokens int64                       `json:"estimated_output_tokens,omitempty"`
+	ComponentPriceCount   int                         `json:"component_price_count"`
+}
+
+// ModelPricingComponentView is one customer-visible price component.
+type ModelPricingComponentView struct {
+	Unit          string `json:"unit"`
+	MicrosPerUnit int64  `json:"micros_per_unit"`
+}
+
+// ModelDetailResponse returns a visible model summary and schema preview.
+type ModelDetailResponse struct {
+	Model  ModelSummary        `json:"model"`
+	Schema ModelSchemaResponse `json:"schema"`
 }
 
 // ModelSchemaResponse returns the dynamic model schema for Portal clients.

@@ -342,6 +342,61 @@ nav button:hover {
   grid-template-columns: 1fr 1.6fr 0.9fr;
 }
 
+.portal-model-row {
+  grid-template-columns: 1.2fr 0.8fr 0.7fr 1fr;
+}
+
+.model-preview {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #dbe7e2;
+  border-radius: 8px;
+  background: #f8fffb;
+  padding: 14px;
+}
+
+.model-preview strong,
+.model-preview span,
+.model-preview dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.model-preview strong {
+  color: #172033;
+  font-size: 16px;
+}
+
+.model-preview span {
+  color: #667085;
+  font-size: 14px;
+}
+
+.model-preview-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.model-preview-meta div {
+  display: grid;
+  gap: 4px;
+}
+
+.model-preview-meta dt {
+  color: #667085;
+  font-size: 12px;
+}
+
+.model-preview-meta dd {
+  margin: 0;
+  color: #172033;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .schema-box {
   max-height: 520px;
   overflow: auto;
@@ -518,12 +573,17 @@ nav button:hover {
   .table-row.four,
   .table-row.usage,
   .table-row.keys,
-  .table-row.tasks {
+  .table-row.tasks,
+  .portal-model-row {
     min-width: 720px;
   }
 
   .table-row.route {
     min-width: 760px;
+  }
+
+  .model-preview-meta {
+    grid-template-columns: 1fr;
   }
 
   .settings-list dd {

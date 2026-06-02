@@ -123,6 +123,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/portal/v1/models/{model}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a customer-visible model preview */
+        get: operations["getPortalModel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/portal/v1/credits": {
         parameters: {
             query?: never;
@@ -339,15 +356,46 @@ export interface components {
             id: string;
             object: string;
             type: string;
+            category?: string;
             display_name: string;
             description?: string;
             aliases?: string[];
+            tags?: string[];
+            provider_family?: string;
             owner: string;
             capabilities: string[];
             input_modalities: string[];
             output_modalities: string[];
             async: boolean;
             deprecated: boolean;
+            /** Format: int64 */
+            context_window?: number;
+            /** Format: int64 */
+            max_output_tokens?: number;
+            status?: string;
+            pricing_summary: components["schemas"]["ModelPricingSummary"];
+        };
+        ModelPricingSummary: {
+            configured: boolean;
+            currency?: string;
+            category?: string;
+            components?: components["schemas"]["ModelPricingComponentView"][];
+            /** Format: int64 */
+            input_micros_per_token?: number;
+            /** Format: int64 */
+            output_micros_per_token?: number;
+            /** Format: int64 */
+            estimated_output_tokens?: number;
+            component_price_count: number;
+        };
+        ModelPricingComponentView: {
+            unit: string;
+            /** Format: int64 */
+            micros_per_unit: number;
+        };
+        ModelDetailResponse: {
+            model: components["schemas"]["ModelSummary"];
+            schema: components["schemas"]["ModelSchemaResponse"];
         };
         ModelSchemaResponse: {
             model: string;
@@ -620,6 +668,30 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ModelSchemaResponse"];
+                };
+            };
+            401: components["responses"]["ErrorResponse"];
+            404: components["responses"]["ErrorResponse"];
+        };
+    };
+    getPortalModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Model preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelDetailResponse"];
                 };
             };
             401: components["responses"]["ErrorResponse"];

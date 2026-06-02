@@ -38,10 +38,17 @@ export const portalCopy = {
   },
   models: {
     title: "模型",
+    previewTitle: "模型预览",
     schemaTitle: "结构定义",
     modelColumn: "模型",
     typeColumn: "类型",
-    modeColumn: "模式"
+    categoryColumn: "分类",
+    modeColumn: "模式",
+    priceColumn: "价格摘要",
+    contextColumn: "上下文",
+    unpriced: "未配置价格",
+    componentPrice: "组件价格",
+    descriptionFallback: "暂无模型说明"
   },
   playground: {
     title: "操练场",

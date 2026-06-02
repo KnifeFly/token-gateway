@@ -158,6 +158,31 @@ paths:
           $ref: "#/components/responses/ErrorResponse"
         "404":
           $ref: "#/components/responses/ErrorResponse"
+  /api/portal/v1/models/{model}:
+    get:
+      tags:
+        - Portal Web Models
+      summary: Get a customer-visible model preview
+      operationId: getPortalModel
+      security:
+        - portalSession: []
+      parameters:
+        - name: model
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Model preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ModelDetailResponse"
+        "401":
+          $ref: "#/components/responses/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/ErrorResponse"
   /api/portal/v1/credits:
     get:
       tags:
@@ -571,12 +596,15 @@ components:
         - output_modalities
         - async
         - deprecated
+        - pricing_summary
       properties:
         id:
           type: string
         object:
           type: string
         type:
+          type: string
+        category:
           type: string
         display_name:
           type: string
@@ -586,6 +614,12 @@ components:
           type: array
           items:
             type: string
+        tags:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
         owner:
           type: string
         capabilities:
@@ -604,6 +638,64 @@ components:
           type: boolean
         deprecated:
           type: boolean
+        context_window:
+          type: integer
+          format: int64
+        max_output_tokens:
+          type: integer
+          format: int64
+        status:
+          type: string
+        pricing_summary:
+          $ref: "#/components/schemas/ModelPricingSummary"
+    ModelPricingSummary:
+      type: object
+      required:
+        - configured
+        - component_price_count
+      properties:
+        configured:
+          type: boolean
+        currency:
+          type: string
+        category:
+          type: string
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/ModelPricingComponentView"
+        input_micros_per_token:
+          type: integer
+          format: int64
+        output_micros_per_token:
+          type: integer
+          format: int64
+        estimated_output_tokens:
+          type: integer
+          format: int64
+        component_price_count:
+          type: integer
+    ModelPricingComponentView:
+      type: object
+      required:
+        - unit
+        - micros_per_unit
+      properties:
+        unit:
+          type: string
+        micros_per_unit:
+          type: integer
+          format: int64
+    ModelDetailResponse:
+      type: object
+      required:
+        - model
+        - schema
+      properties:
+        model:
+          $ref: "#/components/schemas/ModelSummary"
+        schema:
+          $ref: "#/components/schemas/ModelSchemaResponse"
     ModelSchemaResponse:
       type: object
       required:

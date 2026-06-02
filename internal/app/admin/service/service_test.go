@@ -10,6 +10,7 @@ import (
 	adminapp "github.com/KnifeFly/token-gateway/internal/app/admin"
 	adminrepo "github.com/KnifeFly/token-gateway/internal/app/admin/repository"
 	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 func TestLoginSessionAndCSRF(t *testing.T) {
@@ -205,6 +206,151 @@ func TestChannelManagementWorkflowsReturnSafeViews(t *testing.T) {
 	}
 }
 
+func TestModelManagementWorkflowsReturnSafeViews(t *testing.T) {
+	ctx := context.Background()
+	svc, repo := testService(t)
+	login, err := svc.Login(ctx, adminapp.LoginRequest{Email: "admin@example.com", Password: "admin-local"}, "ua-model", "127.0.0.1")
+	if err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	_, actor, err := svc.Session(ctx, login.Session.SessionID)
+	if err != nil {
+		t.Fatalf("Session() error = %v", err)
+	}
+
+	model, err := svc.UpsertModel(ctx, actor, configadmin.ModelConfig{
+		PublicModel:     "gpt-public",
+		DisplayName:     "GPT Public",
+		Protocol:        "native_openai",
+		Capability:      "chat",
+		Category:        "chat",
+		Modalities:      []string{"text"},
+		Capabilities:    []string{"chat", "tool"},
+		ContextWindow:   8192,
+		MaxOutputTokens: 1024,
+		Metadata:        json.RawMessage(`{"owner":"ops","credential":"model-secret"}`),
+		Schema:          json.RawMessage(`{"type":"object","required":["model"]}`),
+	}, mutationOptions("model_create"))
+	if err != nil {
+		t.Fatalf("UpsertModel() error = %v", err)
+	}
+	if model.PublicModel != "gpt-public" || !model.Enabled || !model.SchemaAvailable {
+		t.Fatalf("model safe view = %#v", model)
+	}
+	if strings.Contains(string(model.Metadata), "model-secret") {
+		t.Fatalf("model metadata leaked secret: %s", model.Metadata)
+	}
+
+	if _, err := svc.UpsertPrice(ctx, actor, configadmin.PriceRuleConfig{
+		PublicModel: "gpt-public",
+		Category:    "chat",
+		Currency:    "CNY",
+		Components: []pricing.Component{{
+			Unit:          pricing.UnitInputToken,
+			MicrosPerUnit: 2,
+		}},
+	}, mutationOptions("model_price")); err != nil {
+		t.Fatalf("UpsertPrice() error = %v", err)
+	}
+	if _, err := svc.UpsertChannel(ctx, actor, configadmin.ChannelConfig{
+		ID:           "channel_primary",
+		ProviderType: "openai",
+		BaseURL:      "https://provider.example/v1",
+		APIKey:       "sk_model_secret",
+		Enabled:      true,
+		EnabledSet:   true,
+		Models: []configadmin.ChannelModel{{
+			PublicModel:         "gpt-public",
+			UpstreamModel:       "gpt-upstream",
+			Capabilities:        []string{"chat"},
+			SupportedParameters: []string{"temperature"},
+			HealthStatus:        "healthy",
+			TestStatus:          "passed",
+			CostConfigStatus:    "configured",
+		}},
+	}, mutationOptions("model_channel")); err != nil {
+		t.Fatalf("UpsertChannel() error = %v", err)
+	}
+
+	detail, err := svc.GetModel(ctx, actor, "gpt-public")
+	if err != nil {
+		t.Fatalf("GetModel() error = %v", err)
+	}
+	if !detail.PricingSummary.Configured || detail.PricingSummary.Currency != "CNY" || len(detail.ChannelCoverage) != 1 {
+		t.Fatalf("model detail = %#v", detail)
+	}
+	if strings.Contains(mustJSON(t, detail), "ratio") || strings.Contains(mustJSON(t, detail), "sk_model_secret") {
+		t.Fatalf("model detail exposed cut-scope or secret fields: %s", mustJSON(t, detail))
+	}
+
+	schema, err := svc.GetModelSchemaPreview(ctx, actor, "gpt-public")
+	if err != nil {
+		t.Fatalf("GetModelSchemaPreview() error = %v", err)
+	}
+	if schema.Model != "gpt-public" || schema.Schema["type"] != "object" {
+		t.Fatalf("schema preview = %#v", schema)
+	}
+
+	channels, err := svc.ListModelChannels(ctx, actor, "gpt-public")
+	if err != nil {
+		t.Fatalf("ListModelChannels() error = %v", err)
+	}
+	if len(channels.Data) != 1 || channels.Data[0].UpstreamModel != "gpt-upstream" {
+		t.Fatalf("model channels = %#v", channels)
+	}
+
+	preview, err := svc.PreviewModelCatalogSync(ctx, actor, adminapp.ModelCatalogSyncPreviewRequest{
+		Models: []adminapp.ModelCatalogSyncModel{{
+			PublicModel:  "gpt-public",
+			DisplayName:  "GPT Public Updated",
+			Protocol:     "native_openai",
+			Capability:   "chat",
+			Category:     "chat",
+			Capabilities: []string{"chat", "tool"},
+		}, {
+			PublicModel: "image-public",
+			Protocol:    "unified",
+			Capability:  "image",
+		}},
+	}, mutationOptions("model_sync_preview"))
+	if err != nil {
+		t.Fatalf("PreviewModelCatalogSync() error = %v", err)
+	}
+	if len(preview.Added) != 1 || len(preview.Changed) != 1 || preview.Added[0].PublicModel != "image-public" {
+		t.Fatalf("catalog preview = %#v", preview)
+	}
+
+	deprecated, err := svc.DeprecateModel(ctx, actor, "gpt-public", mutationOptions("model_deprecate"))
+	if err != nil {
+		t.Fatalf("DeprecateModel() error = %v", err)
+	}
+	if !deprecated.Deprecated || deprecated.Status != "deprecated" {
+		t.Fatalf("deprecated model = %#v", deprecated)
+	}
+
+	disabled, err := svc.SetModelEnabled(ctx, actor, "gpt-public", false, mutationOptions("model_disable"))
+	if err != nil {
+		t.Fatalf("SetModelEnabled() error = %v", err)
+	}
+	if disabled.Enabled {
+		t.Fatalf("disabled model = %#v", disabled)
+	}
+
+	auditEvents, err := repo.ListAuditEvents(ctx, adminapp.AuditFilter{Resource: "model"})
+	if err != nil {
+		t.Fatalf("ListAuditEvents(model) error = %v", err)
+	}
+	if len(auditEvents) < 4 {
+		t.Fatalf("audit event count = %d, want >= 4", len(auditEvents))
+	}
+	for _, event := range auditEvents {
+		combined := string(event.Before) + string(event.After)
+		if strings.Contains(combined, "model-secret") || strings.Contains(combined, "ratio") {
+			t.Fatalf("model audit leaked secret or cut-scope field: %#v", event)
+		}
+	}
+}
+
 func testService(t *testing.T) (*Service, *adminrepo.MemoryRepository) {
 	t.Helper()
 	now := time.Date(2026, 6, 1, 10, 0, 0, 0, time.UTC)
@@ -216,6 +362,15 @@ func testService(t *testing.T) (*Service, *adminrepo.MemoryRepository) {
 		t.Fatalf("EnsureBootstrapOperator() error = %v", err)
 	}
 	return svc, repo
+}
+
+func mustJSON(t *testing.T, value any) string {
+	t.Helper()
+	content, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal value: %v", err)
+	}
+	return string(content)
 }
 
 func mutationOptions(seed string) adminapp.MutationOptions {

@@ -17,6 +17,7 @@ import (
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 	dpsnapshot "github.com/KnifeFly/token-gateway/internal/dataplane/snapshot"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	tasksvc "github.com/KnifeFly/token-gateway/internal/task"
 )
 
@@ -134,8 +135,16 @@ func TestPortalWebRejectsMissingSessionAndBadUsageLimit(t *testing.T) {
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"pricing_summary"`) || strings.Contains(rec.Body.String(), "ratio") {
+		t.Fatalf("model detail status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/portal/v1/models/image-public", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
-		t.Fatalf("model route without schema suffix status = %d, body = %s", rec.Code, rec.Body.String())
+		t.Fatalf("disallowed model detail status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -242,6 +251,16 @@ func testPortalWebHandler(t *testing.T) (http.Handler, portalWebTestIDs) {
 			Capability:  "image",
 			Schema:      json.RawMessage(`{"type":"object"}`),
 			Enabled:     true,
+		}},
+		PriceRules: []cpsnapshot.PriceRuleRuntime{{
+			PublicModel: "gpt-public",
+			Category:    "chat",
+			Currency:    "CNY",
+			Components: []pricing.Component{{
+				Unit:          pricing.UnitInputToken,
+				MicrosPerUnit: 2,
+			}},
+			Enabled: true,
 		}},
 	})
 	if err != nil {

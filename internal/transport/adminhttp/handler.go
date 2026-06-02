@@ -51,6 +51,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/admin/v1/models", h.withSession(h.listModels))
 	mux.HandleFunc("POST /api/admin/v1/models", h.withSession(h.upsertModel))
+	mux.HandleFunc("POST /api/admin/v1/models/sync-preview", h.withSession(h.previewModelCatalogSync))
+	mux.HandleFunc("GET /api/admin/v1/models/", h.withSession(h.modelRead))
+	mux.HandleFunc("PATCH /api/admin/v1/models/", h.withSession(h.patchModel))
+	mux.HandleFunc("POST /api/admin/v1/models/", h.withSession(h.modelAction))
 	mux.HandleFunc("GET /api/admin/v1/channels", h.withSession(h.listChannels))
 	mux.HandleFunc("GET /api/admin/v1/channels/", h.withSession(h.channelRead))
 	mux.HandleFunc("POST /api/admin/v1/channels", h.withSession(h.upsertChannel))

@@ -93,7 +93,7 @@ export const adminRouteSections: AdminRouteSection[] = [
 
 export const adminCutScopeItems = [
   "用户、模型、渠道分组",
-  "倍率计价",
+  "非组件化计费配置",
   "订阅套餐",
   "兑换码",
   "第三方支付配置",

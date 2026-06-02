@@ -25,7 +25,7 @@ func (s *Service) ListModels(ctx context.Context, principal portalapp.Principal)
 		if !model.Enabled || !modelAllowedForView(principal.AllowedModels, model.PublicModel, model) {
 			continue
 		}
-		out = append(out, modelSummary(model))
+		out = append(out, modelSummary(snapshot, model))
 	}
 	return portalapp.ModelListResponse{Object: "list", Data: out}, nil
 }
@@ -47,7 +47,32 @@ func (s *Service) GetModelSchema(ctx context.Context, principal portalapp.Princi
 	return portalapp.ModelSchemaResponse{Model: model.PublicModel, Version: snapshot.Ref().Version, Schema: modelSchema(model)}, nil
 }
 
-func modelSummary(model engine.ModelView) portalapp.ModelSummary {
+// GetModelDetail returns one visible model with schema and pricing preview.
+func (s *Service) GetModelDetail(ctx context.Context, principal portalapp.Principal, modelName string) (portalapp.ModelDetailResponse, error) {
+	snapshot, err := s.currentSnapshot(ctx)
+	if err != nil {
+		return portalapp.ModelDetailResponse{}, err
+	}
+	modelName = strings.Trim(modelName, "/ ")
+	if modelName == "" || strings.Contains(modelName, "/") {
+		return portalapp.ModelDetailResponse{}, apperr.NotFound("model not found")
+	}
+	model, found := snapshot.LookupModel(modelName)
+	if !found || !model.Enabled || !modelAllowedForView(principal.AllowedModels, modelName, model) {
+		return portalapp.ModelDetailResponse{}, apperr.NotFound("model not found")
+	}
+	summary := modelSummary(snapshot, model)
+	return portalapp.ModelDetailResponse{
+		Model: summary,
+		Schema: portalapp.ModelSchemaResponse{
+			Model:   model.PublicModel,
+			Version: snapshot.Ref().Version,
+			Schema:  modelSchema(model),
+		},
+	}, nil
+}
+
+func modelSummary(snapshot engine.SnapshotView, model engine.ModelView) portalapp.ModelSummary {
 	return portalapp.ModelSummary{
 		ID:               model.PublicModel,
 		Object:           "model",
@@ -67,6 +92,31 @@ func modelSummary(model engine.ModelView) portalapp.ModelSummary {
 		Status:           model.Status,
 		Async:            model.Protocol == engine.ProtocolUnified,
 		Deprecated:       model.Deprecated,
+		PricingSummary:   portalModelPricingSummary(snapshot, model.PublicModel),
+	}
+}
+
+func portalModelPricingSummary(snapshot engine.SnapshotView, publicModel string) portalapp.ModelPricingSummary {
+	price, ok := snapshot.LookupPrice(publicModel)
+	if !ok {
+		return portalapp.ModelPricingSummary{}
+	}
+	components := make([]portalapp.ModelPricingComponentView, 0, len(price.Components))
+	for _, component := range price.Components {
+		components = append(components, portalapp.ModelPricingComponentView{
+			Unit:          string(component.Unit),
+			MicrosPerUnit: component.MicrosPerUnit,
+		})
+	}
+	return portalapp.ModelPricingSummary{
+		Configured:            true,
+		Currency:              price.Currency,
+		Category:              price.Category,
+		Components:            components,
+		InputMicrosPerToken:   price.InputMicrosPerToken,
+		OutputMicrosPerToken:  price.OutputMicrosPerToken,
+		EstimatedOutputTokens: price.EstimatedOutputTokens,
+		ComponentPriceCount:   len(components),
 	}
 }
 

@@ -168,6 +168,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/v1/models/sync-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["previewAdminModelCatalogSync"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/models/{model_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminModel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchAdminModel"];
+        trace?: never;
+    };
+    "/api/admin/v1/models/{model_id}/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["listAdminModelChannels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/models/{model_id}/schema-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAdminModelSchemaPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/models/{model_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["disableAdminModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/v1/models/{model_id}/deprecate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["deprecateAdminModel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/v1/channels": {
         parameters: {
             query?: never;
@@ -611,6 +707,142 @@ export interface components {
                 [key: string]: unknown;
             }[];
         };
+        AdminModelListResponse: {
+            data: components["schemas"]["AdminModelView"][];
+        };
+        AdminModelView: {
+            public_model: string;
+            aliases?: string[];
+            display_name?: string;
+            description?: string;
+            protocol: string;
+            capability: string;
+            type: string;
+            category?: string;
+            tags?: string[];
+            provider_family?: string;
+            modalities?: string[];
+            capabilities?: string[];
+            input_modalities?: string[];
+            output_modalities?: string[];
+            /** Format: int64 */
+            context_window?: number;
+            /** Format: int64 */
+            max_output_tokens?: number;
+            status?: string;
+            deprecated?: boolean;
+            sort_order?: number;
+            metadata?: {
+                [key: string]: unknown;
+            };
+            schema_available: boolean;
+            enabled: boolean;
+            async: boolean;
+            pricing_summary: components["schemas"]["AdminModelPricingSummary"];
+            channel_coverage?: components["schemas"]["AdminModelChannelCoverage"][];
+        };
+        AdminModelPricingSummary: {
+            configured: boolean;
+            currency?: string;
+            category?: string;
+            components?: components["schemas"]["AdminPricingComponentView"][];
+            /** Format: int64 */
+            input_micros_per_token?: number;
+            /** Format: int64 */
+            output_micros_per_token?: number;
+            /** Format: int64 */
+            estimated_output_tokens?: number;
+            component_price_count: number;
+            legacy_token_price_active: boolean;
+        };
+        AdminPricingComponentView: {
+            unit: string;
+            /** Format: int64 */
+            micros_per_unit: number;
+        };
+        AdminModelChannelCoverageListResponse: {
+            data: components["schemas"]["AdminModelChannelCoverage"][];
+        };
+        AdminModelChannelCoverage: {
+            channel_id: string;
+            provider_type: string;
+            enabled: boolean;
+            upstream_model: string;
+            capabilities?: string[];
+            supported_parameters?: string[];
+            health_status?: string;
+            test_status?: string;
+            cost_config_status?: string;
+            credential_configured: boolean;
+        };
+        AdminModelSchemaPreview: {
+            model: string;
+            version: string;
+            schema: {
+                [key: string]: unknown;
+            };
+        };
+        AdminModelUpsertRequest: {
+            public_model?: string;
+            aliases?: string[];
+            display_name?: string;
+            description?: string;
+            protocol?: string;
+            capability?: string;
+            category?: string;
+            tags?: string[];
+            provider_family?: string;
+            modalities?: string[];
+            capabilities?: string[];
+            /** Format: int64 */
+            context_window?: number;
+            /** Format: int64 */
+            max_output_tokens?: number;
+            status?: string;
+            deprecated?: boolean;
+            sort_order?: number;
+            metadata?: {
+                [key: string]: unknown;
+            };
+            schema?: {
+                [key: string]: unknown;
+            };
+            enabled?: boolean;
+        };
+        AdminModelCatalogSyncPreviewRequest: {
+            models: components["schemas"]["AdminModelCatalogSyncModel"][];
+        };
+        AdminModelCatalogSyncModel: {
+            public_model: string;
+            display_name?: string;
+            protocol?: string;
+            capability?: string;
+            category?: string;
+            modalities?: string[];
+            capabilities?: string[];
+            provider_family?: string;
+        };
+        AdminModelCatalogSyncPreview: {
+            added?: components["schemas"]["AdminModelCatalogSyncItem"][];
+            removed?: components["schemas"]["AdminModelCatalogSyncItem"][];
+            changed?: components["schemas"]["AdminModelCatalogSyncItem"][];
+            unchanged: number;
+            warnings?: string[];
+        };
+        AdminModelCatalogSyncItem: {
+            public_model: string;
+            display_name?: string;
+            protocol?: string;
+            capability?: string;
+            category?: string;
+            modalities?: string[];
+            capabilities?: string[];
+            provider_family?: string;
+            known_catalog_model: boolean;
+            pricing_configured: boolean;
+            channel_coverage: number;
+            current_display_name?: string;
+        };
         AdminChannelListResponse: {
             data: components["schemas"]["AdminChannelView"][];
         };
@@ -774,6 +1006,7 @@ export interface components {
         TenantIDQuery: string;
         ProjectIDQuery: string;
         KeyID: string;
+        ModelID: string;
         ChannelID: string;
         OperatorID: string;
         ID: string;
@@ -1005,7 +1238,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["ListResponse"];
+            /** @description Safe model catalog list */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelListResponse"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
@@ -1016,9 +1257,188 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody: components["requestBodies"]["JSONBody"];
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelUpsertRequest"];
+            };
+        };
         responses: {
-            200: components["responses"]["ObjectResponse"];
+            /** @description Safe model read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    previewAdminModelCatalogSync: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelCatalogSyncPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Non-persistent model catalog diff */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelCatalogSyncPreview"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: components["parameters"]["ModelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe model read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    patchAdminModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: components["parameters"]["ModelID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminModelUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description Safe model read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listAdminModelChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: components["parameters"]["ModelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe model channel coverage */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelChannelCoverageListResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAdminModelSchemaPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: components["parameters"]["ModelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe model schema preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelSchemaPreview"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    disableAdminModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: components["parameters"]["ModelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disabled model read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelView"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deprecateAdminModel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                model_id: components["parameters"]["ModelID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deprecated model read model */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminModelView"];
+                };
+            };
             default: components["responses"]["ErrorResponse"];
         };
     };
