@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	redisinfra "github.com/KnifeFly/token-gateway/internal/infra/redis"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
@@ -28,7 +28,7 @@ const (
 
 // Handler serves M5 control-plane admin APIs.
 type Handler struct {
-	admin      *admin.Service
+	admin      *configadmin.Service
 	publisher  *cpsnapshot.Publisher
 	commercial *reporting.Service
 	emergency  *redisinfra.EmergencyDisableStore
@@ -38,12 +38,12 @@ type Handler struct {
 }
 
 // NewHandler returns a control-plane HTTP handler.
-func NewHandler(adminService *admin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, commercial ...*reporting.Service) http.Handler {
+func NewHandler(adminService *configadmin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, commercial ...*reporting.Service) http.Handler {
 	return NewHandlerWithEmergency(adminService, publisher, token, logger, nil, commercial...)
 }
 
 // NewHandlerWithEmergency returns a control-plane HTTP handler with emergency hot-disable support.
-func NewHandlerWithEmergency(adminService *admin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, emergency *redisinfra.EmergencyDisableStore, commercial ...*reporting.Service) http.Handler {
+func NewHandlerWithEmergency(adminService *configadmin.Service, publisher *cpsnapshot.Publisher, token string, logger *slog.Logger, emergency *redisinfra.EmergencyDisableStore, commercial ...*reporting.Service) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -69,6 +69,7 @@ func NewHandlerWithEmergency(adminService *admin.Service, publisher *cpsnapshot.
 	mux.HandleFunc("POST /admin/api-keys/", h.requireAdmin(h.apiKeyAction))
 	mux.HandleFunc("POST /admin/models", h.requireAdmin(h.upsertModel))
 	mux.HandleFunc("POST /admin/channels", h.requireAdmin(h.upsertChannel))
+	mux.HandleFunc("POST /admin/channels/model-sync-preview", h.requireAdmin(h.previewChannelModelSync))
 	mux.HandleFunc("POST /admin/routes", h.requireAdmin(h.upsertRoute))
 	mux.HandleFunc("POST /admin/prices", h.requireAdmin(h.upsertPrice))
 	mux.HandleFunc("POST /admin/limits", h.requireAdmin(h.upsertLimit))
@@ -157,7 +158,7 @@ func (h *Handler) handleIdempotentControlWrite(w http.ResponseWriter, r *http.Re
 }
 
 func (h *Handler) upsertTenant(w http.ResponseWriter, r *http.Request) {
-	var request admin.Tenant
+	var request configadmin.Tenant
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -166,7 +167,7 @@ func (h *Handler) upsertTenant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertProject(w http.ResponseWriter, r *http.Request) {
-	var request admin.Project
+	var request configadmin.Project
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -175,7 +176,7 @@ func (h *Handler) upsertProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) createAPIKey(w http.ResponseWriter, r *http.Request) {
-	var request admin.APIKey
+	var request configadmin.APIKey
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -243,7 +244,7 @@ func (h *Handler) emergencyAction(w http.ResponseWriter, r *http.Request, prefix
 }
 
 func (h *Handler) upsertModel(w http.ResponseWriter, r *http.Request) {
-	var request admin.ModelConfig
+	var request configadmin.ModelConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -252,7 +253,7 @@ func (h *Handler) upsertModel(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertChannel(w http.ResponseWriter, r *http.Request) {
-	var request admin.ChannelConfig
+	var request configadmin.ChannelConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -260,8 +261,17 @@ func (h *Handler) upsertChannel(w http.ResponseWriter, r *http.Request) {
 	writeResult(w, result, err)
 }
 
+func (h *Handler) previewChannelModelSync(w http.ResponseWriter, r *http.Request) {
+	var request configadmin.ChannelModelSyncPreviewRequest
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	result, err := h.admin.PreviewChannelModelSync(r.Context(), request)
+	writeResult(w, result, err)
+}
+
 func (h *Handler) upsertRoute(w http.ResponseWriter, r *http.Request) {
-	var request admin.RoutePolicyConfig
+	var request configadmin.RoutePolicyConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -270,7 +280,7 @@ func (h *Handler) upsertRoute(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertPrice(w http.ResponseWriter, r *http.Request) {
-	var request admin.PriceRuleConfig
+	var request configadmin.PriceRuleConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -279,7 +289,7 @@ func (h *Handler) upsertPrice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertLimit(w http.ResponseWriter, r *http.Request) {
-	var request admin.LimitRuleConfig
+	var request configadmin.LimitRuleConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -288,7 +298,7 @@ func (h *Handler) upsertLimit(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertPluginBinding(w http.ResponseWriter, r *http.Request) {
-	var request admin.PluginBindingConfig
+	var request configadmin.PluginBindingConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}
@@ -297,7 +307,7 @@ func (h *Handler) upsertPluginBinding(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) upsertModelMarketplace(w http.ResponseWriter, r *http.Request) {
-	var request admin.ModelMarketplaceConfig
+	var request configadmin.ModelMarketplaceConfig
 	if !decodeJSON(w, r, &request) {
 		return
 	}

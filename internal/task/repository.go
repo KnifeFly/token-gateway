@@ -30,13 +30,21 @@ type Repository interface {
 	MarkCallbackDeadLetter(ctx context.Context, id string, ownerID string, lastError string, statusCode int, latency time.Duration) error
 }
 
-// TaskListFilter scopes customer task list queries.
+// TaskListFilter scopes task list queries for Portal and Admin read models.
 type TaskListFilter struct {
-	TenantID  string
-	ProjectID string
-	Status    Status
-	Cursor    string
-	Limit     int
+	TaskID       string
+	TenantID     string
+	ProjectID    string
+	APIKeyID     string
+	RequestID    string
+	Model        string
+	ProviderType string
+	ChannelID    string
+	Status       Status
+	Cursor       string
+	From         time.Time
+	To           time.Time
+	Limit        int
 }
 
 // TaskStatusUpdate contains mutable task completion fields.

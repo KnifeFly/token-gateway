@@ -21,6 +21,9 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Configd.Addr != ":9504" {
 		t.Fatalf("Configd.Addr = %q", cfg.Configd.Addr)
 	}
+	if cfg.Console.Addr != ":9505" {
+		t.Fatalf("Console.Addr = %q", cfg.Console.Addr)
+	}
 	if cfg.Worker.HeartbeatInterval.Duration != 10*time.Second ||
 		cfg.Worker.CallbackMaxConcurrency != 4 ||
 		cfg.Worker.FileCleanupInterval.Duration != time.Hour {
@@ -30,6 +33,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 
 func TestLoadConfigYAMLAndEnv(t *testing.T) {
 	t.Setenv("TOKEN_GATEWAY_HTTP_ADDR", ":19090")
+	t.Setenv("TOKEN_GATEWAY_CONSOLE_ADDR", ":19095")
 	t.Setenv("TOKEN_GATEWAY_REDIS_ENABLED", "false")
 
 	path := filepath.Join(t.TempDir(), "config.yaml")
@@ -55,6 +59,9 @@ redis:
 	}
 	if cfg.HTTP.Addr != ":19090" {
 		t.Fatalf("env override failed, addr = %q", cfg.HTTP.Addr)
+	}
+	if cfg.Console.Addr != ":19095" {
+		t.Fatalf("console env override failed, addr = %q", cfg.Console.Addr)
 	}
 	if cfg.Redis.Enabled {
 		t.Fatal("redis env override failed")

@@ -19,6 +19,7 @@ make migrate-up
 go run ./cmd/configd -config configs/local.yaml
 go run ./cmd/control-api -config configs/local.yaml
 go run ./cmd/gateway -config configs/local.yaml
+go run ./cmd/console -config configs/local.yaml
 ```
 
 Optional worker process:
@@ -27,12 +28,31 @@ Optional worker process:
 go run ./cmd/worker -config configs/local.yaml
 ```
 
+Console frontend workspace:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm generate:api
+pnpm --filter @token-gateway/portal dev
+pnpm --filter @token-gateway/admin dev
+```
+
+Local console routes:
+
+```text
+console process  http://127.0.0.1:9505
+Portal SPA       http://127.0.0.1:9511/portal/
+Admin SPA        http://127.0.0.1:9512/admin-ui/
+Vite proxy       /api/* -> http://localhost:9505/api/*
+```
+
 Health checks:
 
 ```bash
 curl -fsS http://127.0.0.1:9501/healthz
 curl -fsS http://127.0.0.1:9501/readyz
 curl -fsS http://127.0.0.1:9501/metrics
+curl -fsS http://127.0.0.1:9505/healthz
 ```
 
 Minimal chat request against the local mock OpenAI-compatible channel:
@@ -55,6 +75,7 @@ Current implemented public surfaces include:
 - Realtime reserved extension returns stable disabled-contract responses unless explicitly enabled by a later milestone.
 
 See `docs/design/ai_gateway_openapi.yaml` and `docs/runbook/provider-protocol-compatibility.md` for protocol details.
+P19 introduces split contracts under `api/openapi/`; `docs/design/ai_gateway_openapi.yaml` remains the compatibility aggregate during the transition.
 
 ## File Input Boundary
 
@@ -97,6 +118,11 @@ Common local checks:
 ```bash
 go test ./...
 go vet ./...
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm generate:api
 git diff --check
 ```
 

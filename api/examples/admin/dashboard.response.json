@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-02T00:00:00Z",
+  "counts": {
+    "tenants": 1,
+    "projects": 1,
+    "models": 1,
+    "channels": 1,
+    "routes": 1,
+    "api_keys": 1,
+    "tasks": 0,
+    "failed_settlements": 0,
+    "due_callbacks": 0
+  },
+  "snapshot": {
+    "version": "local",
+    "models": 1,
+    "channels": 1,
+    "routes": 1
+  }
+}

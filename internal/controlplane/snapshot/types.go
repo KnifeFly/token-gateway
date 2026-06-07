@@ -3,6 +3,8 @@ package snapshot
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 // RuntimeSnapshot is the control-plane output consumed by data-plane indexes.
@@ -30,6 +32,9 @@ type APIKeyRuntime struct {
 	KeyHash       string
 	Enabled       bool
 	AllowedModels []string
+	IPAllowlist   []string
+	ExpiresAt     *time.Time
+	LastUsedAt    *time.Time
 }
 
 // ModelRuntime describes one public model.
@@ -40,6 +45,17 @@ type ModelRuntime struct {
 	Description      string
 	Protocol         string
 	Capability       string
+	Category         string
+	Tags             []string
+	ProviderFamily   string
+	Modalities       []string
+	Capabilities     []string
+	ContextWindow    int64
+	MaxOutputTokens  int64
+	Status           string
+	Deprecated       bool
+	SortOrder        int
+	Metadata         json.RawMessage
 	Schema           json.RawMessage
 	ProviderMappings []ProviderModelMappingRuntime
 	Enabled          bool
@@ -47,10 +63,16 @@ type ModelRuntime struct {
 
 // ProviderModelMappingRuntime maps a catalog model to one provider channel.
 type ProviderModelMappingRuntime struct {
-	ProviderType  string
-	ChannelID     string
-	PublicModel   string
-	UpstreamModel string
+	ProviderType        string
+	ChannelID           string
+	PublicModel         string
+	UpstreamModel       string
+	Capabilities        []string
+	SupportedParameters []string
+	HealthStatus        string
+	TestStatus          string
+	CostConfigStatus    string
+	Metadata            json.RawMessage
 }
 
 // ChannelRuntime describes one provider channel.
@@ -68,8 +90,14 @@ type ChannelRuntime struct {
 
 // ChannelModelRuntime maps a public model to the provider model.
 type ChannelModelRuntime struct {
-	PublicModel   string
-	UpstreamModel string
+	PublicModel         string
+	UpstreamModel       string
+	Capabilities        []string
+	SupportedParameters []string
+	HealthStatus        string
+	TestStatus          string
+	CostConfigStatus    string
+	Metadata            json.RawMessage
 }
 
 // RoutePolicyRuntime describes the candidate set for a public model.
@@ -90,10 +118,13 @@ type RouteCandidateRuntime struct {
 // PriceRuleRuntime pins customer-facing price for one public model.
 type PriceRuleRuntime struct {
 	PublicModel           string
+	Category              string
 	Currency              string
+	Components            []pricing.Component
 	InputMicrosPerToken   int64
 	OutputMicrosPerToken  int64
 	EstimatedOutputTokens int64
+	Metadata              json.RawMessage
 	Enabled               bool
 }
 

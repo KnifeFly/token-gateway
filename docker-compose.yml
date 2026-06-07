@@ -83,6 +83,26 @@ services:
       retries: 20
     restart: unless-stopped
 
+  console:
+    image: token-gateway:local
+    build:
+      context: .
+    command: ["console", "-config", "configs/local.yaml"]
+    environment: *app-env
+    ports:
+      - "9505:9505"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9505/healthz >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   worker:
     image: token-gateway:local
     build:

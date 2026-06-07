@@ -215,6 +215,8 @@ func (b *Bridge) priceSnapshot(state *engine.RequestState) PriceSnapshot {
 	}
 	if state.PriceRule.Enabled {
 		snapshot.Currency = state.PriceRule.Currency
+		snapshot.Category = state.PriceRule.Category
+		snapshot.Components = append([]pricing.Component(nil), state.PriceRule.Components...)
 		snapshot.InputMicrosPerToken = state.PriceRule.InputMicrosPerToken
 		snapshot.OutputMicrosPerToken = state.PriceRule.OutputMicrosPerToken
 		if state.PriceRule.EstimatedOutputTokens > 0 {

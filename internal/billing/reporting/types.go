@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 // TimeRange bounds report rows by creation time.
@@ -14,12 +15,18 @@ type TimeRange struct {
 
 // TenantUsageFilter scopes customer-facing balance, usage, and ledger reports.
 type TenantUsageFilter struct {
-	TenantID  string    `json:"tenant_id"`
-	ProjectID string    `json:"project_id,omitempty"`
-	Currency  string    `json:"currency,omitempty"`
-	From      time.Time `json:"from,omitempty"`
-	To        time.Time `json:"to,omitempty"`
-	Limit     int       `json:"limit,omitempty"`
+	TenantID     string    `json:"tenant_id"`
+	ProjectID    string    `json:"project_id,omitempty"`
+	APIKeyID     string    `json:"api_key_id,omitempty"`
+	RequestID    string    `json:"request_id,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	ProviderType string    `json:"provider_type,omitempty"`
+	ChannelID    string    `json:"channel_id,omitempty"`
+	Status       string    `json:"status,omitempty"`
+	Currency     string    `json:"currency,omitempty"`
+	From         time.Time `json:"from,omitempty"`
+	To           time.Time `json:"to,omitempty"`
+	Limit        int       `json:"limit,omitempty"`
 }
 
 // BalanceSummary is a customer balance bucket snapshot.
@@ -84,20 +91,69 @@ type TenantUsageReport struct {
 	Totals      ReportTotals      `json:"totals"`
 }
 
+// UsageLogFilter scopes request-level usage log reads.
+type UsageLogFilter struct {
+	TenantID     string    `json:"tenant_id,omitempty"`
+	ProjectID    string    `json:"project_id,omitempty"`
+	APIKeyID     string    `json:"api_key_id,omitempty"`
+	RequestID    string    `json:"request_id,omitempty"`
+	Model        string    `json:"model,omitempty"`
+	ProviderType string    `json:"provider_type,omitempty"`
+	ChannelID    string    `json:"channel_id,omitempty"`
+	Status       string    `json:"status,omitempty"`
+	Currency     string    `json:"currency,omitempty"`
+	From         time.Time `json:"from,omitempty"`
+	To           time.Time `json:"to,omitempty"`
+	Limit        int       `json:"limit,omitempty"`
+}
+
+// UsageLogRow is one request-level usage record with safe settlement metadata.
+type UsageLogRow struct {
+	RequestID          string    `json:"request_id"`
+	TenantID           string    `json:"tenant_id"`
+	ProjectID          string    `json:"project_id"`
+	APIKeyID           string    `json:"api_key_id"`
+	Model              string    `json:"model"`
+	ProviderType       string    `json:"provider_type"`
+	ChannelID          string    `json:"channel_id"`
+	Status             string    `json:"status"`
+	SettlementStatus   string    `json:"settlement_status,omitempty"`
+	LedgerEntryID      string    `json:"ledger_entry_id,omitempty"`
+	SettlementKind     string    `json:"settlement_kind,omitempty"`
+	InputTokens        int64     `json:"input_tokens"`
+	OutputTokens       int64     `json:"output_tokens"`
+	TotalTokens        int64     `json:"total_tokens"`
+	AmountMicros       int64     `json:"amount_micros"`
+	Currency           string    `json:"currency"`
+	BalanceAfterMicros int64     `json:"balance_after_micros,omitempty"`
+	CreatedAt          time.Time `json:"created_at,omitempty"`
+	SettledAt          time.Time `json:"settled_at,omitempty"`
+}
+
+// UsageLogReport returns request-level usage rows for Admin and Portal activity pages.
+type UsageLogReport struct {
+	GeneratedAt time.Time      `json:"generated_at"`
+	Filter      UsageLogFilter `json:"filter"`
+	Rows        []UsageLogRow  `json:"rows"`
+	Totals      ReportTotals   `json:"totals"`
+}
+
 // ProviderCostProfile pins provider-side cost assumptions for reports.
 type ProviderCostProfile struct {
-	ID                    string    `json:"id"`
-	ProviderType          string    `json:"provider_type"`
-	ChannelID             string    `json:"channel_id"`
-	PublicModel           string    `json:"public_model"`
-	Currency              string    `json:"currency"`
-	InputMicrosPerToken   int64     `json:"input_micros_per_token"`
-	OutputMicrosPerToken  int64     `json:"output_micros_per_token"`
-	FixedMicrosPerRequest int64     `json:"fixed_micros_per_request"`
-	EffectiveFrom         time.Time `json:"effective_from,omitempty"`
-	Enabled               bool      `json:"enabled"`
-	CreatedAt             time.Time `json:"created_at,omitempty"`
-	UpdatedAt             time.Time `json:"updated_at,omitempty"`
+	ID                    string              `json:"id"`
+	ProviderType          string              `json:"provider_type"`
+	ChannelID             string              `json:"channel_id"`
+	PublicModel           string              `json:"public_model"`
+	Category              string              `json:"category,omitempty"`
+	Currency              string              `json:"currency"`
+	Components            []pricing.Component `json:"components,omitempty"`
+	InputMicrosPerToken   int64               `json:"input_micros_per_token"`
+	OutputMicrosPerToken  int64               `json:"output_micros_per_token"`
+	FixedMicrosPerRequest int64               `json:"fixed_micros_per_request"`
+	EffectiveFrom         time.Time           `json:"effective_from,omitempty"`
+	Enabled               bool                `json:"enabled"`
+	CreatedAt             time.Time           `json:"created_at,omitempty"`
+	UpdatedAt             time.Time           `json:"updated_at,omitempty"`
 }
 
 // ProviderProfitFilter scopes operator cost and profit reports.

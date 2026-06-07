@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/auth"
 	dbinfra "github.com/KnifeFly/token-gateway/internal/infra/db"
@@ -37,18 +37,18 @@ func NewControlAPIApp(ctx context.Context, cfg Config) (*ControlAPIApp, error) {
 	if err != nil {
 		return nil, err
 	}
-	repo := admin.Repository(admin.NewMemoryRepository())
+	repo := configadmin.Repository(configadmin.NewMemoryRepository())
 	reportRepo := reporting.Repository(reporting.NewMemoryRepository())
 	if cfg.Database.Enabled && database.DB() != nil {
-		repo = admin.NewMySQLRepository(database.DB())
+		repo = configadmin.NewMySQLRepository(database.DB())
 		reportRepo = reporting.NewMySQLRepository(database.DB())
 	}
 	revocations := redisinfra.NewRevocationStore(redisClient.Raw(), cfg.Control.RevocationTTL.Duration)
-	adminService := admin.NewService(
+	adminService := configadmin.NewService(
 		repo,
-		admin.NewCredentialCodec(cfg.Control.CredentialKey),
+		configadmin.NewCredentialCodec(cfg.Control.CredentialKey),
 		revocations,
-		admin.WithAPIKeyHasher(auth.NewAPIKeyHasher(cfg.Gateway.Auth.APIKeyHashSecret)),
+		configadmin.WithAPIKeyHasher(auth.NewAPIKeyHasher(cfg.Gateway.Auth.APIKeyHashSecret)),
 	)
 	reportingService := reporting.NewService(reportRepo)
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))

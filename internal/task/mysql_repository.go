@@ -162,16 +162,40 @@ func (r *MySQLRepository) ListProviderTasks(ctx context.Context, limit int) ([]T
 	return tasks, rows.Err()
 }
 
-// ListTasks returns tenant/project scoped tasks ordered by newest first.
+// ListTasks returns filtered tasks ordered by newest first.
 func (r *MySQLRepository) ListTasks(ctx context.Context, filter TaskListFilter) ([]Task, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 100
 	}
-	query := taskSelectSQL + ` WHERE tenant_id = ? AND project_id = ?`
-	args := []any{filter.TenantID, filter.ProjectID}
+	query := taskSelectSQL
+	var clauses []string
+	var args []any
+	add := func(column string, value string) {
+		if strings.TrimSpace(value) == "" {
+			return
+		}
+		clauses = append(clauses, column+" = ?")
+		args = append(args, strings.TrimSpace(value))
+	}
+	add("id", filter.TaskID)
+	add("tenant_id", filter.TenantID)
+	add("project_id", filter.ProjectID)
+	add("api_key_id", filter.APIKeyID)
+	add("request_id", filter.RequestID)
+	add("model", filter.Model)
+	add("provider_type", filter.ProviderType)
+	add("channel_id", filter.ChannelID)
 	if filter.Status != "" {
-		query += ` AND status = ?`
+		clauses = append(clauses, "status = ?")
 		args = append(args, string(filter.Status))
+	}
+	if !filter.From.IsZero() {
+		clauses = append(clauses, "created_at >= ?")
+		args = append(args, filter.From)
+	}
+	if !filter.To.IsZero() {
+		clauses = append(clauses, "created_at < ?")
+		args = append(args, filter.To)
 	}
 	if filter.Cursor != "" {
 		cursor, ok, err := r.cursorTask(ctx, filter.Cursor)
@@ -179,9 +203,12 @@ func (r *MySQLRepository) ListTasks(ctx context.Context, filter TaskListFilter) 
 			return nil, err
 		}
 		if ok {
-			query += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+			clauses = append(clauses, "(created_at < ? OR (created_at = ? AND id < ?))")
 			args = append(args, cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
 		}
+	}
+	if len(clauses) > 0 {
+		query += ` WHERE ` + strings.Join(clauses, " AND ")
 	}
 	query += ` ORDER BY created_at DESC, id DESC LIMIT ?`
 	args = append(args, filter.Limit)

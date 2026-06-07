@@ -4,6 +4,8 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 )
 
 func TestManualAdjustmentIsIdempotentAndFeedsTenantUsage(t *testing.T) {
@@ -92,6 +94,96 @@ func TestProviderProfitReportUsesCostProfile(t *testing.T) {
 	wantCost := int64(10*10 + 20*20 + 2*5)
 	if report.Rows[0].ProviderCostMicros != wantCost || report.Rows[0].ProfitMicros != 1000-wantCost {
 		t.Fatalf("row = %#v", report.Rows[0])
+	}
+}
+
+func TestUsageLogReportFiltersRequestLevelRows(t *testing.T) {
+	repo := NewMemoryRepository()
+	now := time.Now().UTC()
+	repo.SeedUsageRecord(UsageLogRow{
+		RequestID:    "req_1",
+		TenantID:     "tenant_1",
+		ProjectID:    "project_1",
+		APIKeyID:     "key_1",
+		Model:        "gpt-public",
+		ProviderType: "openai",
+		ChannelID:    "channel_primary",
+		InputTokens:  10,
+		OutputTokens: 20,
+		TotalTokens:  30,
+		AmountMicros: 1234,
+		Currency:     "USD",
+		CreatedAt:    now,
+	})
+	repo.SeedUsageRecord(UsageLogRow{
+		RequestID:    "req_2",
+		TenantID:     "tenant_2",
+		ProjectID:    "project_2",
+		APIKeyID:     "key_2",
+		Model:        "image-public",
+		ProviderType: "replicate",
+		ChannelID:    "channel_image",
+		AmountMicros: 9999,
+		Currency:     "USD",
+		CreatedAt:    now,
+	})
+	service := NewService(repo)
+
+	report, err := service.UsageLogReport(context.Background(), UsageLogFilter{
+		TenantID:  "tenant_1",
+		RequestID: "req_1",
+		Model:     "gpt-public",
+		Status:    "settled",
+		Limit:     10,
+	})
+	if err != nil {
+		t.Fatalf("UsageLogReport() error = %v", err)
+	}
+	if len(report.Rows) != 1 || report.Rows[0].RequestID != "req_1" || report.Rows[0].ChannelID != "channel_primary" {
+		t.Fatalf("rows = %#v", report.Rows)
+	}
+	if report.Totals.Requests != 1 || report.Totals.RevenueMicros != 1234 {
+		t.Fatalf("totals = %#v", report.Totals)
+	}
+}
+
+func TestProviderProfitReportUsesComponentCostProfile(t *testing.T) {
+	repo := NewMemoryRepository()
+	repo.usage = append(repo.usage, memoryUsageRecord{
+		UsageSummary: UsageSummary{
+			Model:        "image-plus",
+			ProviderType: "image_provider",
+			ChannelID:    "channel_img",
+			Currency:     "USD",
+			Requests:     3,
+			InputTokens:  10,
+			AmountMicros: 1000,
+		},
+		TenantID:  "tenant_1",
+		ProjectID: "project_1",
+		CreatedAt: time.Now().UTC(),
+	})
+	service := NewService(repo)
+	if _, err := service.UpsertProviderCostProfile(context.Background(), ProviderCostProfile{
+		ProviderType: "image_provider",
+		ChannelID:    "channel_img",
+		PublicModel:  "image-plus",
+		Category:     string(pricing.CategoryImage),
+		Currency:     "USD",
+		Components: []pricing.Component{
+			{Unit: pricing.UnitInputToken, MicrosPerUnit: 2},
+			{Unit: pricing.UnitRequest, MicrosPerUnit: 50},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertProviderCostProfile() error = %v", err)
+	}
+
+	report, err := service.ProviderProfitReport(context.Background(), ProviderProfitFilter{TenantID: "tenant_1"})
+	if err != nil {
+		t.Fatalf("ProviderProfitReport() error = %v", err)
+	}
+	if len(report.Rows) != 1 || report.Rows[0].ProviderCostMicros != 170 {
+		t.Fatalf("rows = %#v", report.Rows)
 	}
 }
 

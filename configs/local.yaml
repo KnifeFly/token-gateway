@@ -118,3 +118,9 @@ configd:
   addr: ":9504"
   shutdown_timeout: 10s
   publish_on_start: false
+
+console:
+  addr: ":9505"
+  shutdown_timeout: 10s
+  portal_static_dir: web/apps/portal/dist
+  admin_static_dir: web/apps/admin/dist

@@ -10,6 +10,7 @@ import (
 
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -70,6 +71,9 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			Hash:          apiKey.KeyHash,
 			Enabled:       apiKey.Enabled,
 			AllowedModels: append([]string(nil), apiKey.AllowedModels...),
+			IPAllowlist:   append([]string(nil), apiKey.IPAllowlist...),
+			ExpiresAt:     cloneTimePtr(apiKey.ExpiresAt),
+			LastUsedAt:    cloneTimePtr(apiKey.LastUsedAt),
 		}
 	}
 	for _, model := range runtime.Models {
@@ -82,10 +86,16 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		mappings := make([]engine.ProviderModelMapping, 0, len(model.ProviderMappings))
 		for _, mapping := range model.ProviderMappings {
 			mappings = append(mappings, engine.ProviderModelMapping{
-				ProviderType:  mapping.ProviderType,
-				ChannelID:     mapping.ChannelID,
-				PublicModel:   mapping.PublicModel,
-				UpstreamModel: mapping.UpstreamModel,
+				ProviderType:        mapping.ProviderType,
+				ChannelID:           mapping.ChannelID,
+				PublicModel:         mapping.PublicModel,
+				UpstreamModel:       mapping.UpstreamModel,
+				Capabilities:        append([]string(nil), mapping.Capabilities...),
+				SupportedParameters: append([]string(nil), mapping.SupportedParameters...),
+				HealthStatus:        mapping.HealthStatus,
+				TestStatus:          mapping.TestStatus,
+				CostConfigStatus:    mapping.CostConfigStatus,
+				Metadata:            append([]byte(nil), mapping.Metadata...),
 			})
 		}
 		indexed.modelsByName[model.PublicModel] = engine.ModelView{
@@ -95,6 +105,17 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			Description:      model.Description,
 			Protocol:         engine.ProtocolMode(model.Protocol),
 			Capability:       model.Capability,
+			Category:         model.Category,
+			Tags:             append([]string(nil), model.Tags...),
+			ProviderFamily:   model.ProviderFamily,
+			Modalities:       append([]string(nil), model.Modalities...),
+			Capabilities:     append([]string(nil), model.Capabilities...),
+			ContextWindow:    model.ContextWindow,
+			MaxOutputTokens:  model.MaxOutputTokens,
+			Status:           model.Status,
+			Deprecated:       model.Deprecated,
+			SortOrder:        model.SortOrder,
+			Metadata:         append([]byte(nil), model.Metadata...),
 			Schema:           append([]byte(nil), model.Schema...),
 			ProviderMappings: mappings,
 			Enabled:          model.Enabled,
@@ -122,8 +143,19 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			return nil, fmt.Errorf("duplicate channel %q", channel.ID)
 		}
 		models := make(map[string]string, len(channel.Models))
+		modelMetadata := make(map[string]engine.ChannelModelMetadata, len(channel.Models))
 		for _, model := range channel.Models {
 			models[model.PublicModel] = model.UpstreamModel
+			modelMetadata[model.PublicModel] = engine.ChannelModelMetadata{
+				PublicModel:         model.PublicModel,
+				UpstreamModel:       model.UpstreamModel,
+				Capabilities:        append([]string(nil), model.Capabilities...),
+				SupportedParameters: append([]string(nil), model.SupportedParameters...),
+				HealthStatus:        model.HealthStatus,
+				TestStatus:          model.TestStatus,
+				CostConfigStatus:    model.CostConfigStatus,
+				Metadata:            append([]byte(nil), model.Metadata...),
+			}
 		}
 		indexed.channelsByID[channel.ID] = engine.ChannelView{
 			ID:              channel.ID,
@@ -135,6 +167,7 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 			Enabled:         channel.Enabled,
 			Timeout:         channel.Timeout,
 			Models:          models,
+			ModelMetadata:   modelMetadata,
 		}
 	}
 	for _, route := range runtime.RoutePolicies {
@@ -165,10 +198,13 @@ func Build(runtime cpsnapshot.RuntimeSnapshot) (*IndexedSnapshot, error) {
 		}
 		indexed.pricesByModel[price.PublicModel] = engine.PriceRuleView{
 			PublicModel:           price.PublicModel,
+			Category:              price.Category,
 			Currency:              price.Currency,
+			Components:            append([]pricing.Component(nil), price.Components...),
 			InputMicrosPerToken:   price.InputMicrosPerToken,
 			OutputMicrosPerToken:  price.OutputMicrosPerToken,
 			EstimatedOutputTokens: price.EstimatedOutputTokens,
+			Metadata:              append([]byte(nil), price.Metadata...),
 			Enabled:               price.Enabled,
 		}
 	}
@@ -407,6 +443,14 @@ func limitSpecificity(scope engine.LimitScope) int {
 
 func limitKey(scope engine.LimitScope) string {
 	return fmt.Sprintf("limit:%s:%s:%s:%s:%s:%s", scope.TenantID, scope.ProjectID, scope.APIKeyID, scope.PublicModel, scope.ProviderType, scope.ChannelID)
+}
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 // ProviderOption configures a Provider.

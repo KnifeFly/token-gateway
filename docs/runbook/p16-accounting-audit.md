@@ -65,7 +65,7 @@ GROUP BY tenant_id, project_id, currency;
 
 ```bash
 go test ./internal/task ./internal/dataplane/dispatch ./internal/billing ./internal/billing/reporting
-go test ./internal/bootstrap ./internal/dataplane/limit ./internal/controlplane/admin ./internal/transport/controlhttp
+go test ./internal/bootstrap ./internal/dataplane/limit ./internal/controlplane/configadmin ./internal/transport/controlhttp
 ```
 
 ## Full Verification

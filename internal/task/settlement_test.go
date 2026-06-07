@@ -63,3 +63,26 @@ func TestBillingSettlementUsesPinnedTaskPriceSnapshot(t *testing.T) {
 		t.Fatalf("plan = %#v", plan)
 	}
 }
+
+func TestBillingSettlementUsesPinnedComponentTaskPriceSnapshot(t *testing.T) {
+	settlement := NewBillingSettlement(nil, pricing.TokenPrice{Currency: "USD", InputMicrosPerToken: 1000, OutputMicrosPerToken: 2000})
+	task := Task{
+		RequestID: "req_pinned_component_price",
+		Status:    StatusSucceeded,
+		Result:    []byte(`{"results":["https://provider.example/result.png"]}`),
+		PriceSnapshot: PriceSnapshot{
+			Category: string(pricing.CategoryImage),
+			Currency: "CNY",
+			Components: []pricing.Component{
+				{Unit: pricing.UnitInputToken, MicrosPerUnit: 3},
+				{Unit: pricing.UnitTask, MicrosPerUnit: 20},
+			},
+			Source: "runtime_price_rule",
+		},
+	}
+
+	plan := settlement.plan(task, tokenusage.Actual{InputTokens: 2, TotalTokens: 2})
+	if plan.Currency != "CNY" || plan.AmountMicros != 26 {
+		t.Fatalf("plan = %#v", plan)
+	}
+}

@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 )
 
 func TestWatcherPollsPublishAndRollbackSnapshots(t *testing.T) {
 	ctx := context.Background()
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	seedWatcherSnapshotConfig(t, ctx, service, "gpt-4o-mini")
 
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
@@ -102,8 +102,8 @@ func TestFallbackActiveProviderUsesFallbackWhenPrimaryUnavailable(t *testing.T) 
 func TestWatcherPollsOnSnapshotEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	seedWatcherSnapshotConfig(t, ctx, service, "gpt-4o-mini")
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
 	first, err := publisher.Publish(ctx)
@@ -161,17 +161,17 @@ func (e *manualSnapshotEvents) notify() {
 	}
 }
 
-func seedWatcherSnapshotConfig(t *testing.T, ctx context.Context, service *admin.Service, model string) {
+func seedWatcherSnapshotConfig(t *testing.T, ctx context.Context, service *configadmin.Service, model string) {
 	t.Helper()
-	if _, err := service.CreateAPIKey(ctx, admin.APIKey{TenantID: "tenant", ProjectID: "project", PlaintextKey: "tg-test"}); err != nil {
+	if _, err := service.CreateAPIKey(ctx, configadmin.APIKey{TenantID: "tenant", ProjectID: "project", PlaintextKey: "tg-test"}); err != nil {
 		t.Fatalf("CreateAPIKey() error = %v", err)
 	}
 	upsertWatcherSnapshotModel(t, ctx, service, model)
 }
 
-func upsertWatcherSnapshotModel(t *testing.T, ctx context.Context, service *admin.Service, model string) {
+func upsertWatcherSnapshotModel(t *testing.T, ctx context.Context, service *configadmin.Service, model string) {
 	t.Helper()
-	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
+	if _, err := service.UpsertModel(ctx, configadmin.ModelConfig{
 		PublicModel: model,
 		Protocol:    string(engine.ProtocolNativeOpenAI),
 		Capability:  "chat",
@@ -179,18 +179,18 @@ func upsertWatcherSnapshotModel(t *testing.T, ctx context.Context, service *admi
 	}); err != nil {
 		t.Fatalf("UpsertModel(%s) error = %v", model, err)
 	}
-	if _, err := service.UpsertChannel(ctx, admin.ChannelConfig{
+	if _, err := service.UpsertChannel(ctx, configadmin.ChannelConfig{
 		ID:           "channel_1",
 		ProviderType: "openai_compatible",
 		BaseURL:      "mock://openai",
 		Enabled:      true,
-		Models:       []admin.ChannelModel{{PublicModel: model, UpstreamModel: model}},
+		Models:       []configadmin.ChannelModel{{PublicModel: model, UpstreamModel: model}},
 	}); err != nil {
 		t.Fatalf("UpsertChannel(%s) error = %v", model, err)
 	}
-	if _, err := service.UpsertRoute(ctx, admin.RoutePolicyConfig{
+	if _, err := service.UpsertRoute(ctx, configadmin.RoutePolicyConfig{
 		PublicModel: model,
-		Candidates:  []admin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}},
+		Candidates:  []configadmin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}},
 	}); err != nil {
 		t.Fatalf("UpsertRoute(%s) error = %v", model, err)
 	}

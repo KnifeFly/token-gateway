@@ -1,0 +1,3005 @@
+openapi: 3.0.3
+info:
+  title: token-gateway Admin Web BFF
+  version: 0.2.0
+  description: Browser-facing Admin BFF contract owned by cmd/console. Admin Web uses operator sessions, RBAC, CSRF, idempotency metadata, and durable audit instead of exposing /admin/* machine APIs to browsers.
+servers:
+  - url: http://localhost:9505
+    description: Local console process
+tags:
+  - name: Admin Web Auth
+  - name: Admin Web Dashboard
+  - name: Admin Web Config
+  - name: Admin Web Snapshots
+  - name: Admin Web Operations
+  - name: Admin Web Audit
+paths:
+  /api/admin/v1/auth/login:
+    post:
+      tags: [Admin Web Auth]
+      summary: Exchange operator credentials for an HttpOnly Admin session
+      operationId: loginAdmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: Admin session and CSRF token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/auth/logout:
+    post:
+      tags: [Admin Web Auth]
+      summary: Revoke the current Admin session
+      operationId: logoutAdmin
+      security:
+        - adminSession: []
+          csrfHeader: []
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated:
+                    type: boolean
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/auth/me:
+    get:
+      tags: [Admin Web Auth]
+      summary: Get the current Admin operator session
+      operationId: getAdminSession
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          description: Admin operator session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminSessionResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/dashboard:
+    get:
+      tags: [Admin Web Dashboard]
+      summary: Get Admin dashboard counters
+      operationId: getAdminDashboard
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          description: Admin dashboard counters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminDashboardResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/tenants:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminTenants
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminTenant
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/tenants/{tenant_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminTenant
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/projects:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminProjects
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminProject
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminAPIKeys
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+      responses:
+        "200":
+          description: Safe API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: createAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAPIKeyCreateRequest"
+      responses:
+        "200":
+          description: Created API key and one-time plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyCreateResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/update:
+    post:
+      tags: [Admin Web Config]
+      operationId: updateAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAPIKeyUpdateRequest"
+      responses:
+        "200":
+          description: Updated API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/enable:
+    post:
+      tags: [Admin Web Config]
+      operationId: enableAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      responses:
+        "200":
+          description: Enabled API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      responses:
+        "200":
+          description: Disabled API key metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/api-keys/{key_id}/rotate:
+    post:
+      tags: [Admin Web Config]
+      operationId: rotateAdminAPIKey
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/KeyID"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminAPIKeyRotateRequest"
+      responses:
+        "200":
+          description: Rotated API key and one-time plaintext
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminAPIKeyRotateResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminCustomerAccounts
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: keyword
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Safe customer account list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: createAdminCustomerAccount
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCustomerAccountCreateRequest"
+      responses:
+        "200":
+          description: Created customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminCustomerAccount
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      responses:
+        "200":
+          description: Safe customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/credit-report:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminCustomerCreditReport
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Minimal credit operations report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerCreditReport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/usage/export:
+    get:
+      tags: [Admin Web Config]
+      operationId: exportAdminCustomerUsage
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Safe customer usage export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerReportExport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/ledger/export:
+    get:
+      tags: [Admin Web Config]
+      operationId: exportAdminCustomerLedger
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Safe customer ledger export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerReportExport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/enable:
+    post:
+      tags: [Admin Web Config]
+      operationId: enableAdminCustomerAccount
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      responses:
+        "200":
+          description: Enabled customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminCustomerAccount
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      responses:
+        "200":
+          description: Disabled customer account detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerAccountDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/manual-adjustment:
+    post:
+      tags: [Admin Web Config]
+      operationId: adjustAdminCustomerCredits
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCustomerCreditAdjustmentRequest"
+      responses:
+        "200":
+          description: Manual adjustment result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerCreditAdjustmentResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/customer-accounts/{customer_account_id}/reset-session:
+    post:
+      tags: [Admin Web Config]
+      operationId: resetAdminCustomerPortalSessions
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/CustomerAccountID"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                api_key_id:
+                  type: string
+      responses:
+        "200":
+          description: Portal session reset result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminCustomerSessionResetResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/usage-logs:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminUsageLogs
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+        - name: api_key_id
+          in: query
+          schema: { type: string }
+        - name: request_id
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: provider_type
+          in: query
+          schema: { type: string }
+        - name: channel_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: currency
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Operator-safe request-level usage logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsageLogListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/usage-logs/{request_id}:
+    get:
+      tags: [Admin Web Operations]
+      operationId: getAdminUsageLog
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/RequestID"
+      responses:
+        "200":
+          description: Operator-safe usage log detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsageLogDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/task-logs:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminTaskLogs
+      security:
+        - adminSession: []
+      parameters:
+        - name: task_id
+          in: query
+          schema: { type: string }
+        - $ref: "#/components/parameters/TenantIDQuery"
+        - $ref: "#/components/parameters/ProjectIDQuery"
+        - name: api_key_id
+          in: query
+          schema: { type: string }
+        - name: request_id
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: provider_type
+          in: query
+          schema: { type: string }
+        - name: channel_id
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Operator-safe async task logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTaskLogListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/task-logs/{task_id}:
+    get:
+      tags: [Admin Web Operations]
+      operationId: getAdminTaskLog
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/TaskID"
+      responses:
+        "200":
+          description: Operator-safe async task detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTaskLogDetail"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/playground/run:
+    post:
+      tags: [Admin Web Operations]
+      operationId: runAdminPlayground
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlaygroundRunRequest"
+      responses:
+        "200":
+          description: Safe Admin playground dry-run result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlaygroundRunResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/playground/import-preview:
+    post:
+      tags: [Admin Web Operations]
+      operationId: previewAdminPlaygroundImport
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlaygroundImportPreviewRequest"
+      responses:
+        "200":
+          description: Safe Admin playground import preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlaygroundImportPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/playground/export:
+    post:
+      tags: [Admin Web Operations]
+      operationId: exportAdminPlayground
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminPlaygroundExportRequest"
+      responses:
+        "200":
+          description: Safe Admin playground export
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPlaygroundExport"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminModels
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          description: Safe model catalog list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminModelUpsertRequest"
+      responses:
+        "200":
+          description: Safe model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/sync-preview:
+    post:
+      tags: [Admin Web Config]
+      operationId: previewAdminModelCatalogSync
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminModelCatalogSyncPreviewRequest"
+      responses:
+        "200":
+          description: Non-persistent model catalog diff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelCatalogSyncPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminModel
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Safe model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      tags: [Admin Web Config]
+      operationId: patchAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminModelUpsertRequest"
+      responses:
+        "200":
+          description: Safe model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/channels:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminModelChannels
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Safe model channel coverage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelChannelCoverageListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/schema-preview:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminModelSchemaPreview
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Safe model schema preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelSchemaPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Disabled model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/models/{model_id}/deprecate:
+    post:
+      tags: [Admin Web Config]
+      operationId: deprecateAdminModel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ModelID"
+      responses:
+        "200":
+          description: Deprecated model read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminModelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminChannels
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          description: Safe channel list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelUpsertRequest"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}:
+    get:
+      tags: [Admin Web Config]
+      operationId: getAdminChannel
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    patch:
+      tags: [Admin Web Config]
+      operationId: patchAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelUpsertRequest"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/test:
+    post:
+      tags: [Admin Web Config]
+      operationId: testAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe channel test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelTestResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/rotate-credential:
+    post:
+      tags: [Admin Web Config]
+      operationId: rotateAdminChannelCredential
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelCredentialRotationRequest"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/sync-preview:
+    post:
+      tags: [Admin Web Config]
+      operationId: previewAdminChannelSync
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelSyncRequest"
+      responses:
+        "200":
+          description: Non-persistent channel model sync preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelSyncPreview"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/sync-apply:
+    post:
+      tags: [Admin Web Config]
+      operationId: applyAdminChannelSync
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminChannelSyncRequest"
+      responses:
+        "200":
+          description: Persisted channel model sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelSyncApplyResult"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/health-events:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminChannelHealthEvents
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe synthetic channel health events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelHealthEventListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/disable:
+    post:
+      tags: [Admin Web Config]
+      operationId: disableAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/channels/{channel_id}/enable:
+    post:
+      tags: [Admin Web Config]
+      operationId: enableAdminChannel
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ChannelID"
+      responses:
+        "200":
+          description: Safe channel read model
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminChannelView"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/routes:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminRoutes
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminRoute
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/pricing:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminPricing
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminPricing
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/limits:
+    get:
+      tags: [Admin Web Config]
+      operationId: listAdminLimits
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Config]
+      operationId: upsertAdminLimit
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots:
+    get:
+      tags: [Admin Web Snapshots]
+      operationId: getAdminSnapshots
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots/validate:
+    post:
+      tags: [Admin Web Snapshots]
+      operationId: validateAdminSnapshot
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots/publish:
+    post:
+      tags: [Admin Web Snapshots]
+      operationId: publishAdminSnapshot
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/snapshots/rollback:
+    post:
+      tags: [Admin Web Snapshots]
+      operationId: rollbackAdminSnapshot
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/settlements:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminSettlements
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/settlements/{id}/replay:
+    post:
+      tags: [Admin Web Operations]
+      operationId: replayAdminSettlement
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/callbacks:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminCallbacks
+      security:
+        - adminSession: []
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/callbacks/{id}/retry:
+    post:
+      tags: [Admin Web Operations]
+      operationId: retryAdminCallback
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/ID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/workers:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminWorkers
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operations/holds:
+    get:
+      tags: [Admin Web Operations]
+      operationId: listAdminHolds
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/audit:
+    get:
+      tags: [Admin Web Audit]
+      operationId: listAdminAudit
+      security:
+        - adminSession: []
+      parameters:
+        - name: operator_id
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: resource
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operators:
+    get:
+      tags: [Admin Web Audit]
+      operationId: listAdminOperators
+      security:
+        - adminSession: []
+      responses:
+        "200":
+          $ref: "#/components/responses/ListResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+    post:
+      tags: [Admin Web Audit]
+      operationId: createAdminOperator
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      requestBody:
+        $ref: "#/components/requestBodies/JSONBody"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+  /api/admin/v1/operators/{operator_id}/disable:
+    post:
+      tags: [Admin Web Audit]
+      operationId: disableAdminOperator
+      security:
+        - adminSession: []
+          csrfHeader: []
+          idempotencyKey: []
+          reasonHeader: []
+      parameters:
+        - $ref: "#/components/parameters/OperatorID"
+      responses:
+        "200":
+          $ref: "#/components/responses/ObjectResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponse"
+components:
+  securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: tg_admin_session
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+    idempotencyKey:
+      type: apiKey
+      in: header
+      name: Idempotency-Key
+    reasonHeader:
+      type: apiKey
+      in: header
+      name: X-Reason
+  parameters:
+    TenantID:
+      name: tenant_id
+      in: path
+      required: true
+      schema: { type: string }
+    TenantIDQuery:
+      name: tenant_id
+      in: query
+      schema: { type: string }
+    ProjectIDQuery:
+      name: project_id
+      in: query
+      schema: { type: string }
+    CustomerAccountID:
+      name: customer_account_id
+      in: path
+      required: true
+      schema: { type: string }
+    KeyID:
+      name: key_id
+      in: path
+      required: true
+      schema: { type: string }
+    RequestID:
+      name: request_id
+      in: path
+      required: true
+      schema: { type: string }
+    TaskID:
+      name: task_id
+      in: path
+      required: true
+      schema: { type: string }
+    ModelID:
+      name: model_id
+      in: path
+      required: true
+      schema: { type: string }
+    ChannelID:
+      name: channel_id
+      in: path
+      required: true
+      schema: { type: string }
+    OperatorID:
+      name: operator_id
+      in: path
+      required: true
+      schema: { type: string }
+    ID:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+  requestBodies:
+    JSONBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+  responses:
+    ObjectResponse:
+      description: JSON object response
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    ListResponse:
+      description: List response
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ListResponse"
+    ErrorResponse:
+      description: Stable console error envelope
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+  schemas:
+    AdminLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+    AdminLoginResponse:
+      type: object
+      required: [authenticated, session, csrf_token]
+      properties:
+        authenticated:
+          type: boolean
+        session:
+          $ref: "#/components/schemas/AdminSessionResponse"
+        csrf_token:
+          type: string
+    AdminSessionResponse:
+      type: object
+      required: [authenticated]
+      properties:
+        authenticated:
+          type: boolean
+        operator_id:
+          type: string
+        email:
+          type: string
+        display_name:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        permissions:
+          type: array
+          items:
+            type: object
+            properties:
+              action:
+                type: string
+              resource:
+                type: string
+        expires_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        csrf_token:
+          type: string
+    AdminDashboardResponse:
+      type: object
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          additionalProperties:
+            type: integer
+    ListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    AdminCustomerAccountListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerAccountView"
+    AdminCustomerAccountView:
+      type: object
+      required:
+        - customer_account_id
+        - tenant_id
+        - tenant_name
+        - project_id
+        - project_name
+        - status
+        - role
+        - tenant_enabled
+        - project_enabled
+        - api_key_count
+        - active_api_key_count
+        - allowed_models_summary
+        - recent_usage
+      properties:
+        customer_account_id:
+          type: string
+        tenant_id:
+          type: string
+        tenant_name:
+          type: string
+        project_id:
+          type: string
+        project_name:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+        status:
+          type: string
+          enum: [active, disabled, closed]
+        role:
+          type: string
+          enum: [owner, developer, viewer]
+        notes:
+          type: string
+        tenant_enabled:
+          type: boolean
+        project_enabled:
+          type: boolean
+        api_key_count:
+          type: integer
+        active_api_key_count:
+          type: integer
+        allowed_models_summary:
+          $ref: "#/components/schemas/AdminCustomerAllowedModels"
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerCreditSummary"
+        recent_usage:
+          $ref: "#/components/schemas/AdminCustomerUsageSummary"
+        last_seen_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminCustomerAllowedModels:
+      type: object
+      required: [wildcard, unique_count]
+      properties:
+        models:
+          type: array
+          items:
+            type: string
+        wildcard:
+          type: boolean
+        unique_count:
+          type: integer
+    AdminCustomerCreditSummary:
+      type: object
+      required: [currency, available_micros, held_micros, opening_micros, total_granted_micros, used_micros]
+      properties:
+        account_id:
+          type: string
+        currency:
+          type: string
+        available_micros:
+          type: integer
+          format: int64
+        held_micros:
+          type: integer
+          format: int64
+        opening_micros:
+          type: integer
+          format: int64
+        total_granted_micros:
+          type: integer
+          format: int64
+        used_micros:
+          type: integer
+          format: int64
+    AdminCustomerUsageSummary:
+      type: object
+      required: [requests, input_tokens, output_tokens, revenue_micros]
+      properties:
+        requests:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        revenue_micros:
+          type: integer
+          format: int64
+        currency:
+          type: string
+    AdminCustomerAccountDetail:
+      type: object
+      required: [account, api_keys]
+      properties:
+        account:
+          $ref: "#/components/schemas/AdminCustomerAccountView"
+        api_keys:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAPIKeyView"
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerUsageRow"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+    AdminCustomerCreditReport:
+      type: object
+      required: [generated_at, account, credits, usage, ledger, active_holds, failed_settlements, exports]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        account:
+          $ref: "#/components/schemas/AdminCustomerAccountView"
+        credits:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerCreditSummary"
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerUsageRow"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+        active_holds:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminHoldAgingView"
+        failed_settlements:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerFailedSettlementLink"
+        exports:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerExportLink"
+    AdminCustomerFailedSettlementLink:
+      type: object
+      required: [id, request_id, status, retry_count]
+      properties:
+        id:
+          type: string
+        request_id:
+          type: string
+        status:
+          type: string
+        retry_count:
+          type: integer
+        last_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    AdminCustomerExportLink:
+      type: object
+      required: [kind, path, format, safe_fields]
+      properties:
+        kind:
+          type: string
+          enum: [usage, ledger]
+        path:
+          type: string
+        format:
+          type: string
+          enum: [json]
+        safe_fields:
+          type: array
+          items:
+            type: string
+    AdminHoldAgingView:
+      type: object
+      required: [status, count]
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+    AdminCustomerReportExport:
+      type: object
+      required: [generated_at, kind, format, filename, customer_account_id, tenant_id, project_id, totals, safe_fields]
+      properties:
+        generated_at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum: [usage, ledger]
+        format:
+          type: string
+          enum: [json]
+        filename:
+          type: string
+        customer_account_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        currency:
+          type: string
+        usage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerUsageRow"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+        totals:
+          $ref: "#/components/schemas/AdminCustomerUsageSummary"
+        safe_fields:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+    AdminAPIKeyListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminAPIKeyView"
+    AdminAPIKeyView:
+      type: object
+      required: [id, tenant_id, project_id, name, enabled, usage_summary]
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        fingerprint:
+          type: string
+        enabled:
+          type: boolean
+        allowed_models:
+          type: array
+          items:
+            type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        usage_summary:
+          $ref: "#/components/schemas/AdminCustomerUsageSummary"
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AdminAPIKeyCreateRequest:
+      type: object
+      required: [tenant_id, project_id]
+      properties:
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminAPIKeyUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        ip_allowlist:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminAPIKeyRotateRequest:
+      type: object
+      properties:
+        plaintext_key:
+          type: string
+          description: Optional caller-supplied replacement; omitted generates a new key.
+    AdminAPIKeyCreateResponse:
+      type: object
+      required: [api_key, plaintext_key]
+      properties:
+        api_key:
+          $ref: "#/components/schemas/AdminAPIKeyView"
+        plaintext_key:
+          type: string
+    AdminAPIKeyRotateResponse:
+      type: object
+      required: [api_key, plaintext_key]
+      properties:
+        api_key:
+          $ref: "#/components/schemas/AdminAPIKeyView"
+        plaintext_key:
+          type: string
+    AdminCustomerUsageRow:
+      type: object
+      required: [requests, input_tokens, output_tokens, total_tokens, amount_micros]
+      properties:
+        model:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        currency:
+          type: string
+        requests:
+          type: integer
+          format: int64
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        amount_micros:
+          type: integer
+          format: int64
+    AdminCustomerLedgerLine:
+      type: object
+      required: [id, settlement_kind, account_id, currency, amount_micros, balance_after_micros]
+      properties:
+        id:
+          type: string
+        request_id:
+          type: string
+        settlement_kind:
+          type: string
+        account_id:
+          type: string
+        currency:
+          type: string
+        amount_micros:
+          type: integer
+          format: int64
+        balance_after_micros:
+          type: integer
+          format: int64
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AdminUsageLogListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUsageLogView"
+    AdminUsageLogView:
+      type: object
+      required:
+        - request_id
+        - tenant_id
+        - project_id
+        - api_key_id
+        - model
+        - provider_type
+        - channel_id
+        - status
+        - input_tokens
+        - output_tokens
+        - total_tokens
+        - amount_micros
+        - currency
+      properties:
+        request_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        model:
+          type: string
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        status:
+          type: string
+        settlement_status:
+          type: string
+        ledger_entry_id:
+          type: string
+        settlement_kind:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        amount_micros:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        balance_after_micros:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        settled_at:
+          type: string
+          format: date-time
+    AdminUsageLogDetail:
+      type: object
+      required: [usage]
+      properties:
+        usage:
+          $ref: "#/components/schemas/AdminUsageLogView"
+        ledger:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminCustomerLedgerLine"
+    AdminTaskLogListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTaskLogView"
+    AdminTaskLogView:
+      type: object
+      required:
+        - task_id
+        - request_id
+        - tenant_id
+        - project_id
+        - api_key_id
+        - kind
+        - model
+        - status
+        - progress
+        - callback_configured
+        - settlement_status
+      properties:
+        task_id:
+          type: string
+        request_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        kind:
+          type: string
+        media_type:
+          type: string
+        model:
+          type: string
+        status:
+          type: string
+        progress:
+          type: integer
+        provider_type:
+          type: string
+        channel_id:
+          type: string
+        provider_task_id:
+          type: string
+        callback_configured:
+          type: boolean
+        settlement_status:
+          type: string
+        input_tokens:
+          type: integer
+          format: int64
+        output_tokens:
+          type: integer
+          format: int64
+        total_tokens:
+          type: integer
+          format: int64
+        error_code:
+          type: string
+        error_message:
+          type: string
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+    AdminTaskLogDetail:
+      type: object
+      required: [task]
+      properties:
+        task:
+          $ref: "#/components/schemas/AdminTaskLogView"
+    AdminCustomerAccountCreateRequest:
+      type: object
+      required: [tenant_name, project_name]
+      properties:
+        tenant_id:
+          type: string
+        tenant_name:
+          type: string
+        project_id:
+          type: string
+        project_name:
+          type: string
+        display_name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, developer, viewer]
+        notes:
+          type: string
+        api_key_name:
+          type: string
+        allowed_models:
+          type: array
+          items:
+            type: string
+        currency:
+          type: string
+        initial_credit_micros:
+          type: integer
+          format: int64
+        initial_credit_reason:
+          type: string
+    AdminCustomerCreditAdjustmentRequest:
+      type: object
+      required: [currency, amount_micros]
+      properties:
+        currency:
+          type: string
+        amount_micros:
+          type: integer
+          format: int64
+        reason:
+          type: string
+    AdminCustomerCreditAdjustmentResult:
+      type: object
+      required: [adjustment, account]
+      properties:
+        adjustment:
+          type: object
+          additionalProperties: true
+        account:
+          $ref: "#/components/schemas/AdminCustomerAccountDetail"
+    AdminCustomerSessionResetResult:
+      type: object
+      required: [customer_account_id, tenant_id, project_id, revoked_sessions, reset_at]
+      properties:
+        customer_account_id:
+          type: string
+        tenant_id:
+          type: string
+        project_id:
+          type: string
+        api_key_id:
+          type: string
+        revoked_sessions:
+          type: integer
+        reset_at:
+          type: string
+          format: date-time
+    AdminModelListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelView"
+    AdminModelView:
+      type: object
+      required: [public_model, protocol, capability, type, schema_available, enabled, async, pricing_summary]
+      properties:
+        public_model:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        type:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        input_modalities:
+          type: array
+          items:
+            type: string
+        output_modalities:
+          type: array
+          items:
+            type: string
+        context_window:
+          type: integer
+          format: int64
+        max_output_tokens:
+          type: integer
+          format: int64
+        status:
+          type: string
+        deprecated:
+          type: boolean
+        sort_order:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        schema_available:
+          type: boolean
+        enabled:
+          type: boolean
+        async:
+          type: boolean
+        pricing_summary:
+          $ref: "#/components/schemas/AdminModelPricingSummary"
+        channel_coverage:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelChannelCoverage"
+    AdminModelPricingSummary:
+      type: object
+      required: [configured, component_price_count, legacy_token_price_active]
+      properties:
+        configured:
+          type: boolean
+        currency:
+          type: string
+        category:
+          type: string
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPricingComponentView"
+        input_micros_per_token:
+          type: integer
+          format: int64
+        output_micros_per_token:
+          type: integer
+          format: int64
+        estimated_output_tokens:
+          type: integer
+          format: int64
+        component_price_count:
+          type: integer
+        legacy_token_price_active:
+          type: boolean
+    AdminPricingComponentView:
+      type: object
+      required: [unit, micros_per_unit]
+      properties:
+        unit:
+          type: string
+        micros_per_unit:
+          type: integer
+          format: int64
+    AdminModelChannelCoverageListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelChannelCoverage"
+    AdminModelChannelCoverage:
+      type: object
+      required: [channel_id, provider_type, enabled, upstream_model, credential_configured]
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        enabled:
+          type: boolean
+        upstream_model:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        credential_configured:
+          type: boolean
+    AdminModelSchemaPreview:
+      type: object
+      required: [model, version, schema]
+      properties:
+        model:
+          type: string
+        version:
+          type: string
+        schema:
+          type: object
+          additionalProperties: true
+    AdminModelUpsertRequest:
+      type: object
+      properties:
+        public_model:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        display_name:
+          type: string
+        description:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        category:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        context_window:
+          type: integer
+          format: int64
+        max_output_tokens:
+          type: integer
+          format: int64
+        status:
+          type: string
+        deprecated:
+          type: boolean
+        sort_order:
+          type: integer
+        metadata:
+          type: object
+          additionalProperties: true
+        schema:
+          type: object
+          additionalProperties: true
+        enabled:
+          type: boolean
+    AdminModelCatalogSyncPreviewRequest:
+      type: object
+      required: [models]
+      properties:
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncModel"
+    AdminModelCatalogSyncModel:
+      type: object
+      required: [public_model]
+      properties:
+        public_model:
+          type: string
+        display_name:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        category:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+    AdminModelCatalogSyncPreview:
+      type: object
+      required: [unchanged]
+      properties:
+        added:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncItem"
+        removed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncItem"
+        changed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminModelCatalogSyncItem"
+        unchanged:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+    AdminModelCatalogSyncItem:
+      type: object
+      required: [public_model, known_catalog_model, pricing_configured, channel_coverage]
+      properties:
+        public_model:
+          type: string
+        display_name:
+          type: string
+        protocol:
+          type: string
+        capability:
+          type: string
+        category:
+          type: string
+        modalities:
+          type: array
+          items:
+            type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        provider_family:
+          type: string
+        known_catalog_model:
+          type: boolean
+        pricing_configured:
+          type: boolean
+        channel_coverage:
+          type: integer
+        current_display_name:
+          type: string
+    AdminChannelListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelView"
+    AdminChannelView:
+      type: object
+      required: [id, provider_type, base_url, credential_configured, enabled, model_count]
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+        credential_configured:
+          type: boolean
+        enabled:
+          type: boolean
+        timeout_millis:
+          type: integer
+          format: int64
+        model_count:
+          type: integer
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        route_policy_hints:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminRoutePolicyHint"
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelView"
+    AdminChannelModelView:
+      type: object
+      required: [public_model, upstream_model]
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminRoutePolicyHint:
+      type: object
+      required: [route_id, public_model, enabled, priority, weight]
+      properties:
+        route_id:
+          type: string
+        public_model:
+          type: string
+        strategy:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        weight:
+          type: integer
+    AdminChannelUpsertRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        provider_type:
+          type: string
+        base_url:
+          type: string
+        api_key:
+          type: string
+          writeOnly: true
+        credential_ref:
+          type: string
+        enabled:
+          type: boolean
+        timeout_millis:
+          type: integer
+          format: int64
+        models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelInput"
+    AdminChannelCredentialRotationRequest:
+      type: object
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+          writeOnly: true
+    AdminChannelModelInput:
+      type: object
+      required: [public_model, upstream_model]
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        capabilities:
+          type: array
+          items:
+            type: string
+        supported_parameters:
+          type: array
+          items:
+            type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    AdminChannelTestResult:
+      type: object
+      required: [channel_id, status, message, credential_configured, model_count, tested_at]
+      properties:
+        channel_id:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        credential_configured:
+          type: boolean
+        model_count:
+          type: integer
+        tested_at:
+          type: string
+          format: date-time
+    AdminPlaygroundRunRequest:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+        channel_id:
+          type: string
+        mode:
+          type: string
+        stream:
+          type: boolean
+        debug:
+          type: boolean
+        payload:
+          type: object
+          additionalProperties: true
+    AdminPlaygroundRunResult:
+      type: object
+      required: [request_id, scope, status, message, model, mode, stream, payload_fields, schema, debug, result, ran_at]
+      properties:
+        request_id:
+          type: string
+        scope:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        model:
+          type: string
+        mode:
+          type: string
+        stream:
+          type: boolean
+        payload_fields:
+          type: array
+          items:
+            type: string
+        schema:
+          $ref: "#/components/schemas/AdminPlaygroundSchemaSummary"
+        debug:
+          $ref: "#/components/schemas/AdminPlaygroundDebug"
+        result:
+          $ref: "#/components/schemas/AdminPlaygroundSafeResult"
+        ran_at:
+          type: string
+          format: date-time
+    AdminPlaygroundSchemaSummary:
+      type: object
+      required: [required, accepted_fields]
+      properties:
+        required:
+          type: array
+          items:
+            type: string
+        accepted_fields:
+          type: array
+          items:
+            type: string
+        missing_required:
+          type: array
+          items:
+            type: string
+    AdminPlaygroundDebug:
+      type: object
+      required: [latency_ms, usage]
+      properties:
+        route_id:
+          type: string
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        latency_ms:
+          type: integer
+          format: int64
+        usage:
+          $ref: "#/components/schemas/AdminPlaygroundUsage"
+        safe_error_code:
+          type: string
+        safe_error_message:
+          type: string
+        channel_test:
+          $ref: "#/components/schemas/AdminChannelTestResult"
+    AdminPlaygroundUsage:
+      type: object
+      required: [input_tokens, output_tokens, total_tokens]
+      properties:
+        input_tokens:
+          type: integer
+        output_tokens:
+          type: integer
+        total_tokens:
+          type: integer
+    AdminPlaygroundSafeResult:
+      type: object
+      required: [object, summary]
+      properties:
+        object:
+          type: string
+        summary:
+          type: string
+    AdminPlaygroundImportPreviewRequest:
+      type: object
+      required: [payload]
+      properties:
+        payload:
+          type: object
+          additionalProperties: true
+    AdminPlaygroundImportPreview:
+      type: object
+      required: [payload, payload_fields, safe, message, previewed_at]
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        payload_fields:
+          type: array
+          items:
+            type: string
+        redacted_fields:
+          type: array
+          items:
+            type: string
+        safe:
+          type: boolean
+        message:
+          type: string
+        previewed_at:
+          type: string
+          format: date-time
+    AdminPlaygroundExportRequest:
+      type: object
+      required: [model]
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    AdminPlaygroundExport:
+      type: object
+      required: [model, mode, payload, exported_at]
+      properties:
+        model:
+          type: string
+        mode:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        omitted_fields:
+          type: array
+          items:
+            type: string
+        exported_at:
+          type: string
+          format: date-time
+    AdminChannelSyncRequest:
+      type: object
+      required: [upstream_models]
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        upstream_models:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelInput"
+    AdminChannelSyncPreview:
+      type: object
+      required: [channel_id, unchanged]
+      properties:
+        channel_id:
+          type: string
+        provider_type:
+          type: string
+        added:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelPreviewItem"
+        removed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelPreviewItem"
+        changed:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelModelPreviewItem"
+        unchanged:
+          type: integer
+        warnings:
+          type: array
+          items:
+            type: string
+    AdminChannelModelPreviewItem:
+      type: object
+      required: [public_model, known_catalog_model, customer_price_configured]
+      properties:
+        public_model:
+          type: string
+        upstream_model:
+          type: string
+        current_upstream_model:
+          type: string
+        health_status:
+          type: string
+        test_status:
+          type: string
+        cost_config_status:
+          type: string
+        known_catalog_model:
+          type: boolean
+        customer_price_configured:
+          type: boolean
+    AdminChannelSyncApplyResult:
+      type: object
+      required: [channel_id, applied_at, preview, channel]
+      properties:
+        channel_id:
+          type: string
+        applied_at:
+          type: string
+          format: date-time
+        preview:
+          $ref: "#/components/schemas/AdminChannelSyncPreview"
+        channel:
+          $ref: "#/components/schemas/AdminChannelView"
+    AdminChannelHealthEventListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminChannelHealthEvent"
+    AdminChannelHealthEvent:
+      type: object
+      required: [id, channel_id, status, source, message, observed_at]
+      properties:
+        id:
+          type: string
+        channel_id:
+          type: string
+        status:
+          type: string
+        source:
+          type: string
+        message:
+          type: string
+        observed_at:
+          type: string
+          format: date-time
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+    ErrorBody:
+      type: object
+      required: [code, message, type]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        type:
+          type: string
+        retryable:
+          type: boolean
+        request_id:
+          type: string

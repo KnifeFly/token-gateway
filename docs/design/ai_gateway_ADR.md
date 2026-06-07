@@ -317,6 +317,8 @@ WASM 插件
 动态脚本插件
 ```
 
+该“不做”边界适用于 P5-P10 当时的客户接入与发布交接路线。P19-P22 已通过 ADR-0012 重新纳入 Human Console Plane、Admin Web RBAC 和 operator audit，但仍不改变 `/admin/*` machine Control API 的职责。
+
 明确当前先不做：
 
 ```text
@@ -327,6 +329,8 @@ semantic cache
 
 `/v1/files/*` 只表达 transient/non-storage input asset，用于请求归一化、幂等校验、大小限制和 provider 转发。Portal 第一版复用 API key 鉴权，只开放模型、schema、credits、usage、API key 自助管理和 task 查询，不暴露 admin/control 配置能力。P9 只补齐 Portal smoke、OpenAPI import preflight 和 RC smoke 集成，不新增产品面。P10 只补齐 release handoff、PR 模板、验证证据和回滚字段，不新增产品面。
 
+P19-P22 之后，完整 Portal/Admin 前后端由 `cmd/console` 和 `/api/portal/v1/*`、`/api/admin/v1/*` 承载；这些 browser BFF 不复用 `/admin/*` machine API。
+
 ## Consequences
 
 优点：后续路线聚焦客户接入、上游稳定性、自助查询和可重复验收，避免网关产品边界扩大成对象存储、审计平台或多地域平台。缺点：需要在文档和 OpenAPI 中持续标注 non-storage、not planned 和先不做边界。
@@ -334,3 +338,85 @@ semantic cache
 ## Alternatives
 
 继续把所有能力纳入 P5 之后路线：覆盖面更广，但会让优先级和验收标准失焦。
+
+---
+
+# ADR-0012: 新增 Human Console Plane 并分离 Browser BFF 与 Machine API
+
+## Status
+
+Accepted
+
+## Context
+
+P8 已经提供 `/v1/portal/*` programmatic Portal API，P9/P10 完成客户验收和发布交接。后续要建设完整 Portal/Admin 前后端，如果让浏览器直接调用 `/admin/*` machine Control API，或把 Portal/Admin 能力继续塞进单个 `service.go`、`repository.go`，会带来以下问题：
+
+- Admin token 暴露到浏览器。
+- 浏览器缺少 operator session、RBAC、CSRF、audit、diff preview 和 redaction。
+- `/admin/*` machine API 被 UI 需求污染。
+- 历史 `internal/controlplane/admin` 命名与 human Admin app 容易混淆。
+- Portal/Admin service 和 repository 单文件持续膨胀。
+
+## Decision
+
+新增 Human Console Plane：
+
+```text
+cmd/console
+  /api/portal/v1/*  Portal Web BFF
+  /api/admin/v1/*   Admin Web BFF
+  /portal/*         optional Portal static assets
+  /admin-ui/*       optional Admin static assets
+```
+
+保留：
+
+```text
+/v1/*          Data Plane public API
+/v1/portal/*   Portal public programmatic API
+/admin/*       Machine Control API
+```
+
+后端使用：
+
+```text
+internal/app/portal
+internal/app/admin
+```
+
+其中 `internal/app/admin` 表达 human Admin UI workflow，`internal/controlplane/configadmin` 表达 machine control/config domain。
+
+前端使用：
+
+```text
+web/apps/portal
+web/apps/admin
+web/packages/api-client
+web/packages/ui
+web/packages/auth
+web/packages/format
+```
+
+API 合同逐步拆到 `api/openapi/*`，前端类型从 OpenAPI 生成。Admin 所有 mutation 必须 operator session + RBAC + CSRF + Idempotency-Key + audit。写操作必须调用 owner service，不直接更新 control/config、billing 或 task 状态表。
+
+## Consequences
+
+优点：
+
+- Admin Web 不污染 machine Control API。
+- Browser auth 与 customer/machine API key 边界清楚。
+- Portal/Admin service/repository 可以按 use case 和 read model 拆分，避免单文件膨胀。
+- 前后端通过 OpenAPI 合同协作，降低接口漂移。
+- `cmd/console` 可独立部署和扩缩容，不影响 gateway 热路径。
+
+代价：
+
+- 新增一个进程和前端 workspace，本地开发与 CI 复杂度上升。
+- 需要新增 session、CSRF、RBAC、operator audit、static asset 和 E2E smoke 维护成本。
+- P19-P22 必须补齐 OpenAPI、generated client、frontend build 和 deployment runbook。
+
+## Alternatives
+
+让 Admin SPA 直接调用 `/admin/*`：短期简单，但会把 machine API 变成 browser API，安全和审计边界不成立。
+
+将 Portal/Admin 都放入历史 `internal/portal` 或新增全局 `internal/admin`：目录更短，但长期与 `internal/controlplane/configadmin` 混淆，且 service/repository 容易继续单文件膨胀。

@@ -11,8 +11,9 @@ It must support:
 - Native-compatible APIs for OpenAI, Claude, Gemini, embeddings, images, and audio.
 - Unified media and Agent APIs for image, video, audio, music, files, async tasks, callback, credits, and usage.
 - Multi-tenant routing, provider fallback, API resale, token/credit billing, ledger, reconciliation, security governance, and observability.
+- Full human-facing Portal/Admin console support after the gateway core is stable: Portal Web, Admin Web, browser-session BFF APIs, RBAC, audit, and frontend monorepo delivery.
 
-The product target is: one stable customer-facing API surface, many upstream providers, auditable commercial accounting.
+The product target is: one stable customer-facing API surface, many upstream providers, auditable commercial accounting, and an operator/customer console that does not weaken the machine API boundaries.
 
 ## Documentation Map
 
@@ -25,9 +26,21 @@ Before implementing architecture or domain behavior, use the docs in this order:
 5. `docs/design/ai_gateway_system_design.md` for product scope, protocols, lifecycle, security, and acceptance criteria.
 6. `docs/design/ai_gateway_architecture_design.md` for planes, layering, package ownership, runtime snapshot, routing, billing, and stream rules.
 7. `docs/design/ai_gateway_code_blueprint.md` for package layout, interfaces, structs, and code-level architecture references.
-8. `docs/design/ai_gateway_openapi.yaml` for API contract updates.
+8. `docs/design/ai_gateway_console_monorepo_design.md` for Portal/Admin console, BFF, frontend monorepo, session, RBAC, audit, and deployment boundaries.
+9. `docs/design/ai_gateway_newapi_lean_console_design.md` for NewAPI-inspired but trimmed Console parity, channel/model/user/account/token/log/playground scope, and explicit group/ratio/payment exclusions.
+10. `docs/design/ai_gateway_openapi.yaml` for API contract updates.
 
 `docs/plan/` and `docs/tasks.md` are the execution entry points. `docs/design/` remains the source of truth for system, architecture, code blueprint, and OpenAPI design. Do not copy long design or plan text into code; keep implementation comments focused on local behavior.
+
+## Monorepo Baseline
+
+This repository is a Go backend plus browser console monorepo:
+
+- Go commands live under `cmd/*`: `gateway` for customer data-plane APIs, `control-api` for machine control APIs, `console` for browser-facing BFF APIs/static console assets, plus worker/config/migration tools.
+- The console frontend is Vite React, not Next.js/SSR: `web/apps/portal` and `web/apps/admin` are independent browser apps.
+- Shared frontend code lives in raw TypeScript workspace packages under `web/packages/*`. Packages export source files and are compiled by the consuming app/toolchain.
+- The root `package.json` and `pnpm-workspace.yaml` own the frontend workspace. Do not introduce Turborepo, pnpm catalogs, Next.js, Electron, or mobile-specific conventions unless a future phase explicitly chooses them.
+- Backend, BFF, frontend app, shared package, OpenAPI, and Makefile/script boundaries are all part of the architecture. Keep them aligned when adding console behavior.
 
 ## Architecture Rules
 
@@ -36,6 +49,13 @@ Before implementing architecture or domain behavior, use the docs in this order:
 - Data Plane must read runtime snapshot/indexes on the hot path. Do not query admin/config tables from request handling.
 - Provider adapters only translate protocol, call upstream, map errors, parse usage, and submit/poll provider tasks. They must not own routing, policy, billing, or tenant decisions.
 - Keep package ownership clear: `domain` has entities and invariants; `app` coordinates use cases; `infra` implements repositories and external services; `provider` handles upstream protocol; `transport` handles HTTP decode/write; `dataplane` is the hot path.
+- Keep browser-facing BFF APIs separate from machine APIs. `/api/portal/v1/*` and `/api/admin/v1/*` belong to `cmd/console`; `/v1/*` and `/v1/portal/*` remain customer/programmatic APIs; `/admin/*` remains the machine Control API.
+- Admin Web must not call `/admin/*` directly from the browser and must not reuse the control-plane admin token as browser auth. Use operator sessions, RBAC, CSRF, idempotency for mutations, durable audit, and redacted responses.
+- Portal Web may use API key login for MVP, but the API key must be exchanged for an HttpOnly browser session and must not be stored in localStorage/sessionStorage.
+- Use `internal/app/portal` and `internal/app/admin` for human Portal/Admin application services and repositories. Keep the control/config owner separate from `internal/app/admin`: the current path is `internal/controlplane/configadmin`.
+- Do not create a global repository or service package. Split Portal/Admin service and repository files by use case/read model once a single file starts collecting unrelated methods.
+- Frontend code lives under `web/apps/portal`, `web/apps/admin`, and shared `web/packages/*`. Frontend API clients must be generated from OpenAPI contracts or kept contract-checked against them.
+- When matching NewAPI behavior, keep only token-gateway's lean Console parity scope. Do not introduce NewAPI user/model/channel groups, ratio pricing, subscription packages, redemption codes, third-party payment settings, model deployment services, or broad system setting pages without a new phase decision.
 - `internal/bootstrap` wires dependencies only. Do not put business logic there.
 - Use a single request state through the GatewayEngine hot path. The main flow should remain readable enough to act as system documentation.
 - Plugins are configuration-driven built-ins first. Do not introduce dynamic code execution or plugin marketplaces in the MVP.
@@ -116,6 +136,12 @@ Prefer the staged path from `docs/plan/00-roadmap.md`:
 8. M7: production metrics, tracing, dashboards, alerts, load tests, and failure drills.
 9. M8: realtime reserved extension with session APIs, RealtimeEngine interface, and WebSocket handler stub.
 10. M9: commercial operations, usage/cost/profit reports, reconciliation, billing export, disaster recovery, and model marketplace support.
+11. P19: console monorepo foundation with `cmd/console`, OpenAPI split, frontend workspace, generated API clients, and local development contracts.
+12. P20: Portal Web BFF and Portal frontend, keeping `/v1/portal/*` backward-compatible and browser auth session-based.
+13. P21: Admin Web BFF with operator sessions, RBAC, audit, safe read models, and write workflows delegated to owner services.
+14. P22: Admin frontend, console static/deployment hardening, E2E smoke, security headers, rollback, and operations handoff.
+15. P23: console directory structure alignment, rename `internal/controlplane/admin` to `internal/controlplane/configadmin`, split large handlers, services, repositories, frontend apps, shared packages, API scripts, and examples without behavior changes.
+16. P24: NewAPI lean console parity for channel, model, customer account, API key, usage log, task log, playground, and minimal credit operations while excluding groups, ratios, payment, subscription, redemption, model deployment, and broad settings.
 
 When a task is broad, narrow it to the next milestone unless the user explicitly asks for a later capability.
 
@@ -126,13 +152,19 @@ The intended Go layout is:
 ```text
 cmd/gateway
 cmd/control-api
+cmd/console
 cmd/worker
 cmd/configd
+api/openapi
+api/examples
+api/scripts
 configs
 migrations
 internal/bootstrap
 internal/transport
 internal/app
+internal/app/portal
+internal/app/admin
 internal/domain
 internal/dataplane
 internal/controlplane
@@ -141,6 +173,12 @@ internal/billing
 internal/task
 internal/infra
 internal/worker
+web/apps/portal
+web/apps/admin
+web/packages/api-client
+web/packages/ui
+web/packages/auth
+web/packages/format
 pkg/apperr
 pkg/money
 pkg/redaction
@@ -148,6 +186,35 @@ pkg/tokenusage
 ```
 
 Create only the directories and packages needed for the current milestone. Avoid empty package sprawl.
+
+## Frontend Workspace Rules
+
+- Apps may import shared `web/packages/*`; shared packages must never import from `web/apps/*`, app routes, app providers, or app-local feature code.
+- `web/apps/portal` and `web/apps/admin` are separate apps. They must not import from each other; cross-app reuse belongs in a shared package only when it is genuinely shared.
+- `web/packages/ui` contains pure UI components and primitives only. Do not put tenant, channel, model, usage, billing, task, RBAC, session, or API-specific business behavior there.
+- `web/packages/api-client` owns generated OpenAPI types, BFF client entrypoints, fetch wrapper behavior, response/error normalization, and contract-adjacent tests.
+- `web/packages/auth` owns browser session, CSRF, and permission helpers. It must not own route rendering, app navigation, or backend RBAC decisions.
+- `web/packages/format` owns pure formatting helpers for dates, numbers, money, tokens, status labels, and related display values.
+- Every workspace package must declare its directly imported external dependencies in its own `package.json`. Use `workspace:*` for local `@token-gateway/*` packages.
+- Keep generated files under `web/packages/api-client/src/generated`. Do not hand-edit generated OpenAPI output.
+
+## API Contract Workflow
+
+- Split OpenAPI files under `api/openapi/*` are the console contract sources. `portal-bff.yaml` and `admin-bff.yaml` generate the browser API client.
+- BFF handler, DTO, auth, mutation, or response-shape changes must update the matching OpenAPI file in the same change.
+- After changing BFF contracts, run `pnpm generate:api` or `make api-generate`, then run `make api-check` to catch generated-client drift.
+- Keep browser BFF contracts separate from machine APIs: Admin Web uses `/api/admin/v1/*`, Portal Web uses `/api/portal/v1/*`, and browser code must never call `/admin/*` directly.
+- `docs/design/ai_gateway_openapi.yaml` remains a design/compatibility source. Update it when public API design truth changes, or explain why a split OpenAPI change is intentionally BFF-only.
+
+## Import Boundary Checks
+
+`make boundary-check` runs `scripts/check_import_boundaries.sh`. Keep these rules true:
+
+- Runtime Go code must not import the removed `internal/portal` package.
+- `internal/controlplane/configadmin` is the machine config owner and must not depend on `internal/app/admin`.
+- `internal/app/admin` and `internal/app/portal` must not depend on each other.
+- Admin browser code must call `/api/admin/v1/*`, not `/admin/*`.
+- Shared `web/packages/*` must not depend on `web/apps/*`.
 
 ## Coding Defaults
 
@@ -162,7 +229,7 @@ Create only the directories and packages needed for the current milestone. Avoid
 
 ## Commands
 
-The repo is currently design-first. As implementation lands, keep these commands working:
+The repo has Go backend, console BFF, frontend workspace, OpenAPI generation, and import-boundary checks. Keep these commands or their Makefile equivalents working:
 
 ```bash
 go test ./...
@@ -170,7 +237,10 @@ make test
 make lint
 make build
 make run-gateway
+make run-console
+make run-worker
 go run ./cmd/gateway -config configs/local.yaml
+go run ./cmd/console -config configs/local.yaml
 ```
 
 For M0 acceptance, the gateway should expose:
@@ -183,6 +253,26 @@ GET /metrics
 
 If a command is missing because the scaffold has not reached that stage yet, add the smallest useful target instead of inventing a parallel workflow.
 
+When the console monorepo phases are active, keep these targets or equivalents working:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm generate:api
+pnpm api:check
+make web-install
+make web-lint
+make web-typecheck
+make web-test
+make web-build
+make api-generate
+make api-check
+make boundary-check
+```
+
 ## Definition Of Done
 
 For non-trivial changes, verify the relevant slice before finishing:
@@ -192,9 +282,13 @@ For non-trivial changes, verify the relevant slice before finishing:
 - Error codes mapped to the external protocol.
 - Metrics, trace spans, structured logs, audit events, and redaction updated when the request path changes.
 - `docs/design/ai_gateway_openapi.yaml` updated when public API behavior changes.
+- `api/openapi/portal-bff.yaml` or `api/openapi/admin-bff.yaml` updated when browser BFF behavior changes, with generated client output refreshed and `make api-check` reported.
 - `docs/plan/` or `docs/tasks.md` updated when phase scope, execution order, task status, or handoff state changes.
 - `docs/design/` updated when system, architecture, blueprint, or API design truth changes; otherwise explain intentional implementation differences.
-- `go test ./...`, `make test`, `make lint`, or the nearest available focused command run and reported.
+- `make boundary-check` run and reported when touching console/backend package boundaries, Portal/Admin app boundaries, or shared frontend package imports.
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`, or `pnpm build` run and reported for frontend changes.
+- `go test ./...`, `make test`, `make lint`, or the nearest available focused command run and reported for Go changes.
+- For docs-only changes, at minimum run and report `git diff --check`.
 
 ## Review Checklist
 

@@ -10,13 +10,13 @@ import (
 	"testing"
 
 	"github.com/KnifeFly/token-gateway/internal/billing/reporting"
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 )
 
 func TestHandlerRequiresAdminToken(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/tenants", strings.NewReader(`{"name":"tenant"}`))
@@ -28,8 +28,8 @@ func TestHandlerRequiresAdminToken(t *testing.T) {
 }
 
 func TestHandlerRejectsEmptyAdminToken(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "", nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/tenants", strings.NewReader(`{"name":"tenant"}`))
@@ -41,8 +41,8 @@ func TestHandlerRejectsEmptyAdminToken(t *testing.T) {
 }
 
 func TestHandlerCreatesModelWithAdminToken(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/models", bytes.NewBufferString(`{
@@ -67,8 +67,8 @@ func TestHandlerCreatesModelWithAdminToken(t *testing.T) {
 }
 
 func TestHandlerCreatesPluginBindingWithAdminToken(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/plugin-bindings", bytes.NewBufferString(`{
@@ -93,8 +93,8 @@ func TestHandlerCreatesPluginBindingWithAdminToken(t *testing.T) {
 }
 
 func TestHandlerCreatesManualAdjustmentReport(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	reportingService := reporting.NewService(reporting.NewMemoryRepository())
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil, reportingService)
 
@@ -131,8 +131,8 @@ func TestHandlerCreatesManualAdjustmentReport(t *testing.T) {
 }
 
 func TestHandlerIdempotentCreateAPIKeyReplaysResponse(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	body := `{"tenant_id":"tenant_1","project_id":"project_1","name":"sdk"}`
@@ -144,7 +144,7 @@ func TestHandlerIdempotentCreateAPIKeyReplaysResponse(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	var first admin.APIKey
+	var first configadmin.APIKey
 	if err := json.Unmarshal(rec.Body.Bytes(), &first); err != nil {
 		t.Fatalf("invalid first response: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestHandlerIdempotentCreateAPIKeyReplaysResponse(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	var replay admin.APIKey
+	var replay configadmin.APIKey
 	if err := json.Unmarshal(rec.Body.Bytes(), &replay); err != nil {
 		t.Fatalf("invalid replay response: %v", err)
 	}
@@ -167,8 +167,8 @@ func TestHandlerIdempotentCreateAPIKeyReplaysResponse(t *testing.T) {
 }
 
 func TestHandlerIdempotencyConflict(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	for i, body := range []string{
@@ -190,8 +190,8 @@ func TestHandlerIdempotencyConflict(t *testing.T) {
 }
 
 func TestHandlerRejectsOversizedBody(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/models", strings.NewReader(strings.Repeat("x", maxAdminBodyBytes+1)))
@@ -204,8 +204,8 @@ func TestHandlerRejectsOversizedBody(t *testing.T) {
 }
 
 func TestHandlerListsVisibleModels(t *testing.T) {
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	handler := NewHandler(service, cpsnapshot.NewPublisher(repo, nil), "secret-token", nil)
 
 	for _, body := range []string{
@@ -236,7 +236,7 @@ func TestHandlerListsVisibleModels(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", rec.Code, rec.Body.String())
 	}
-	var models []admin.VisibleModel
+	var models []configadmin.VisibleModel
 	if err := json.Unmarshal(rec.Body.Bytes(), &models); err != nil {
 		t.Fatalf("invalid models: %v", err)
 	}

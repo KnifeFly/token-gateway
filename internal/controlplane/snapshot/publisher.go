@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	"github.com/KnifeFly/token-gateway/pkg/apperr"
 )
 
@@ -88,10 +88,10 @@ func (p *Publisher) Publish(ctx context.Context) (*RuntimeSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	record := admin.SnapshotRecord{
+	record := configadmin.SnapshotRecord{
 		Version:   runtime.Version,
 		Checksum:  runtime.Checksum,
-		Status:    admin.SnapshotStatusInactive,
+		Status:    configadmin.SnapshotStatusInactive,
 		Payload:   payload,
 		CreatedAt: runtime.CreatedAt,
 	}
@@ -174,7 +174,7 @@ func ActiveRuntimeSnapshot(ctx context.Context, repo ConfigRepository) (*Runtime
 	return &runtime, true, nil
 }
 
-func runtimeFromRecord(record admin.SnapshotRecord) (*RuntimeSnapshot, error) {
+func runtimeFromRecord(record configadmin.SnapshotRecord) (*RuntimeSnapshot, error) {
 	var runtime RuntimeSnapshot
 	if err := json.Unmarshal(record.Payload, &runtime); err != nil {
 		return nil, err
@@ -191,7 +191,7 @@ func runtimeFromRecord(record admin.SnapshotRecord) (*RuntimeSnapshot, error) {
 	return &runtime, nil
 }
 
-func recordDiagnostics(record admin.SnapshotRecord) *SnapshotRecordDiagnostics {
+func recordDiagnostics(record configadmin.SnapshotRecord) *SnapshotRecordDiagnostics {
 	diag := &SnapshotRecordDiagnostics{
 		Version:   record.Version,
 		Checksum:  record.Checksum,

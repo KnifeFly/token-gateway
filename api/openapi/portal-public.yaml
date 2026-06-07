@@ -1,0 +1,13 @@
+openapi: 3.0.3
+info:
+  title: token-gateway Portal Public API
+  version: 0.1.0
+  description: Split placeholder for cmd/gateway-owned /v1/portal/* programmatic APIs. The transition aggregate remains docs/design/ai_gateway_openapi.yaml.
+servers:
+  - url: http://localhost:9501
+paths: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer

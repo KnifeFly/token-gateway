@@ -1,0 +1,14 @@
+openapi: 3.0.3
+info:
+  title: token-gateway Machine Control API
+  version: 0.1.0
+  description: Split placeholder for cmd/control-api-owned /admin/* machine APIs. Browser Admin must use /api/admin/v1/* instead.
+servers:
+  - url: http://localhost:9502
+paths: {}
+components:
+  securitySchemes:
+    adminToken:
+      type: apiKey
+      in: header
+      name: X-Admin-Token

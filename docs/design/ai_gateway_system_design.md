@@ -112,6 +112,46 @@ GET  /v1/portal/tasks/{task_id}
 
 Portal 不允许配置 provider channel、route、price、limit、plugin、snapshot、emergency action，也不引入 RBAC。首个 API key 仍由 admin/control API 创建；portal 创建的派生 key 只能继承当前 tenant/project 和模型权限子集，历史 plaintext key 不可查询。Task 查询只返回当前 tenant/project 范围，并过滤敏感 metadata。
 
+#### 2.1.4 Portal/Admin Web BFF
+
+P19-P22 之后，系统新增 Human Console Plane，用于完整 Portal/Admin 前后端。Browser BFF 与机器 API 必须分离：
+
+```text
+Portal Web BFF:
+  POST /api/portal/v1/auth/api-key-login
+  POST /api/portal/v1/auth/logout
+  GET  /api/portal/v1/auth/me
+  GET  /api/portal/v1/dashboard
+  GET  /api/portal/v1/onboarding
+  GET  /api/portal/v1/models
+  GET  /api/portal/v1/credits
+  GET  /api/portal/v1/usage
+  GET  /api/portal/v1/api-keys
+  POST /api/portal/v1/api-keys
+  GET  /api/portal/v1/tasks
+
+Admin Web BFF:
+  POST /api/admin/v1/auth/login
+  POST /api/admin/v1/auth/logout
+  GET  /api/admin/v1/auth/me
+  GET  /api/admin/v1/dashboard
+  GET  /api/admin/v1/tenants
+  GET  /api/admin/v1/projects
+  GET  /api/admin/v1/models
+  GET  /api/admin/v1/channels
+  GET  /api/admin/v1/routes
+  GET  /api/admin/v1/pricing
+  GET  /api/admin/v1/limits
+  GET  /api/admin/v1/snapshots
+  GET  /api/admin/v1/operations/settlements
+  GET  /api/admin/v1/operations/callbacks
+  GET  /api/admin/v1/audit
+```
+
+Portal Web BFF 使用 HttpOnly session + CSRF，不把 customer API key 长期保存到浏览器 storage。Admin Web BFF 使用 operator session + RBAC + CSRF，不把 control admin token 暴露给浏览器。
+
+`/admin/*` 仍是 machine Control API，服务内部 ops automation、curl、CI 和后续 mTLS，不作为 Admin SPA 的直接浏览器接口。
+
 ---
 
 ## 3. URI 冲突与协议消歧
@@ -904,7 +944,6 @@ structured logs + metrics + tracing
 ### 16.2 当前不做
 
 ```text
-控制面 RBAC / 审计平台
 复杂财务 / 发票闭环
 对象存储
 完整 Realtime WebSocket / WebRTC
@@ -913,7 +952,7 @@ WASM 插件
 动态脚本插件
 ```
 
-这些能力不进入当前路线；已有基础 admin token、结构化日志、metrics、trace、redaction、审计插件和账务流水不因此移除。
+这些能力不进入当前 P19-P22 console 路线；已有结构化日志、metrics、trace、redaction、审计插件和账务流水不因此移除。
 
 ### 16.3 当前先不做
 
@@ -932,6 +971,19 @@ P9 只补齐客户接入验收资产：Portal smoke CLI、OpenAPI import preflig
 ### 16.5 发布交接收口
 
 P10 只补齐发布交接资产：release handoff CLI、PR 模板、发布证据字段、验证命令和回滚字段。P10 不新增产品接口，也不改变 16.2、16.3 和 16.4 的范围边界。
+
+### 16.6 Portal/Admin Console 扩展
+
+P19-P22 明确把完整 Portal/Admin 前后端纳入后续路线：
+
+```text
+P19 Console monorepo foundation
+P20 Portal Web BFF + Portal UI
+P21 Admin Web BFF + RBAC + audit
+P22 Admin UI + console production hardening
+```
+
+这解除 P8/P9/P10 阶段“只做后端 API 和验收交接”的阶段性限制，但不改变机器 API 与浏览器 BFF 的边界。Admin Web 只能通过 `/api/admin/v1/*` 使用 operator session、RBAC、CSRF 和 audit；`/admin/*` 继续作为 machine Control API。
 
 ---
 

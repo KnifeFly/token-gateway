@@ -7,15 +7,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/KnifeFly/token-gateway/internal/controlplane/admin"
+	"github.com/KnifeFly/token-gateway/internal/controlplane/configadmin"
 	cpsnapshot "github.com/KnifeFly/token-gateway/internal/controlplane/snapshot"
 	"github.com/KnifeFly/token-gateway/internal/dataplane/engine"
 )
 
 func TestHandlerPublishesAndReportsDiagnostics(t *testing.T) {
 	ctx := context.Background()
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	seedSnapshotConfig(t, ctx, service)
 
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
@@ -53,7 +53,7 @@ func TestHandlerPublishesAndReportsDiagnostics(t *testing.T) {
 }
 
 func TestHandlerRejectsEmptyAdminToken(t *testing.T) {
-	repo := admin.NewMemoryRepository()
+	repo := configadmin.NewMemoryRepository()
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
 	mux := http.NewServeMux()
 	NewHandler(publisher, "", nil).Register(mux)
@@ -67,8 +67,8 @@ func TestHandlerRejectsEmptyAdminToken(t *testing.T) {
 
 func TestHandlerRollsBackActiveSnapshot(t *testing.T) {
 	ctx := context.Background()
-	repo := admin.NewMemoryRepository()
-	service := admin.NewService(repo, admin.NewCredentialCodec("secret"), nil)
+	repo := configadmin.NewMemoryRepository()
+	service := configadmin.NewService(repo, configadmin.NewCredentialCodec("secret"), nil)
 	seedSnapshotConfig(t, ctx, service)
 
 	publisher := cpsnapshot.NewPublisher(repo, cpsnapshot.NewBuilder(repo))
@@ -76,7 +76,7 @@ func TestHandlerRollsBackActiveSnapshot(t *testing.T) {
 	NewHandler(publisher, "secret-token", nil).Register(mux)
 
 	first := publishSnapshot(t, mux)
-	if _, err := service.UpsertModel(ctx, admin.ModelConfig{
+	if _, err := service.UpsertModel(ctx, configadmin.ModelConfig{
 		PublicModel: "gpt-4.1-mini",
 		Protocol:    string(engine.ProtocolNativeOpenAI),
 		Capability:  "chat",
@@ -84,21 +84,21 @@ func TestHandlerRollsBackActiveSnapshot(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("UpsertModel(second) error = %v", err)
 	}
-	if _, err := service.UpsertChannel(ctx, admin.ChannelConfig{
+	if _, err := service.UpsertChannel(ctx, configadmin.ChannelConfig{
 		ID:           "channel_1",
 		ProviderType: "openai_compatible",
 		BaseURL:      "mock://openai",
 		Enabled:      true,
-		Models: []admin.ChannelModel{
+		Models: []configadmin.ChannelModel{
 			{PublicModel: "gpt-4o-mini", UpstreamModel: "gpt-4o-mini"},
 			{PublicModel: "gpt-4.1-mini", UpstreamModel: "gpt-4.1-mini"},
 		},
 	}); err != nil {
 		t.Fatalf("UpsertChannel(second) error = %v", err)
 	}
-	if _, err := service.UpsertRoute(ctx, admin.RoutePolicyConfig{
+	if _, err := service.UpsertRoute(ctx, configadmin.RoutePolicyConfig{
 		PublicModel: "gpt-4.1-mini",
-		Candidates:  []admin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}},
+		Candidates:  []configadmin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}},
 	}); err != nil {
 		t.Fatalf("UpsertRoute(second) error = %v", err)
 	}
@@ -160,24 +160,24 @@ func publishSnapshot(t *testing.T, mux *http.ServeMux) cpsnapshot.RuntimeSnapsho
 	return runtime
 }
 
-func seedSnapshotConfig(t *testing.T, ctx context.Context, service *admin.Service) {
+func seedSnapshotConfig(t *testing.T, ctx context.Context, service *configadmin.Service) {
 	t.Helper()
-	if _, err := service.CreateAPIKey(ctx, admin.APIKey{TenantID: "tenant", ProjectID: "project", PlaintextKey: "tg-test"}); err != nil {
+	if _, err := service.CreateAPIKey(ctx, configadmin.APIKey{TenantID: "tenant", ProjectID: "project", PlaintextKey: "tg-test"}); err != nil {
 		t.Fatalf("CreateAPIKey() error = %v", err)
 	}
-	if _, err := service.UpsertModel(ctx, admin.ModelConfig{PublicModel: "gpt-4o-mini", Protocol: string(engine.ProtocolNativeOpenAI), Capability: "chat", Enabled: true}); err != nil {
+	if _, err := service.UpsertModel(ctx, configadmin.ModelConfig{PublicModel: "gpt-4o-mini", Protocol: string(engine.ProtocolNativeOpenAI), Capability: "chat", Enabled: true}); err != nil {
 		t.Fatalf("UpsertModel() error = %v", err)
 	}
-	if _, err := service.UpsertChannel(ctx, admin.ChannelConfig{
+	if _, err := service.UpsertChannel(ctx, configadmin.ChannelConfig{
 		ID:           "channel_1",
 		ProviderType: "openai_compatible",
 		BaseURL:      "mock://openai",
 		Enabled:      true,
-		Models:       []admin.ChannelModel{{PublicModel: "gpt-4o-mini", UpstreamModel: "gpt-4o-mini"}},
+		Models:       []configadmin.ChannelModel{{PublicModel: "gpt-4o-mini", UpstreamModel: "gpt-4o-mini"}},
 	}); err != nil {
 		t.Fatalf("UpsertChannel() error = %v", err)
 	}
-	if _, err := service.UpsertRoute(ctx, admin.RoutePolicyConfig{PublicModel: "gpt-4o-mini", Candidates: []admin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}}}); err != nil {
+	if _, err := service.UpsertRoute(ctx, configadmin.RoutePolicyConfig{PublicModel: "gpt-4o-mini", Candidates: []configadmin.RouteCandidate{{ChannelID: "channel_1", Priority: 1, Weight: 100}}}); err != nil {
 		t.Fatalf("UpsertRoute() error = %v", err)
 	}
 }

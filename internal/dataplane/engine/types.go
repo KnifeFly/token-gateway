@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/KnifeFly/token-gateway/internal/domain/pricing"
 	"github.com/KnifeFly/token-gateway/internal/provider/relay"
 	"github.com/KnifeFly/token-gateway/pkg/tokenusage"
 	"go.opentelemetry.io/otel/attribute"
@@ -153,6 +154,9 @@ type APIKeyView struct {
 	Hash          string
 	Enabled       bool
 	AllowedModels []string
+	IPAllowlist   []string
+	ExpiresAt     *time.Time
+	LastUsedAt    *time.Time
 }
 
 // ModelView is the indexed public model view used by routing.
@@ -163,6 +167,17 @@ type ModelView struct {
 	Description      string
 	Protocol         ProtocolMode
 	Capability       string
+	Category         string
+	Tags             []string
+	ProviderFamily   string
+	Modalities       []string
+	Capabilities     []string
+	ContextWindow    int64
+	MaxOutputTokens  int64
+	Status           string
+	Deprecated       bool
+	SortOrder        int
+	Metadata         json.RawMessage
 	Schema           json.RawMessage
 	ProviderMappings []ProviderModelMapping
 	Enabled          bool
@@ -179,6 +194,7 @@ type ChannelView struct {
 	Enabled         bool
 	Timeout         time.Duration
 	Models          map[string]string
+	ModelMetadata   map[string]ChannelModelMetadata
 }
 
 // RoutePolicyView is the indexed route policy view used by routing.
@@ -199,11 +215,35 @@ type RouteCandidateView struct {
 // PriceRuleView is the pinned customer-facing model price.
 type PriceRuleView struct {
 	PublicModel           string
+	Category              string
 	Currency              string
+	Components            []pricing.Component
 	InputMicrosPerToken   int64
 	OutputMicrosPerToken  int64
 	EstimatedOutputTokens int64
+	Metadata              json.RawMessage
 	Enabled               bool
+}
+
+// PriceBook returns a normalized component price book for this runtime rule.
+func (r PriceRuleView) PriceBook() pricing.PriceBook {
+	book, err := pricing.NormalizePriceBook(pricing.PriceBook{
+		Category:   pricing.Category(r.Category),
+		Currency:   r.Currency,
+		Components: r.Components,
+	}, pricing.TokenPrice{
+		Currency:             r.Currency,
+		InputMicrosPerToken:  r.InputMicrosPerToken,
+		OutputMicrosPerToken: r.OutputMicrosPerToken,
+	})
+	if err != nil {
+		return pricing.TokenPrice{
+			Currency:             r.Currency,
+			InputMicrosPerToken:  r.InputMicrosPerToken,
+			OutputMicrosPerToken: r.OutputMicrosPerToken,
+		}.PriceBook(pricing.Category(r.Category))
+	}
+	return book
 }
 
 // LimitScope identifies the dimensions used by runtime limit rules.
@@ -231,10 +271,28 @@ type LimitRuleView struct {
 
 // ProviderModelMapping describes one catalog-owned provider model mapping.
 type ProviderModelMapping struct {
-	ProviderType  string
-	ChannelID     string
-	PublicModel   string
-	UpstreamModel string
+	ProviderType        string
+	ChannelID           string
+	PublicModel         string
+	UpstreamModel       string
+	Capabilities        []string
+	SupportedParameters []string
+	HealthStatus        string
+	TestStatus          string
+	CostConfigStatus    string
+	Metadata            json.RawMessage
+}
+
+// ChannelModelMetadata describes provider-channel support for one public model.
+type ChannelModelMetadata struct {
+	PublicModel         string
+	UpstreamModel       string
+	Capabilities        []string
+	SupportedParameters []string
+	HealthStatus        string
+	TestStatus          string
+	CostConfigStatus    string
+	Metadata            json.RawMessage
 }
 
 // PluginBindingView is a runtime plugin binding compiled from control-plane config.
