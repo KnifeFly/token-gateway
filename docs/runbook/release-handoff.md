@@ -23,7 +23,7 @@ The `-run-checks` mode runs:
 - `go test ./...`
 - `go vet ./...`
 - `go build ./cmd/...`
-- `go test ./tools/portal-smoke ./tools/portal-web-smoke ./tools/p24-console-smoke ./tools/release-handoff ./tests/contract`
+- `go test ./tools/portal-smoke ./tools/portal-web-smoke ./tools/p22-console-smoke ./tools/p24-console-smoke ./tools/release-handoff ./tests/contract`
 - `make p24-cut-scope-check`
 - `bash -n tests/rc/clean_env_smoke.sh`
 - `tests/failure/release_gate.sh`
@@ -46,7 +46,7 @@ Use `.github/pull_request_template.md` for every release PR. The PR should inclu
 For local syntax and contract:
 
 ```bash
-go test ./tools/portal-smoke ./tools/portal-web-smoke ./tools/p24-console-smoke ./tools/release-handoff ./tests/contract
+go test ./tools/portal-smoke ./tools/portal-web-smoke ./tools/p22-console-smoke ./tools/p24-console-smoke ./tools/release-handoff ./tests/contract
 make p24-cut-scope-check
 bash -n tests/rc/clean_env_smoke.sh
 ```
@@ -55,6 +55,11 @@ For disposable RC or staging:
 
 ```bash
 tests/rc/clean_env_smoke.sh
+go run ./tools/p22-console-smoke \
+  -console-url "${CONSOLE_URL}" \
+  -api-key "${API_KEY}" \
+  -admin-email "${ADMIN_EMAIL}" \
+  -admin-password "${ADMIN_PASSWORD}"
 go run ./tools/p24-console-smoke \
   -console-url "${CONSOLE_URL}" \
   -api-key "${API_KEY}" \
@@ -67,6 +72,7 @@ Required output markers:
 
 - `rc_smoke=portal_customer_acceptance`
 - `portal_smoke=passed`
+- `p22_console_smoke=passed`
 - `p24_console_smoke=passed`
 - `rc_smoke=passed`
 
@@ -84,6 +90,7 @@ Fill these fields from the generated handoff and staging run:
 | Redis key prefix | staging config |
 | Release gate result | `release_gate=passed` |
 | Portal smoke result | `portal_smoke=passed` |
+| P22 console production smoke result | `p22_console_smoke=passed` |
 | P24 console smoke result | `p24_console_smoke=passed` |
 | P24 cut-scope result | `P24 cut-scope check passed` |
 | Rollback tested | configd rollback result |

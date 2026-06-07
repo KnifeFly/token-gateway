@@ -47,6 +47,8 @@ func TestRenderMarkdownIncludesReleaseEvidence(t *testing.T) {
 		"000010_p7_media_forwarding.up.sql",
 		"rc_smoke=portal_customer_acceptance",
 		"Portal smoke result",
+		"P22 console production smoke result",
+		"p22-console-smoke",
 		"P24 console smoke result",
 		"p24-console-smoke",
 		"/configd/snapshots/rollback",

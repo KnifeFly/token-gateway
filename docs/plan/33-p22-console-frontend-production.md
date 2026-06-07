@@ -132,6 +132,35 @@ cmd/console:
 - Release handoff 能包含 Go checks、web checks、OpenAPI checks、E2E smoke、known limits 和 rollback 证据。
 - `go test ./...`、`go vet ./...`、`git diff --check` 或 release gate 约定的等价命令通过。
 
+## 本次执行记录
+
+2026-06-07 已完成 P22 Console Frontend Production：
+
+- Admin frontend 增加生产化登录、session restore/logout、route shell、生产工作台、read model 汇总和危险操作面板；危险操作统一走 `/api/admin/v1/*`，带 CSRF、`X-Reason` 和 `Idempotency-Key`。
+- Console 静态资源和 Portal/Admin BFF 响应补齐 CSP、HSTS、`nosniff`、Referrer-Policy、Frame-Options；HTML no-cache，hashed asset immutable。
+- `p22-console-smoke` 覆盖 `/admin-ui/*` 静态头、Admin login/read/snapshot validate/audit/logout、Portal API key login/dashboard/API keys/usage/tasks/logout 和 CSRF denial。
+- Dockerfile 增加 web dist build stage、`cmd/console` binary 和 `9505` 暴露；`docker-compose.yml` 增加独立 `console` service。
+- Release handoff、console development runbook 和 production runbook 已写入 P22 smoke、security headers、rollback/cache purge 和 staging 验收字段。
+
+本次验证命令：
+
+```bash
+go test ./internal/bootstrap ./internal/app/admin/service ./internal/transport/adminhttp ./internal/transport/consolehttp ./tools/p22-console-smoke
+go test ./...
+go vet ./...
+go build ./cmd/...
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+make boundary-check
+make api-check
+docker compose config
+go run ./tools/p22-console-smoke -console-url http://127.0.0.1:9515 -api-key tg-local-dev-key -admin-email admin@example.com -admin-password admin-local
+```
+
+Browser 验收覆盖 Admin 登录、工作台、渠道路由、`Validate snapshot` UI mutation、console error/warn 检查和 390px 窄屏横向溢出检查。
+
 ## 风险与处理
 
 | 风险 | 处理 |

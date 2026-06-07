@@ -5,9 +5,9 @@ export const adminCopy = {
   navigationLabel: "管理端导航",
   workspaceLabel: "管理端工作区",
   topbar: {
-    title: "P24 运营管理台",
-    subtitle: "浏览器端只访问管理端中转接口，后续页面按这套路由骨架补齐。",
-    signInAction: "操作员登录待接入"
+    title: "Console 生产管理台",
+    subtitle: "浏览器端只访问管理端中转接口：",
+    signOutAction: "退出登录"
   },
   routePlan: {
     title: "信息架构与路由计划",

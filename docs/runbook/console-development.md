@@ -112,3 +112,13 @@ go run ./tools/p24-console-smoke \
   -model gpt-4o-mini \
   -create-derived-key
 ```
+
+For P22 production-console checks, use the same running console:
+
+```bash
+go run ./tools/p22-console-smoke \
+  -console-url http://127.0.0.1:9505 \
+  -api-key tg-local-dev-key \
+  -admin-email admin@example.com \
+  -admin-password admin-local
+```

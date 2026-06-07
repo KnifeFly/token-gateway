@@ -57,6 +57,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 }
 
 func redirectToSlash(w http.ResponseWriter, r *http.Request) {
+	setConsoleSecurityHeaders(w)
 	http.Redirect(w, r, r.URL.Path+"/", http.StatusPermanentRedirect)
 }
 
@@ -84,11 +85,13 @@ func (h *Handler) staticApp(title string, basePath string, dir string) http.Hand
 func serveIndexOrShell(w http.ResponseWriter, r *http.Request, title string, basePath string, dir string) {
 	indexPath := filepath.Join(dir, "index.html")
 	if fileExists(indexPath) {
+		setConsoleSecurityHeaders(w)
 		w.Header().Set("Cache-Control", "no-cache")
 		http.ServeFile(w, r, indexPath)
 		return
 	}
 
+	setConsoleSecurityHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
@@ -96,11 +99,21 @@ func serveIndexOrShell(w http.ResponseWriter, r *http.Request, title string, bas
 }
 
 func setStaticCache(w http.ResponseWriter, path string) {
+	setConsoleSecurityHeaders(w)
 	if strings.HasSuffix(path, ".html") {
 		w.Header().Set("Cache-Control", "no-cache")
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+}
+
+func setConsoleSecurityHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+	w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 }
 
 func fileExists(path string) bool {

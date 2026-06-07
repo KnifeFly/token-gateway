@@ -275,17 +275,15 @@ func newGatewayRuntime(ctx context.Context, cfg Config, tel *telemetry.Provider,
 	}
 	var portalSnapshots portalservice.SnapshotRefresher
 	var snapshotManager *runtimeSnapshotRefresher
-	if usingDBAdmin {
-		var publisherOpts []cpsnapshot.PublisherOption
-		if snapshotDistributor != nil {
-			publisherOpts = append(publisherOpts, cpsnapshot.WithDistributor(snapshotDistributor))
-		}
-		snapshotManager = &runtimeSnapshotRefresher{
-			publisher: cpsnapshot.NewPublisher(adminRepo, cpsnapshot.NewBuilder(adminRepo), publisherOpts...),
-			store:     snapshotStore,
-		}
-		portalSnapshots = snapshotManager
+	var publisherOpts []cpsnapshot.PublisherOption
+	if snapshotDistributor != nil {
+		publisherOpts = append(publisherOpts, cpsnapshot.WithDistributor(snapshotDistributor))
 	}
+	snapshotManager = &runtimeSnapshotRefresher{
+		publisher: cpsnapshot.NewPublisher(adminRepo, cpsnapshot.NewBuilder(adminRepo), publisherOpts...),
+		store:     snapshotStore,
+	}
+	portalSnapshots = snapshotManager
 	emergencyDisableStore := redisinfra.NewEmergencyDisableStore(redisClient.Raw(), cfg.Gateway.Limits.KeyPrefix)
 	circuitBreaker := router.NewCircuitBreaker(router.DefaultCircuitConfig())
 	snapshotProvider := dpsnapshot.NewProvider(snapshotStore, dpsnapshot.WithMetrics(snapshotMetrics))

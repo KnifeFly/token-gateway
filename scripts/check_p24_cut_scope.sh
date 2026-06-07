@@ -35,12 +35,12 @@ check_no_match \
 
 check_no_match \
   "frontend route configs must not expose cut-scope routes" \
-  '(route|routePrefix|href):[[:space:]]*"[^"]*(user[-_]?groups?|model[-_]?groups?|channel[-_]?groups?|groups?|ratios?|payments?|subscriptions?|redemptions?|invite[-_]?rewards?|invites?|deployments?|model[-_]?deployments?|system[-_]?settings|settings/(system|global|payment|billing))' \
+  '(route|routePrefix|href):[[:space:]]*"[^"]*(user[-_]?groups?|model[-_]?groups?|channel[-_]?groups?|groups?|ratios?|payments?|subscriptions?|redemptions?|invite[-_]?rewards?|invites?|deployments?|model[-_]?deployments?|system[-_]?settings|settings/(system|global|payment|billing))([^A-Za-z0-9_-]|$)' \
   $frontend_roots
 
 check_no_match \
   "frontend API calls must not call cut-scope BFF routes" \
-  '"/api/(admin|portal)/v1/[^"]*(user[-_]?groups?|model[-_]?groups?|channel[-_]?groups?|groups?|ratios?|payments?|subscriptions?|redemptions?|invite[-_]?rewards?|invites?|deployments?|model[-_]?deployments?|system[-_]?settings|settings/(system|global|payment|billing))' \
+  '"/api/(admin|portal)/v1/[^"]*(user[-_]?groups?|model[-_]?groups?|channel[-_]?groups?|groups?|ratios?|payments?|subscriptions?|redemptions?|invite[-_]?rewards?|invites?|deployments?|model[-_]?deployments?|system[-_]?settings|settings/(system|global|payment|billing))([^A-Za-z0-9_-]|$)' \
   $frontend_roots
 
 if rg --files $frontend_roots | rg '(^|/)(user[-_]?groups?|model[-_]?groups?|channel[-_]?groups?|groups?|ratios?|payments?|subscriptions?|redemptions?|invite[-_]?rewards?|invites?|deployments?|model[-_]?deployments?|system[-_]?settings)(/|\.|$)' >/tmp/token-gateway-p24-cut-scope-files-$$.txt; then

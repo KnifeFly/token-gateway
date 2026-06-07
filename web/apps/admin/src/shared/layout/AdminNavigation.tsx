@@ -1,7 +1,12 @@
 import { adminRouteSections } from "../../app/routes";
 import { adminCopy } from "../i18n";
 
-export function AdminNavigation() {
+interface AdminNavigationProps {
+  activeRouteID: string;
+  onNavigate: (routeID: string) => void;
+}
+
+export function AdminNavigation({ activeRouteID, onNavigate }: AdminNavigationProps) {
   return (
     <aside className="rail" aria-label={adminCopy.navigationLabel}>
       <div className="brand">
@@ -10,7 +15,15 @@ export function AdminNavigation() {
       </div>
       <nav>
         {adminRouteSections.map((item) => (
-          <a href={item.href} key={item.id}>
+          <a
+            aria-current={activeRouteID === item.id ? "page" : undefined}
+            href={item.routePrefix}
+            key={item.id}
+            onClick={(event) => {
+              event.preventDefault();
+              onNavigate(item.id);
+            }}
+          >
             {item.label}
           </a>
         ))}
