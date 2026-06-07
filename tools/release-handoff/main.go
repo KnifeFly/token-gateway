@@ -247,6 +247,7 @@ func renderMarkdown(data handoffData) string {
 	fmt.Fprintf(&b, "- For staging, run `go run ./tools/portal-smoke -gateway-url ${GATEWAY_URL} -api-key ${API_KEY} -model ${MODEL}`.\n")
 	fmt.Fprintf(&b, "- For P22 console production, run `go run ./tools/p22-console-smoke -console-url ${CONSOLE_URL} -api-key ${API_KEY} -admin-email ${ADMIN_EMAIL} -admin-password ${ADMIN_PASSWORD}`.\n")
 	fmt.Fprintf(&b, "- For P24 console, run `go run ./tools/p24-console-smoke -console-url ${CONSOLE_URL} -api-key ${API_KEY} -admin-email ${ADMIN_EMAIL} -admin-password ${ADMIN_PASSWORD} -model ${MODEL}`.\n")
+	fmt.Fprintf(&b, "- For P25 console frontend, run `go run ./tools/p24-console-smoke -console-url ${CONSOLE_URL} -api-key ${API_KEY} -admin-email ${ADMIN_EMAIL} -admin-password ${ADMIN_PASSWORD} -model ${MODEL} -create-derived-key`, then verify Admin/Portal route, list, and visual smoke in a browser.\n")
 
 	fmt.Fprintf(&b, "\n## Release Fields\n\n")
 	fmt.Fprintf(&b, "| Field | Value |\n")
@@ -261,6 +262,7 @@ func renderMarkdown(data handoffData) string {
 	fmt.Fprintf(&b, "| Portal smoke result |  |\n")
 	fmt.Fprintf(&b, "| P22 console production smoke result |  |\n")
 	fmt.Fprintf(&b, "| P24 console smoke result |  |\n")
+	fmt.Fprintf(&b, "| P25 console frontend smoke result |  |\n")
 	fmt.Fprintf(&b, "| P24 cut-scope result |  |\n")
 	fmt.Fprintf(&b, "| Rollback tested |  |\n")
 	fmt.Fprintf(&b, "| Reconciliation result |  |\n")

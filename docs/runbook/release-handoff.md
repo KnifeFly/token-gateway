@@ -92,6 +92,7 @@ Fill these fields from the generated handoff and staging run:
 | Portal smoke result | `portal_smoke=passed` |
 | P22 console production smoke result | `p22_console_smoke=passed` |
 | P24 console smoke result | `p24_console_smoke=passed` |
+| P25 console frontend smoke result | `p24_console_smoke=passed` plus Browser Admin/Portal route/list/style smoke |
 | P24 cut-scope result | `P24 cut-scope check passed` |
 | Rollback tested | configd rollback result |
 | Reconciliation result | reporting/reconciliation output |

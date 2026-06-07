@@ -1,6 +1,6 @@
 import type { AdminBFFComponents } from "@token-gateway/api-client";
 
-import { adminClient } from "../../shared/api/client";
+import { requestAdmin, type AdminMutationOptions } from "../../shared/api/client";
 
 export type AdminPlaygroundRunRequest =
   AdminBFFComponents["schemas"]["AdminPlaygroundRunRequest"];
@@ -15,31 +15,43 @@ export type AdminPlaygroundExportRequest =
 export type AdminPlaygroundExport = AdminBFFComponents["schemas"]["AdminPlaygroundExport"];
 
 export function runAdminPlayground(
-  request: AdminPlaygroundRunRequest
+  request: AdminPlaygroundRunRequest,
+  mutation: AdminMutationOptions
 ): Promise<AdminPlaygroundRunResult> {
-  return adminClient.request<AdminPlaygroundRunResult>("/api/admin/v1/playground/run", {
-    method: "POST",
-    body: request
-  });
+  return requestAdmin<AdminPlaygroundRunResult>(
+    "/api/admin/v1/playground/run",
+    {
+      method: "POST",
+      body: request
+    },
+    mutation
+  );
 }
 
 export function previewAdminPlaygroundImport(
-  request: AdminPlaygroundImportPreviewRequest
+  request: AdminPlaygroundImportPreviewRequest,
+  mutation: AdminMutationOptions
 ): Promise<AdminPlaygroundImportPreview> {
-  return adminClient.request<AdminPlaygroundImportPreview>(
+  return requestAdmin<AdminPlaygroundImportPreview>(
     "/api/admin/v1/playground/import-preview",
     {
       method: "POST",
       body: request
-    }
+    },
+    mutation
   );
 }
 
 export function exportAdminPlayground(
-  request: AdminPlaygroundExportRequest
+  request: AdminPlaygroundExportRequest,
+  mutation: AdminMutationOptions
 ): Promise<AdminPlaygroundExport> {
-  return adminClient.request<AdminPlaygroundExport>("/api/admin/v1/playground/export", {
-    method: "POST",
-    body: request
-  });
+  return requestAdmin<AdminPlaygroundExport>(
+    "/api/admin/v1/playground/export",
+    {
+      method: "POST",
+      body: request
+    },
+    mutation
+  );
 }

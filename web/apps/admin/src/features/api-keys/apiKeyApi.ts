@@ -1,6 +1,6 @@
 import type { AdminBFFComponents } from "@token-gateway/api-client";
 
-import { adminClient } from "../../shared/api/client";
+import { requestAdmin, type AdminMutationOptions } from "../../shared/api/client";
 
 export type AdminAPIKeyView = AdminBFFComponents["schemas"]["AdminAPIKeyView"];
 export type AdminAPIKeyListResponse =
@@ -15,48 +15,67 @@ export type AdminAPIKeyRotateResponse =
   AdminBFFComponents["schemas"]["AdminAPIKeyRotateResponse"];
 
 export function listAdminAPIKeys(): Promise<AdminAPIKeyListResponse> {
-  return adminClient.request<AdminAPIKeyListResponse>("/api/admin/v1/api-keys");
+  return requestAdmin<AdminAPIKeyListResponse>("/api/admin/v1/api-keys");
 }
 
 export function createAdminAPIKey(
-  request: AdminAPIKeyCreateRequest
+  request: AdminAPIKeyCreateRequest,
+  mutation: AdminMutationOptions
 ): Promise<AdminAPIKeyCreateResponse> {
-  return adminClient.request<AdminAPIKeyCreateResponse>("/api/admin/v1/api-keys", {
-    method: "POST",
-    body: request
-  });
+  return requestAdmin<AdminAPIKeyCreateResponse>(
+    "/api/admin/v1/api-keys",
+    {
+      method: "POST",
+      body: request
+    },
+    mutation
+  );
 }
 
 export function updateAdminAPIKey(
   keyID: string,
-  request: AdminAPIKeyUpdateRequest
+  request: AdminAPIKeyUpdateRequest,
+  mutation: AdminMutationOptions
 ): Promise<AdminAPIKeyView> {
-  return adminClient.request<AdminAPIKeyView>(
+  return requestAdmin<AdminAPIKeyView>(
     `/api/admin/v1/api-keys/${encodeURIComponent(keyID)}/update`,
     {
       method: "POST",
       body: request
-    }
+    },
+    mutation
   );
 }
 
-export function enableAdminAPIKey(keyID: string): Promise<AdminAPIKeyView> {
-  return adminClient.request<AdminAPIKeyView>(
+export function enableAdminAPIKey(
+  keyID: string,
+  mutation: AdminMutationOptions
+): Promise<AdminAPIKeyView> {
+  return requestAdmin<AdminAPIKeyView>(
     `/api/admin/v1/api-keys/${encodeURIComponent(keyID)}/enable`,
-    { method: "POST" }
+    { method: "POST" },
+    mutation
   );
 }
 
-export function disableAdminAPIKey(keyID: string): Promise<AdminAPIKeyView> {
-  return adminClient.request<AdminAPIKeyView>(
+export function disableAdminAPIKey(
+  keyID: string,
+  mutation: AdminMutationOptions
+): Promise<AdminAPIKeyView> {
+  return requestAdmin<AdminAPIKeyView>(
     `/api/admin/v1/api-keys/${encodeURIComponent(keyID)}/disable`,
-    { method: "POST" }
+    { method: "POST" },
+    mutation
   );
 }
 
-export function rotateAdminAPIKey(keyID: string): Promise<AdminAPIKeyRotateResponse> {
-  return adminClient.request<AdminAPIKeyRotateResponse>(
+export function rotateAdminAPIKey(
+  keyID: string,
+  mutation: AdminMutationOptions
+): Promise<AdminAPIKeyRotateResponse> {
+  return requestAdmin<AdminAPIKeyRotateResponse>(
     `/api/admin/v1/api-keys/${encodeURIComponent(keyID)}/rotate`,
-    { method: "POST", body: {} }
+    { method: "POST", body: {} },
+    mutation
   );
 }

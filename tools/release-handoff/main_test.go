@@ -51,6 +51,8 @@ func TestRenderMarkdownIncludesReleaseEvidence(t *testing.T) {
 		"p22-console-smoke",
 		"P24 console smoke result",
 		"p24-console-smoke",
+		"P25 console frontend smoke result",
+		"P25 console frontend",
 		"/configd/snapshots/rollback",
 	} {
 		if !strings.Contains(doc, required) {

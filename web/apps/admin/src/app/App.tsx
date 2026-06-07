@@ -83,6 +83,16 @@ export function App() {
     };
   }, []);
 
+  useEffect(() => {
+    function syncRouteFromHistory() {
+      setActiveRouteID(routeFromLocation());
+    }
+    window.addEventListener("popstate", syncRouteFromHistory);
+    return () => {
+      window.removeEventListener("popstate", syncRouteFromHistory);
+    };
+  }, []);
+
   function navigate(routeID: string) {
     const nextRoute =
       adminRouteSections.find((section) => section.id === routeID)?.id ?? ("workbench" as AdminRouteID);
@@ -144,17 +154,17 @@ export function App() {
             <DangerOperationsPanel csrfToken={csrfToken} data={productionData} onCompleted={loadData} />
           </>
         ) : null}
-        {activeRouteID === "catalog" ? <ModelManagementPanel /> : null}
-        {activeRouteID === "routing" ? <ChannelManagementPanel /> : null}
+        {activeRouteID === "catalog" ? <ModelManagementPanel csrfToken={csrfToken} /> : null}
+        {activeRouteID === "routing" ? <ChannelManagementPanel csrfToken={csrfToken} /> : null}
         {activeRouteID === "accounts" ? (
           <>
-            <CustomerAccountsPanel />
+            <CustomerAccountsPanel csrfToken={csrfToken} />
             <CreditOperationsPanel />
-            <APIKeyManagementPanel />
+            <APIKeyManagementPanel csrfToken={csrfToken} />
           </>
         ) : null}
         {activeRouteID === "activity" ? <ActivityLogsPanel /> : null}
-        {activeRouteID === "tools" ? <ToolsPlaygroundPanel /> : null}
+        {activeRouteID === "tools" ? <ToolsPlaygroundPanel csrfToken={csrfToken} /> : null}
         {activeRouteID === "settings" ? (
           <>
             <RoutePlanPanel />

@@ -1,6 +1,6 @@
 import type { AdminBFFComponents } from "@token-gateway/api-client";
 
-import { adminClient } from "../../shared/api/client";
+import { requestAdmin } from "../../shared/api/client";
 
 export type AdminUsageLogView = AdminBFFComponents["schemas"]["AdminUsageLogView"];
 export type AdminUsageLogListResponse =
@@ -12,21 +12,21 @@ export type AdminTaskLogListResponse =
 export type AdminTaskLogDetail = AdminBFFComponents["schemas"]["AdminTaskLogDetail"];
 
 export function listAdminUsageLogs(): Promise<AdminUsageLogListResponse> {
-  return adminClient.request<AdminUsageLogListResponse>("/api/admin/v1/usage-logs");
+  return requestAdmin<AdminUsageLogListResponse>("/api/admin/v1/usage-logs");
 }
 
 export function getAdminUsageLog(requestID: string): Promise<AdminUsageLogDetail> {
-  return adminClient.request<AdminUsageLogDetail>(
+  return requestAdmin<AdminUsageLogDetail>(
     `/api/admin/v1/usage-logs/${encodeURIComponent(requestID)}`
   );
 }
 
 export function listAdminTaskLogs(): Promise<AdminTaskLogListResponse> {
-  return adminClient.request<AdminTaskLogListResponse>("/api/admin/v1/task-logs");
+  return requestAdmin<AdminTaskLogListResponse>("/api/admin/v1/task-logs");
 }
 
 export function getAdminTaskLog(taskID: string): Promise<AdminTaskLogDetail> {
-  return adminClient.request<AdminTaskLogDetail>(
+  return requestAdmin<AdminTaskLogDetail>(
     `/api/admin/v1/task-logs/${encodeURIComponent(taskID)}`
   );
 }

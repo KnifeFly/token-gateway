@@ -1,111 +1,16 @@
 import { formatInteger, formatMoney } from "@token-gateway/format";
-import { StatusBadge } from "@token-gateway/ui";
+import { Button, EmptyState, FilterBar, LoadingState, StatusBadge } from "@token-gateway/ui";
+import { useEffect, useMemo, useState } from "react";
 
+import { listAdminCustomerAccounts } from "../accounts/accountApi";
 import { adminCopy } from "../../shared/i18n";
-import type { AdminCustomerCreditReport, AdminCustomerReportExport } from "./creditOpsApi";
-
-const sampleReport: AdminCustomerCreditReport = {
-  generated_at: new Date().toISOString(),
-  account: {
-    customer_account_id: "tenant_acme:project_platform",
-    tenant_id: "tenant_acme",
-    tenant_name: "Acme 智能客服",
-    project_id: "project_platform",
-    project_name: "生产调用",
-    status: "active",
-    role: "owner",
-    tenant_enabled: true,
-    project_enabled: true,
-    api_key_count: 2,
-    active_api_key_count: 1,
-    allowed_models_summary: { wildcard: false, unique_count: 2, models: ["gpt-4o-mini", "qwen-plus"] },
-    recent_usage: {
-      requests: 1842,
-      input_tokens: 2205000,
-      output_tokens: 642000,
-      revenue_micros: 85000000,
-      currency: "CNY"
-    }
-  },
-  credits: [
-    {
-      account_id: "balance_acme_cny",
-      currency: "CNY",
-      available_micros: 1285000000,
-      held_micros: 5000000,
-      opening_micros: 1000000000,
-      total_granted_micros: 1500000000,
-      used_micros: 215000000
-    }
-  ],
-  usage: [
-    {
-      model: "gpt-4o-mini",
-      provider_type: "openai",
-      channel_id: "channel_openai_primary",
-      currency: "CNY",
-      requests: 1620,
-      input_tokens: 1984000,
-      output_tokens: 588000,
-      total_tokens: 2568000,
-      amount_micros: 76000000
-    }
-  ],
-  ledger: [
-    {
-      id: "ledger_acme_adjust",
-      settlement_kind: "manual_adjustment",
-      account_id: "balance_acme_cny",
-      currency: "CNY",
-      amount_micros: 500000000,
-      balance_after_micros: 1285000000,
-      reason: "月初运营补充",
-      created_at: "2026-06-01T09:00:00Z"
-    }
-  ],
-  active_holds: [
-    { status: "active", count: 1 },
-    { status: "protected_task_holds", count: 0 }
-  ],
-  failed_settlements: [
-    {
-      id: "fail_req_7251",
-      request_id: "req_acme_repair",
-      status: "pending",
-      retry_count: 1,
-      last_error: "结算修复等待重放",
-      updated_at: "2026-06-02T08:35:00Z"
-    }
-  ],
-  exports: [
-    {
-      kind: "usage",
-      path: "/api/admin/v1/customer-accounts/tenant_acme:project_platform/usage/export",
-      format: "json",
-      safe_fields: ["model", "provider_type", "channel_id", "requests", "tokens", "amount_micros"]
-    },
-    {
-      kind: "ledger",
-      path: "/api/admin/v1/customer-accounts/tenant_acme:project_platform/ledger/export",
-      format: "json",
-      safe_fields: ["request_id", "settlement_kind", "currency", "amount_micros", "balance_after_micros"]
-    }
-  ]
-};
-
-const sampleExport: AdminCustomerReportExport = {
-  generated_at: new Date().toISOString(),
-  kind: "ledger",
-  format: "json",
-  filename: "customer_tenant_acme_project_platform_ledger.json",
-  customer_account_id: "tenant_acme:project_platform",
-  tenant_id: "tenant_acme",
-  project_id: "project_platform",
-  currency: "CNY",
-  ledger: sampleReport.ledger,
-  totals: sampleReport.account.recent_usage,
-  safe_fields: sampleReport.exports[1]?.safe_fields ?? []
-};
+import {
+  exportAdminCustomerLedger,
+  exportAdminCustomerUsage,
+  getAdminCustomerCreditReport,
+  type AdminCustomerCreditReport,
+  type AdminCustomerReportExport
+} from "./creditOpsApi";
 
 function money(micros?: number, currency = "CNY") {
   return `${currency} ${formatMoney((micros ?? 0) / 1_000_000, 4)}`;
@@ -119,8 +24,89 @@ function exportLabel(kind: string) {
   return (adminCopy.creditOps.exportKind as Record<string, string>)[kind] ?? kind;
 }
 
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function CreditOperationsPanel() {
-  const credit = sampleReport.credits[0];
+  const [accountIDs, setAccountIDs] = useState<string[]>([]);
+  const [selectedAccountID, setSelectedAccountID] = useState("");
+  const [report, setReport] = useState<AdminCustomerCreditReport>();
+  const [lastExport, setLastExport] = useState<AdminCustomerReportExport>();
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function loadAccounts() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await listAdminCustomerAccounts();
+      const ids = response.data.map((account) => account.customer_account_id);
+      setAccountIDs(ids);
+      setSelectedAccountID((current) => current || ids[0] || "");
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadAccounts();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAccountID) {
+      setReport(undefined);
+      return;
+    }
+    let active = true;
+    async function loadReport() {
+      setBusy(true);
+      try {
+        const response = await getAdminCustomerCreditReport(selectedAccountID);
+        if (active) {
+          setReport(response);
+          setLastExport(undefined);
+        }
+      } catch (error) {
+        if (active) {
+          setMessage(describeError(error));
+          setReport(undefined);
+        }
+      } finally {
+        if (active) {
+          setBusy(false);
+        }
+      }
+    }
+    void loadReport();
+    return () => {
+      active = false;
+    };
+  }, [selectedAccountID]);
+
+  const credit = useMemo(() => report?.credits[0], [report?.credits]);
+
+  async function runExport(kind: "usage" | "ledger") {
+    if (!selectedAccountID) {
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      setLastExport(
+        kind === "usage"
+          ? await exportAdminCustomerUsage(selectedAccountID)
+          : await exportAdminCustomerLedger(selectedAccountID)
+      );
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <section className="panel credit-ops-panel" id="credit-operations">
@@ -129,84 +115,120 @@ export function CreditOperationsPanel() {
           <h2>{adminCopy.creditOps.title}</h2>
           <p>{adminCopy.creditOps.subtitle}</p>
         </div>
-        <StatusBadge tone="warning">{adminCopy.creditOps.status}</StatusBadge>
+        <StatusBadge tone="success">BFF connected</StatusBadge>
       </div>
 
-      <div className="credit-ops-grid">
-        <article className="credit-ops-section">
-          <h3>{adminCopy.creditOps.sections.balance}</h3>
-          <dl>
-            <div>
-              <dt>{adminCopy.creditOps.columns.available}</dt>
-              <dd>{money(credit?.available_micros, credit?.currency)}</dd>
-            </div>
-            <div>
-              <dt>{adminCopy.creditOps.columns.held}</dt>
-              <dd>{money(credit?.held_micros, credit?.currency)}</dd>
-            </div>
-            <div>
-              <dt>{adminCopy.creditOps.columns.used}</dt>
-              <dd>{money(credit?.used_micros, credit?.currency)}</dd>
-            </div>
-          </dl>
-        </article>
+      <FilterBar>
+        <label>
+          客户账户
+          <select value={selectedAccountID} onChange={(event) => setSelectedAccountID(event.target.value)}>
+            {accountIDs.map((accountID) => (
+              <option key={accountID} value={accountID}>
+                {accountID}
+              </option>
+            ))}
+          </select>
+        </label>
+      </FilterBar>
 
-        <article className="credit-ops-section">
-          <h3>{adminCopy.creditOps.sections.holds}</h3>
-          <div className="credit-ops-list">
-            {sampleReport.active_holds.map((hold) => (
-              <div key={hold.status}>
-                <strong>{holdLabel(hold.status)}</strong>
-                <span>{formatInteger(hold.count)}</span>
+      {message ? <div className="inline-alert">{message}</div> : null}
+      {loading || busy ? <LoadingState label="正在加载额度运营数据" /> : null}
+
+      {!report ? <EmptyState title="暂无额度报告">选择客户账户后从 BFF 加载 credit report。</EmptyState> : null}
+
+      {report ? (
+        <>
+          <div className="credit-ops-grid">
+            <article className="credit-ops-section">
+              <h3>{adminCopy.creditOps.sections.balance}</h3>
+              <dl>
+                <div>
+                  <dt>{adminCopy.creditOps.columns.available}</dt>
+                  <dd>{money(credit?.available_micros, credit?.currency)}</dd>
+                </div>
+                <div>
+                  <dt>{adminCopy.creditOps.columns.held}</dt>
+                  <dd>{money(credit?.held_micros, credit?.currency)}</dd>
+                </div>
+                <div>
+                  <dt>{adminCopy.creditOps.columns.used}</dt>
+                  <dd>{money(credit?.used_micros, credit?.currency)}</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article className="credit-ops-section">
+              <h3>{adminCopy.creditOps.sections.holds}</h3>
+              <div className="credit-ops-list">
+                {report.active_holds.map((hold) => (
+                  <div key={hold.status}>
+                    <strong>{holdLabel(hold.status)}</strong>
+                    <span>{formatInteger(hold.count)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </article>
+            </article>
 
-        <article className="credit-ops-section">
-          <h3>{adminCopy.creditOps.sections.repairs}</h3>
-          <div className="credit-ops-list">
-            {sampleReport.failed_settlements.map((failed) => (
-              <div key={failed.id}>
-                <strong>{failed.request_id}</strong>
-                <span>
-                  {adminCopy.creditOps.columns.retry} {formatInteger(failed.retry_count)}
-                </span>
-                <small>{failed.last_error}</small>
+            <article className="credit-ops-section">
+              <h3>{adminCopy.creditOps.sections.repairs}</h3>
+              <div className="credit-ops-list">
+                {report.failed_settlements.map((failed) => (
+                  <div key={failed.id}>
+                    <strong>{failed.request_id}</strong>
+                    <span>
+                      {adminCopy.creditOps.columns.retry} {formatInteger(failed.retry_count)}
+                    </span>
+                    <small>{failed.last_error}</small>
+                  </div>
+                ))}
+                {report.failed_settlements.length === 0 ? (
+                  <EmptyState title="暂无待修复结算">BFF 未返回 failed settlement link。</EmptyState>
+                ) : null}
               </div>
-            ))}
+            </article>
           </div>
-        </article>
-      </div>
 
-      <div className="credit-ops-grid">
-        <article className="credit-ops-section wide">
-          <h3>{adminCopy.creditOps.sections.ledger}</h3>
-          <div className="credit-ops-list">
-            {sampleReport.ledger.map((line) => (
-              <div key={line.id}>
-                <strong>{holdLabel(line.settlement_kind)}</strong>
-                <span>{line.reason ?? line.request_id}</span>
-                <small>{money(line.amount_micros, line.currency)}</small>
+          <div className="credit-ops-grid">
+            <article className="credit-ops-section wide">
+              <h3>{adminCopy.creditOps.sections.ledger}</h3>
+              <div className="credit-ops-list">
+                {report.ledger.map((line) => (
+                  <div key={line.id}>
+                    <strong>{holdLabel(line.settlement_kind)}</strong>
+                    <span>{line.reason ?? line.request_id}</span>
+                    <small>{money(line.amount_micros, line.currency)}</small>
+                  </div>
+                ))}
+                {report.ledger.length === 0 ? <EmptyState title="暂无账本">BFF 未返回账本行。</EmptyState> : null}
               </div>
-            ))}
-          </div>
-        </article>
+            </article>
 
-        <article className="credit-ops-section wide">
-          <h3>{adminCopy.creditOps.sections.exports}</h3>
-          <div className="endpoint-list">
-            {sampleReport.exports.map((item) => (
-              <code key={item.path}>
-                {exportLabel(item.kind)} · {item.path}
-              </code>
-            ))}
+            <article className="credit-ops-section wide">
+              <h3>{adminCopy.creditOps.sections.exports}</h3>
+              <div className="endpoint-list">
+                {report.exports.map((item) => (
+                  <code key={item.path}>
+                    {exportLabel(item.kind)} · {item.path}
+                  </code>
+                ))}
+              </div>
+              <div className="inline-actions">
+                <Button disabled={busy} onClick={() => runExport("usage")} variant="ghost">
+                  导出 usage
+                </Button>
+                <Button disabled={busy} onClick={() => runExport("ledger")} variant="ghost">
+                  导出 ledger
+                </Button>
+              </div>
+              {lastExport ? (
+                <p className="panel-note">
+                  {adminCopy.creditOps.hints.exportFile} {lastExport.filename}
+                </p>
+              ) : null}
+            </article>
           </div>
-          <p className="panel-note">
-            {adminCopy.creditOps.hints.exportFile} {sampleExport.filename}
-          </p>
-        </article>
-      </div>
+        </>
+      ) : null}
 
       <div className="tools-hint-grid">
         <span>{adminCopy.creditOps.hints.reason}</span>

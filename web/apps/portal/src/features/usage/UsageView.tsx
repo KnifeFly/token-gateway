@@ -1,4 +1,5 @@
 import { formatInteger } from "@token-gateway/format";
+import { FilterBar, Pagination } from "@token-gateway/ui";
 import type { FormEvent } from "react";
 
 import { moneyValue } from "../../shared/format";
@@ -19,12 +20,21 @@ type ActivityFilters = {
 
 type UsageViewProps = {
   filters: ActivityFilters;
+  limit: number;
   onApplyFilters: (event: FormEvent<HTMLFormElement>) => void;
   onFiltersChange: (filters: ActivityFilters) => void;
+  onLimitChange: (limit: number) => void;
   usage?: UsageResponse;
 };
 
-export function UsageView({ filters, onApplyFilters, onFiltersChange, usage }: UsageViewProps) {
+export function UsageView({
+  filters,
+  limit,
+  onApplyFilters,
+  onFiltersChange,
+  onLimitChange,
+  usage
+}: UsageViewProps) {
   function updateFilter(key: keyof ActivityFilters, value: string) {
     onFiltersChange({ ...filters, [key]: value });
   }
@@ -72,6 +82,13 @@ export function UsageView({ filters, onApplyFilters, onFiltersChange, usage }: U
           {portalCopy.usage.filterAction}
         </button>
       </form>
+      <FilterBar>
+        <Pagination
+          limit={limit}
+          onLimitChange={onLimitChange}
+          summary={`${usage?.items?.length ?? 0} rows`}
+        />
+      </FilterBar>
       <div className="table" role="table">
         <div className="table-row table-head usage" role="row">
           <span role="columnheader">{portalCopy.usage.requestColumn}</span>

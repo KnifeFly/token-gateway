@@ -1,3 +1,4 @@
+import { FilterBar, Pagination } from "@token-gateway/ui";
 import type { FormEvent } from "react";
 
 import { portalCopy } from "../../shared/i18n";
@@ -18,12 +19,21 @@ type ActivityFilters = {
 
 type TasksViewProps = {
   filters: ActivityFilters;
+  limit: number;
   onApplyFilters: (event: FormEvent<HTMLFormElement>) => void;
   onFiltersChange: (filters: ActivityFilters) => void;
+  onLimitChange: (limit: number) => void;
   tasks: TaskObject[];
 };
 
-export function TasksView({ filters, onApplyFilters, onFiltersChange, tasks }: TasksViewProps) {
+export function TasksView({
+  filters,
+  limit,
+  onApplyFilters,
+  onFiltersChange,
+  onLimitChange,
+  tasks
+}: TasksViewProps) {
   function updateFilter(key: keyof ActivityFilters, value: string) {
     onFiltersChange({ ...filters, [key]: value });
   }
@@ -71,6 +81,9 @@ export function TasksView({ filters, onApplyFilters, onFiltersChange, tasks }: T
           {portalCopy.tasks.filterAction}
         </button>
       </form>
+      <FilterBar>
+        <Pagination limit={limit} onLimitChange={onLimitChange} summary={`${tasks.length} rows`} />
+      </FilterBar>
       <TaskListRows tasks={tasks} />
     </section>
   );

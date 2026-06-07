@@ -1,54 +1,20 @@
 import { formatISODateTime, formatInteger, formatMoney } from "@token-gateway/format";
-import { StatusBadge } from "@token-gateway/ui";
+import { Button, CopyButton, DataTable, EmptyState, LoadingState, StatusBadge } from "@token-gateway/ui";
+import { useEffect, useState } from "react";
 
 import { adminCopy } from "../../shared/i18n";
-import type { AdminAPIKeyView } from "./apiKeyApi";
+import {
+  disableAdminAPIKey,
+  enableAdminAPIKey,
+  listAdminAPIKeys,
+  rotateAdminAPIKey,
+  type AdminAPIKeyRotateResponse,
+  type AdminAPIKeyView
+} from "./apiKeyApi";
 
-const sampleAPIKeys: AdminAPIKeyView[] = [
-  {
-    id: "key_acme_live",
-    tenant_id: "tenant_acme",
-    project_id: "project_platform",
-    name: "生产环境",
-    fingerprint: "f2a9c7d81e34",
-    enabled: true,
-    allowed_models: ["gpt-4o-mini", "qwen-plus"],
-    ip_allowlist: ["203.0.113.10", "2001:db8::/32"],
-    expires_at: "2026-06-30T00:00:00Z",
-    last_used_at: "2026-06-02T08:20:00Z",
-    usage_summary: {
-      requests: 1842,
-      input_tokens: 2205000,
-      output_tokens: 642000,
-      revenue_micros: 85000000,
-      currency: "CNY"
-    },
-    created_at: "2026-05-20T03:13:00Z",
-    updated_at: "2026-06-01T10:42:00Z"
-  },
-  {
-    id: "key_nova_sandbox",
-    tenant_id: "tenant_nova",
-    project_id: "project_sandbox",
-    name: "验证密钥",
-    fingerprint: "0ac921fd7821",
-    enabled: false,
-    allowed_models: ["gpt-4o-mini"],
-    ip_allowlist: [],
-    expires_at: "2026-06-15T00:00:00Z",
-    last_used_at: "2026-05-30T11:04:00Z",
-    usage_summary: {
-      requests: 96,
-      input_tokens: 82000,
-      output_tokens: 19000,
-      revenue_micros: 60000000,
-      currency: "CNY"
-    },
-    revoked_at: "2026-06-01T14:18:00Z",
-    created_at: "2026-05-18T04:49:00Z",
-    updated_at: "2026-06-01T14:18:00Z"
-  }
-];
+interface APIKeyManagementPanelProps {
+  csrfToken: string;
+}
 
 const workflowRows = [
   { label: adminCopy.apiKeys.actions.create, endpoint: "POST /api/admin/v1/api-keys" },
@@ -96,7 +62,58 @@ function usageLabel(key: AdminAPIKeyView): string {
   } ${amount}`;
 }
 
-export function APIKeyManagementPanel() {
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function APIKeyManagementPanel({ csrfToken }: APIKeyManagementPanelProps) {
+  const [keys, setKeys] = useState<AdminAPIKeyView[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [rotatedKey, setRotatedKey] = useState<AdminAPIKeyRotateResponse>();
+
+  async function loadKeys() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await listAdminAPIKeys();
+      setKeys(response.data);
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadKeys();
+  }, []);
+
+  async function mutateKey(keyID: string, action: "enable" | "disable" | "rotate") {
+    setBusy(true);
+    setMessage("");
+    setRotatedKey(undefined);
+    const mutation = {
+      csrfToken,
+      reason: `P25 Admin API key ${action} ${keyID}`
+    };
+    try {
+      if (action === "enable") {
+        await enableAdminAPIKey(keyID, mutation);
+      } else if (action === "disable") {
+        await disableAdminAPIKey(keyID, mutation);
+      } else {
+        setRotatedKey(await rotateAdminAPIKey(keyID, mutation));
+      }
+      await loadKeys();
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="panel api-key-panel" id="api-keys">
       <div className="panel-heading">
@@ -104,41 +121,74 @@ export function APIKeyManagementPanel() {
           <h2>{adminCopy.apiKeys.title}</h2>
           <p>{adminCopy.apiKeys.subtitle}</p>
         </div>
-        <StatusBadge tone="warning">{adminCopy.apiKeys.status}</StatusBadge>
+        <StatusBadge tone="success">BFF connected</StatusBadge>
       </div>
+
+      {message ? <div className="inline-alert">{message}</div> : null}
+      {loading ? <LoadingState label="正在加载 API keys" /> : null}
 
       <div className="api-key-layout">
         <article className="api-key-section">
           <h3>{adminCopy.apiKeys.sections.list}</h3>
-          <div className="table api-key-table" role="table">
-            <div className="table-row table-head api-key-row" role="row">
-              <span role="columnheader">{adminCopy.apiKeys.columns.key}</span>
-              <span role="columnheader">{adminCopy.apiKeys.columns.scope}</span>
-              <span role="columnheader">{adminCopy.apiKeys.columns.models}</span>
-              <span role="columnheader">{adminCopy.apiKeys.columns.ip}</span>
-              <span role="columnheader">{adminCopy.apiKeys.columns.expires}</span>
-              <span role="columnheader">{adminCopy.apiKeys.columns.usage}</span>
-              <span role="columnheader">{adminCopy.apiKeys.columns.state}</span>
-            </div>
-            {sampleAPIKeys.map((key) => (
-              <div className="table-row api-key-row" key={key.id} role="row">
-                <span role="cell">
-                  <strong>{key.name}</strong>
-                  <small>{key.fingerprint}</small>
-                </span>
-                <span role="cell">
-                  {key.tenant_id} / {key.project_id}
-                </span>
-                <span role="cell">{modelLabel(key.allowed_models)}</span>
-                <span role="cell">{ipLabel(key.ip_allowlist)}</span>
-                <span role="cell">{dateLabel(key.expires_at)}</span>
-                <span role="cell">{usageLabel(key)}</span>
-                <span role="cell">
-                  {key.enabled ? adminCopy.apiKeys.state.enabled : adminCopy.apiKeys.state.disabled}
-                </span>
-              </div>
-            ))}
-          </div>
+          <DataTable
+            ariaLabel={adminCopy.apiKeys.sections.list}
+            className="api-key-table"
+            columns={[
+              {
+                key: "key",
+                header: adminCopy.apiKeys.columns.key,
+                render: (key) => (
+                  <>
+                    <strong>{key.name}</strong>
+                    <small>{key.fingerprint ?? key.id}</small>
+                  </>
+                )
+              },
+              {
+                key: "scope",
+                header: adminCopy.apiKeys.columns.scope,
+                render: (key) => `${key.tenant_id} / ${key.project_id}`
+              },
+              { key: "models", header: adminCopy.apiKeys.columns.models, render: (key) => modelLabel(key.allowed_models) },
+              { key: "ip", header: adminCopy.apiKeys.columns.ip, render: (key) => ipLabel(key.ip_allowlist) },
+              { key: "expires", header: adminCopy.apiKeys.columns.expires, render: (key) => dateLabel(key.expires_at) },
+              { key: "usage", header: adminCopy.apiKeys.columns.usage, render: usageLabel },
+              {
+                key: "state",
+                header: adminCopy.apiKeys.columns.state,
+                render: (key) => (key.enabled ? adminCopy.apiKeys.state.enabled : adminCopy.apiKeys.state.disabled)
+              },
+              {
+                key: "actions",
+                header: "操作",
+                render: (key) => (
+                  <span className="inline-actions">
+                    <Button
+                      disabled={busy || !csrfToken || key.enabled}
+                      onClick={() => mutateKey(key.id, "enable")}
+                      variant="ghost"
+                    >
+                      {adminCopy.apiKeys.actions.enable}
+                    </Button>
+                    <Button
+                      disabled={busy || !csrfToken || !key.enabled}
+                      onClick={() => mutateKey(key.id, "disable")}
+                      variant="ghost"
+                    >
+                      {adminCopy.apiKeys.actions.disable}
+                    </Button>
+                    <Button disabled={busy || !csrfToken} onClick={() => mutateKey(key.id, "rotate")} variant="ghost">
+                      {adminCopy.apiKeys.actions.rotate}
+                    </Button>
+                  </span>
+                )
+              }
+            ]}
+            empty={<EmptyState title="暂无 API keys">当前 BFF 没有返回 API key。</EmptyState>}
+            getRowKey={(key) => key.id}
+            rowClassName="table-row api-key-row"
+            rows={keys}
+          />
         </article>
 
         <div className="api-key-detail-grid">
@@ -147,7 +197,8 @@ export function APIKeyManagementPanel() {
             <div className="api-key-secret-preview">
               <strong>{adminCopy.apiKeys.hints.oneTimeTitle}</strong>
               <span>{adminCopy.apiKeys.hints.oneTimeBody}</span>
-              <code>{adminCopy.apiKeys.hints.oneTimePlaceholder}</code>
+              <code>{rotatedKey?.plaintext_key ?? adminCopy.apiKeys.hints.oneTimePlaceholder}</code>
+              {rotatedKey?.plaintext_key ? <CopyButton value={rotatedKey.plaintext_key} /> : null}
             </div>
           </article>
 

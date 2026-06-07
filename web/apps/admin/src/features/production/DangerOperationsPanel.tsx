@@ -1,4 +1,4 @@
-import { Button, StatusBadge } from "@token-gateway/ui";
+import { ConfirmDialog, StatusBadge } from "@token-gateway/ui";
 import { useMemo, useState } from "react";
 
 import type { ProductionData } from "./productionApi";
@@ -157,14 +157,18 @@ export function DangerOperationsPanel({ csrfToken, data, onCompleted }: DangerOp
           </label>
         ) : null}
 
-        <div className="danger-confirm">
-          <strong>{selected.label}</strong>
-          <span>{selected.description}</span>
+        <ConfirmDialog
+          busy={busy}
+          className="danger-confirm"
+          confirmDisabled={!canRun}
+          confirmLabel="确认执行"
+          description={selected.description}
+          onConfirm={runOperation}
+          open
+          title={selected.label}
+        >
           {selected.requiresTarget ? <code>{effectiveTarget || "missing target"}</code> : null}
-          <Button disabled={!canRun || busy} onClick={runOperation} variant="primary">
-            {busy ? "执行中" : "确认执行"}
-          </Button>
-        </div>
+        </ConfirmDialog>
       </div>
 
       {message ? <pre className="operation-result">{message}</pre> : null}

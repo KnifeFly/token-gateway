@@ -1,91 +1,14 @@
 import { formatISODateTime, formatInteger, formatMoney } from "@token-gateway/format";
-import { StatusBadge } from "@token-gateway/ui";
+import { CopyButton, DataTable, EmptyState, FilterBar, LoadingState, StatusBadge } from "@token-gateway/ui";
+import { useEffect, useMemo, useState } from "react";
 
 import { adminCopy } from "../../shared/i18n";
-import type { AdminTaskLogView, AdminUsageLogView } from "./activityApi";
-
-const sampleUsageLogs: AdminUsageLogView[] = [
-  {
-    request_id: "req_acme_8271",
-    tenant_id: "tenant_acme",
-    project_id: "project_platform",
-    api_key_id: "key_acme_live",
-    model: "gpt-4o-mini",
-    provider_type: "openai",
-    channel_id: "channel_openai_primary",
-    status: "settled",
-    settlement_status: "settled",
-    ledger_entry_id: "ledger_acme_usage",
-    settlement_kind: "usage_debit",
-    input_tokens: 1800,
-    output_tokens: 420,
-    total_tokens: 2220,
-    amount_micros: 1280000,
-    currency: "CNY",
-    balance_after_micros: 1285000000,
-    created_at: "2026-06-02T08:25:00Z",
-    settled_at: "2026-06-02T08:25:02Z"
-  },
-  {
-    request_id: "req_nova_3104",
-    tenant_id: "tenant_nova",
-    project_id: "project_sandbox",
-    api_key_id: "key_nova_sandbox",
-    model: "qwen-plus",
-    provider_type: "dashscope",
-    channel_id: "channel_qwen_backup",
-    status: "settled",
-    settlement_status: "settled",
-    input_tokens: 920,
-    output_tokens: 180,
-    total_tokens: 1100,
-    amount_micros: 540000,
-    currency: "CNY",
-    created_at: "2026-06-01T10:18:00Z"
-  }
-];
-
-const sampleTaskLogs: AdminTaskLogView[] = [
-  {
-    task_id: "task_img_1001",
-    request_id: "req_task_1001",
-    tenant_id: "tenant_acme",
-    project_id: "project_platform",
-    api_key_id: "key_acme_live",
-    kind: "image.generation",
-    media_type: "image",
-    model: "gpt-image-1",
-    status: "running",
-    progress: 64,
-    provider_type: "openai",
-    channel_id: "channel_openai_primary",
-    provider_task_id: "pt_991",
-    callback_configured: true,
-    settlement_status: "pending",
-    created_at: "2026-06-02T08:21:00Z",
-    updated_at: "2026-06-02T08:23:00Z"
-  },
-  {
-    task_id: "task_video_0902",
-    request_id: "req_task_0902",
-    tenant_id: "tenant_nova",
-    project_id: "project_sandbox",
-    api_key_id: "key_nova_sandbox",
-    kind: "video.generation",
-    media_type: "video",
-    model: "runway-gen3",
-    status: "failed",
-    progress: 100,
-    provider_type: "replicate",
-    channel_id: "channel_video_backup",
-    provider_task_id: "rep_441",
-    callback_configured: false,
-    settlement_status: "terminal_without_usage",
-    error_code: "provider_timeout",
-    created_at: "2026-06-01T14:12:00Z",
-    updated_at: "2026-06-01T14:20:00Z"
-  }
-];
+import {
+  listAdminTaskLogs,
+  listAdminUsageLogs,
+  type AdminTaskLogView,
+  type AdminUsageLogView
+} from "./activityApi";
 
 const usageFilterRows = [
   "request_id",
@@ -121,7 +44,89 @@ function timeLabel(value?: string): string {
   return value ? formatISODateTime(value) : adminCopy.activity.state.unknown;
 }
 
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function matchesFilter(values: Array<string | undefined>, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  return values.some((value) => (value ?? "").toLowerCase().includes(normalized));
+}
+
 export function ActivityLogsPanel() {
+  const [usageLogs, setUsageLogs] = useState<AdminUsageLogView[]>([]);
+  const [taskLogs, setTaskLogs] = useState<AdminTaskLogView[]>([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  async function loadActivity() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const [usageResponse, taskResponse] = await Promise.all([
+        listAdminUsageLogs(),
+        listAdminTaskLogs()
+      ]);
+      setUsageLogs(usageResponse.data);
+      setTaskLogs(taskResponse.data);
+    } catch (error) {
+      setMessage(describeError(error));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadActivity();
+  }, []);
+
+  const filteredUsage = useMemo(
+    () =>
+      usageLogs.filter((row) =>
+        matchesFilter(
+          [
+            row.request_id,
+            row.tenant_id,
+            row.project_id,
+            row.api_key_id,
+            row.model,
+            row.provider_type,
+            row.channel_id,
+            row.status,
+            row.settlement_status
+          ],
+          query
+        )
+      ),
+    [query, usageLogs]
+  );
+
+  const filteredTasks = useMemo(
+    () =>
+      taskLogs.filter((row) =>
+        matchesFilter(
+          [
+            row.task_id,
+            row.request_id,
+            row.tenant_id,
+            row.project_id,
+            row.api_key_id,
+            row.model,
+            row.provider_type,
+            row.channel_id,
+            row.status,
+            row.settlement_status
+          ],
+          query
+        )
+      ),
+    [query, taskLogs]
+  );
+
   return (
     <section className="panel activity-panel" id="activity">
       <div className="panel-heading">
@@ -129,78 +134,111 @@ export function ActivityLogsPanel() {
           <h2>{adminCopy.activity.title}</h2>
           <p>{adminCopy.activity.subtitle}</p>
         </div>
-        <StatusBadge tone="warning">{adminCopy.activity.status}</StatusBadge>
+        <StatusBadge tone="success">BFF connected</StatusBadge>
       </div>
+
+      <FilterBar>
+        <label>
+          搜索
+          <input
+            placeholder="request_id / task_id / model / channel / status"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
+      </FilterBar>
+
+      {message ? <div className="inline-alert">{message}</div> : null}
+      {loading ? <LoadingState label="正在加载活动日志" /> : null}
 
       <div className="activity-layout">
         <article className="activity-section">
           <h3>{adminCopy.activity.sections.usage}</h3>
-          <div className="table activity-usage-table" role="table">
-            <div className="table-row table-head activity-usage-row" role="row">
-              <span role="columnheader">{adminCopy.activity.columns.request}</span>
-              <span role="columnheader">{adminCopy.activity.columns.scope}</span>
-              <span role="columnheader">{adminCopy.activity.columns.model}</span>
-              <span role="columnheader">{adminCopy.activity.columns.route}</span>
-              <span role="columnheader">{adminCopy.activity.columns.tokens}</span>
-              <span role="columnheader">{adminCopy.activity.columns.cost}</span>
-              <span role="columnheader">{adminCopy.activity.columns.status}</span>
-            </div>
-            {sampleUsageLogs.map((row) => (
-              <div className="table-row activity-usage-row" key={row.request_id} role="row">
-                <span role="cell">
-                  <strong>{row.request_id}</strong>
-                  <small>{timeLabel(row.created_at)}</small>
-                </span>
-                <span role="cell">
-                  {row.tenant_id} / {row.project_id}
-                </span>
-                <span role="cell">{row.model}</span>
-                <span role="cell">
-                  {row.provider_type} / {row.channel_id}
-                </span>
-                <span role="cell">{tokenLabel(row)}</span>
-                <span role="cell">{amountLabel(row)}</span>
-                <span role="cell">{row.settlement_status ?? row.status}</span>
-              </div>
-            ))}
-          </div>
+          <DataTable
+            ariaLabel={adminCopy.activity.sections.usage}
+            className="activity-usage-table"
+            columns={[
+              {
+                key: "request",
+                header: adminCopy.activity.columns.request,
+                render: (row) => (
+                  <>
+                    <strong>{row.request_id}</strong>
+                    <small>{timeLabel(row.created_at)}</small>
+                    <CopyButton label="复制 ID" value={row.request_id} />
+                  </>
+                )
+              },
+              {
+                key: "scope",
+                header: adminCopy.activity.columns.scope,
+                render: (row) => `${row.tenant_id} / ${row.project_id}`
+              },
+              { key: "model", header: adminCopy.activity.columns.model, render: (row) => row.model },
+              {
+                key: "route",
+                header: adminCopy.activity.columns.route,
+                render: (row) => `${row.provider_type} / ${row.channel_id}`
+              },
+              { key: "tokens", header: adminCopy.activity.columns.tokens, render: tokenLabel },
+              { key: "cost", header: adminCopy.activity.columns.cost, render: amountLabel },
+              {
+                key: "status",
+                header: adminCopy.activity.columns.status,
+                render: (row) => row.settlement_status ?? row.status
+              }
+            ]}
+            empty={<EmptyState title="暂无用量日志">当前筛选条件没有 BFF 用量记录。</EmptyState>}
+            getRowKey={(row) => row.request_id}
+            rowClassName="table-row activity-usage-row"
+            rows={filteredUsage}
+          />
         </article>
 
         <article className="activity-section">
           <h3>{adminCopy.activity.sections.tasks}</h3>
-          <div className="table activity-task-table" role="table">
-            <div className="table-row table-head activity-task-row" role="row">
-              <span role="columnheader">{adminCopy.activity.columns.task}</span>
-              <span role="columnheader">{adminCopy.activity.columns.scope}</span>
-              <span role="columnheader">{adminCopy.activity.columns.model}</span>
-              <span role="columnheader">{adminCopy.activity.columns.route}</span>
-              <span role="columnheader">{adminCopy.activity.columns.progress}</span>
-              <span role="columnheader">{adminCopy.activity.columns.callback}</span>
-              <span role="columnheader">{adminCopy.activity.columns.status}</span>
-            </div>
-            {sampleTaskLogs.map((row) => (
-              <div className="table-row activity-task-row" key={row.task_id} role="row">
-                <span role="cell">
-                  <strong>{row.task_id}</strong>
-                  <small>{row.request_id}</small>
-                </span>
-                <span role="cell">
-                  {row.tenant_id} / {row.project_id}
-                </span>
-                <span role="cell">{row.model}</span>
-                <span role="cell">
-                  {row.provider_type} / {row.channel_id}
-                </span>
-                <span role="cell">{row.progress}%</span>
-                <span role="cell">
-                  {row.callback_configured
+          <DataTable
+            ariaLabel={adminCopy.activity.sections.tasks}
+            className="activity-task-table"
+            columns={[
+              {
+                key: "task",
+                header: adminCopy.activity.columns.task,
+                render: (row) => (
+                  <>
+                    <strong>{row.task_id}</strong>
+                    <small>{row.request_id}</small>
+                    <CopyButton label="复制 ID" value={row.task_id} />
+                  </>
+                )
+              },
+              {
+                key: "scope",
+                header: adminCopy.activity.columns.scope,
+                render: (row) => `${row.tenant_id} / ${row.project_id}`
+              },
+              { key: "model", header: adminCopy.activity.columns.model, render: (row) => row.model },
+              {
+                key: "route",
+                header: adminCopy.activity.columns.route,
+                render: (row) => `${row.provider_type ?? "-"} / ${row.channel_id ?? "-"}`
+              },
+              { key: "progress", header: adminCopy.activity.columns.progress, render: (row) => `${row.progress}%` },
+              {
+                key: "callback",
+                header: adminCopy.activity.columns.callback,
+                render: (row) =>
+                  row.callback_configured
                     ? adminCopy.activity.state.configured
-                    : adminCopy.activity.state.notConfigured}
-                </span>
-                <span role="cell">{row.status}</span>
-              </div>
-            ))}
-          </div>
+                    : adminCopy.activity.state.notConfigured
+              },
+              { key: "status", header: adminCopy.activity.columns.status, render: (row) => row.status }
+            ]}
+            empty={<EmptyState title="暂无任务日志">当前筛选条件没有 BFF 任务记录。</EmptyState>}
+            getRowKey={(row) => row.task_id}
+            rowClassName="table-row activity-task-row"
+            rows={filteredTasks}
+          />
         </article>
 
         <div className="activity-detail-grid">

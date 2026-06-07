@@ -1,3 +1,5 @@
+import { FilterBar, Pagination } from "@token-gateway/ui";
+
 import { formatMaybeDate, moneyValue } from "../../shared/format";
 import { portalCopy } from "../../shared/i18n";
 import { PanelHeading } from "../../shared/layout/PanelHeading";
@@ -6,10 +8,18 @@ import type { CreditLedgerResponse, CreditsResponse, UsageExportResponse } from 
 type CreditsViewProps = {
   credits?: CreditsResponse;
   ledger?: CreditLedgerResponse;
+  ledgerLimit: number;
+  onLedgerLimitChange: (limit: number) => void;
   usageExport?: UsageExportResponse;
 };
 
-export function CreditsView({ credits, ledger, usageExport }: CreditsViewProps) {
+export function CreditsView({
+  credits,
+  ledger,
+  ledgerLimit,
+  onLedgerLimitChange,
+  usageExport
+}: CreditsViewProps) {
   const buckets = Object.entries(credits?.data ?? {});
 
   return (
@@ -41,6 +51,13 @@ export function CreditsView({ credits, ledger, usageExport }: CreditsViewProps) 
       <div className="credits-detail-grid">
         <article>
           <h3>{portalCopy.credits.ledgerTitle}</h3>
+          <FilterBar>
+            <Pagination
+              limit={ledgerLimit}
+              onLimitChange={onLedgerLimitChange}
+              summary={`${ledger?.items?.length ?? 0} rows`}
+            />
+          </FilterBar>
           <div className="credits-ledger-list">
             {(ledger?.items ?? []).length === 0 ? (
               <p className="panel-note">{portalCopy.credits.emptyLedger}</p>
